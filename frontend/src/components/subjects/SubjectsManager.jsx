@@ -963,7 +963,7 @@ export function SubjectsManager({ embedded = false }) {
                             variant="outline"
                             onClick={() => handleRestoreSubject(subject)}
                             disabled={restoringId === subject.id}
-                            className="rounded-xl border-brand-turquoise text-brand-turquoise hover:bg-brand-turquoise/10"
+                            className="rounded-xl border-brand-turquoise text-brand-turquoise hover:bg-brand-turquoise/10 hover:text-brand-turquoise"
                             data-testid={`restore-subject-${subject.id}`}
                           >
                             {restoringId === subject.id ? (

@@ -84,7 +84,8 @@ test('CSV preview at 360px renders the ResponsiveTable mobile cards with valid +
   expect(mobile.textContent).toContain('أحمد محمد العتيبي');
   expect(mobile.textContent).toContain('سارة عبدالله القحطاني');
   // Per-row status chips (color-coded) must remain visible on phones.
-  expect(mobile.textContent).toContain('جاهز');
+  // Verdict chips (Noor restore semantics): a clean new row is 'إضافة'.
+  expect(mobile.textContent).toContain('إضافة');
   expect(mobile.textContent).toContain('تاريخ الميلاد مطلوب');
 
   const cards = mobile.querySelectorAll('li');

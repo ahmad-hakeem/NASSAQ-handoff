@@ -38,6 +38,8 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
+from utils.avatar_image import AvatarImageError, normalize_avatar_data_url_async
+
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials
@@ -65,6 +67,8 @@ from repositories import Repos
 from shared_models import UserResponse
 
 logger = logging.getLogger("nassaq.it_bootstrap")
+
+from utils.avatar_serving import signed_image_url
 
 router = APIRouter()
 
@@ -178,7 +182,7 @@ async def _existing_workspace_summary(workspace_id: str) -> Optional[dict]:
             "id": school.get("id"),
             "name": school.get("name"),
             "name_en": school.get("name_en"),
-            "logo_url": school.get("logo_url"),
+            "logo_url": signed_image_url("logo", workspace_id, school.get("logo_url")),
         },
         "settings": {
             "working_days": (settings or {}).get("working_days") or [],
@@ -221,13 +225,15 @@ def _build_user_response(user: dict, workspace_id: str, school_name: str) -> Use
         tenant_id=workspace_id,
         tenant_name=school_name,
         phone=user.get("phone"),
-        avatar_url=user.get("avatar_url"),
+        avatar_url=signed_image_url("avatar", user["id"], user.get("avatar_url")),
         is_active=user.get("is_active") if user.get("is_active") is not None else True,
         must_change_password=bool(user.get("must_change_password")),
         has_generic_name=is_generic_name(user.get("full_name")),
         preferred_language=user.get("preferred_language") or "ar",
         preferred_theme=user.get("preferred_theme") or "light",
         created_at=user.get("created_at") or "",
+        updated_at=user.get("updated_at"),
+        time_format=user.get("time_format") or "12h",
         teacher_id=user.get("teacher_id"),
         student_id=user.get("student_id"),
         parent_id=user.get("parent_id"),
@@ -350,6 +356,17 @@ async def bootstrap_independent_teacher_workspace(
     teacher_id = str(uuid.uuid4())
     class_id: Optional[str] = None
 
+    # Bound the workspace logo before storing it. Kept at full resolution it is
+    # shipped inline by every payload that carries the school row, the same way
+    # an unbounded avatar bloats /auth/me.
+    try:
+        workspace_logo = await normalize_avatar_data_url_async(payload.avatar_url)
+    except AvatarImageError:
+        raise HTTPException(
+            status_code=400,
+            detail="بيانات الصورة غير صالحة | Invalid image data",
+        )
+
     try:
         # 6.a — schools row (synthetic id).
         await gd_insert(session, "schools", {
@@ -358,7 +375,7 @@ async def bootstrap_independent_teacher_workspace(
             "name_en": payload.workspace_name_en,
             "code": school_id[:24],  # synthetic — uniqueness guaranteed by user_id
             "email": current_user.get("email"),
-            "logo_url": payload.avatar_url,
+            "logo_url": workspace_logo,
             "country": "SA",
             "language": "ar",
             "calendar_system": "hijri_gregorian",

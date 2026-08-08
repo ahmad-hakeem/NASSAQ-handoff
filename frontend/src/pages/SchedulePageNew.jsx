@@ -58,17 +58,21 @@ import { useNassaqAlert } from '../components/ui/NassaqAlertDialog';
 import { getPose } from '../components/hakim/hakimPoses';
 import { MASTER_GRID_TEACHER_WINDOW } from '../config/scheduleConfig';
 
+// Placeholder column count for the loading skeleton only — the real grid
+// always derives its columns from the API payload (grid.periods).
+const SKELETON_GRID_COLS = 7;
+
 // ─── Infeasibility issue → contextual next step ────────────────────────────
 // كل كود INF يحدد الصفحة الأنسب التي تحل المشكلة. عند غياب الكود نوجِّه إلى
 // إعدادات المدرسة العامة كملاذ افتراضي.
 const ISSUE_NEXT_STEP = {
-  'INF-01': { labelKey: 'openAcademicSettings', path: '/school/settings?section=academic' },
-  'INF-02': { labelKey: 'openAcademicSettings', path: '/school/settings?section=academic' },
-  'INF-03': { labelKey: 'openTeachersAssignments',  path: '/school/teachers' },
-  'INF-04': { labelKey: 'openRoomsSettings',           path: '/school/schedule?tab=settings&sub=timings' },
-  'INF-05': { labelKey: 'openSchoolDaySettings',     path: '/school/schedule?tab=settings&sub=timings' },
+  'INF-01': { labelKey: 'openAcademicSettings', path: '/principal/settings?section=academic' },
+  'INF-02': { labelKey: 'openAcademicSettings', path: '/principal/settings?section=academic' },
+  'INF-03': { labelKey: 'openTeachersAssignments',  path: '/principal/users-management?filter=teachers' },
+  'INF-04': { labelKey: 'openRoomsSettings',           path: '/principal/schedule?tab=settings&sub=timings' },
+  'INF-05': { labelKey: 'openSchoolDaySettings',     path: '/principal/schedule?tab=settings&sub=timings' },
 };
-const DEFAULT_NEXT_STEP = { labelKey: 'openScheduleSettings', path: '/school/schedule?tab=settings' };
+const DEFAULT_NEXT_STEP = { labelKey: 'openScheduleSettings', path: '/principal/schedule?tab=settings' };
 
 const DAYS = [
   { key: 'sunday' },
@@ -265,7 +269,21 @@ const HAKIM_STAGES = [
 // full-page spinner — the overlay is positioned absolutely inside the
 // matrix container so the rest of the page (KPIs, sticky band) stays
 // interactive and visible.
-function HakimGeneratingOverlay() {
+// Generation now runs as a background job on the server, so the overlay no
+// longer has to guess: `serverProgress` is the real completion_percentage the
+// engine writes to its run row, delivered by polling. The timer below is kept
+// only as a floor for the window before the first poll comes back, and the bar
+// never moves backwards.
+function serverPctToStageIdx(pct) {
+  if (pct == null) return null;
+  if (pct < 10) return 0;   // queued / validating
+  if (pct < 55) return 2;   // loading + analyzing demand
+  if (pct < 70) return 3;   // building the draft (the long phase)
+  if (pct < 90) return 4;   // conflict detection
+  return 5;                 // optimizing / writing
+}
+
+function HakimGeneratingOverlay({ serverProgress = null }) {
   const { t } = useTranslation();
   const [stageIdx, setStageIdx] = useState(0);
 
@@ -276,10 +294,20 @@ function HakimGeneratingOverlay() {
     return () => clearTimeout(id);
   }, [stageIdx]);
 
-  const stage = HAKIM_STAGES[stageIdx];
+  const serverStageIdx = serverPctToStageIdx(serverProgress);
+  // Take whichever signal is further along: the server is authoritative once
+  // it reports, but before the first poll the timer is all we have.
+  const effectiveIdx = serverStageIdx == null
+    ? stageIdx
+    : Math.max(stageIdx, serverStageIdx);
+
+  const stage = HAKIM_STAGES[Math.min(effectiveIdx, HAKIM_STAGES.length - 1)];
   const poseSrc = getPose(stage.poseKey);
   const total = HAKIM_STAGES.length;
-  const progressPct = Math.round(((stageIdx + 1) / total) * 100);
+  const timerPct = Math.round(((stageIdx + 1) / total) * 100);
+  const progressPct = serverProgress == null
+    ? timerPct
+    : Math.max(timerPct, Math.min(100, Math.round(serverProgress)));
 
   return (
     <div
@@ -344,7 +372,7 @@ function HakimGeneratingOverlay() {
 //
 // التبويبات الخمسة في صفحة إعدادات الجدول مسجَّلة في
 // `ScheduleSettingsTabContent.jsx`، ونوجِّه الزر إلى الرابط
-// `/school/schedule?tab=settings&sub=<tab>` الذي تُحسن الصفحة قراءته.
+// `/principal/schedule?tab=settings&sub=<tab>` الذي تُحسن الصفحة قراءته.
 
 const SETTINGS_TAB_LABEL_KEY = {
   'timings': 'settingsTabTimings',
@@ -540,11 +568,6 @@ function HakimInsightsDrawer({
                                   <p className="text-slate-800">
                                     {(language === 'en' ? (c.reason_en || c.reason_ar) : c.reason_ar) || t('failedToScheduleDefault')}
                                   </p>
-                                  {c.reason_code && (
-                                    <p className="mt-0.5 text-[10px] font-mono text-slate-400">
-                                      {c.reason_code}
-                                    </p>
-                                  )}
                                 </div>
                                 <Button
                                   type="button"
@@ -620,6 +643,13 @@ export default function SchedulePageNew() {
 
   // إنشاء الجدول تلقائياً
   const [generating, setGenerating] = useState(false);
+  // نسبة الإنجاز الحقيقية القادمة من الخادم (0-100) أثناء تنفيذ مهمة التوليد،
+  // أو null قبل وصول أول استعلام.
+  const [generationProgress, setGenerationProgress] = useState(null);
+  // يُستخدم لإيقاف الاستعلام الدوري عند مغادرة الصفحة، حتى لا يستمر بعد
+  // إلغاء تركيب المكوّن (تحديث حالة على مكوّن مفكوك + طلبات بلا فائدة).
+  const pollCancelledRef = useRef(false);
+  useEffect(() => () => { pollCancelledRef.current = true; }, []);
 
   // ── Manual edit drawer (master grid) ──────────────────────────────
   // The drawer covers three flows:
@@ -852,6 +882,49 @@ export default function SchedulePageNew() {
     loadGrid();
   }, [loadGrid, tab]);
 
+  // استعلام دوري عن حالة مهمة التوليد حتى تنتهي.
+  //
+  // الفاصل ثانيتان: أسرع من ذلك يُغرق الخادم بلا فائدة (المرحلة الطويلة هي
+  // بناء المسودة وتستغرق ثوانيَ عدّة)، وأبطأ منه يجعل شريط التقدّم يبدو
+  // متجمّداً. السقف عشر دقائق يطابق مهلة اعتبار المهمة متوقّفة في الخادم،
+  // فلا ننتظر إلى الأبد لو اختفى العامل المنفّذ.
+  const pollGenerationJob = useCallback(async (jobId) => {
+    const INTERVAL_MS = 2000;
+    const MAX_WAIT_MS = 10 * 60 * 1000;
+    const deadline = Date.now() + MAX_WAIT_MS;
+    pollCancelledRef.current = false;
+
+    // أخطاء الشبكة العابرة أثناء الاستعلام لا تعني فشل التوليد — المهمة
+    // تعمل على الخادم. نتسامح مع عدّة إخفاقات متتالية قبل الاستسلام.
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 5;
+
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, INTERVAL_MS));
+      if (pollCancelledRef.current) return { cancelled: true };
+
+      let status;
+      try {
+        const res = await api.get(`/smart-scheduling/job/${jobId}`, {
+          headers: { 'X-School-Context': schoolId },
+        });
+        status = res.data || {};
+        consecutiveErrors = 0;
+      } catch (e) {
+        // 404/403 نهائيان — لا فائدة من إعادة المحاولة.
+        const code = e?.response?.status;
+        if (code === 404 || code === 403 || code === 401) throw e;
+        consecutiveErrors += 1;
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) throw e;
+        continue;
+      }
+
+      if (typeof status.progress === 'number') setGenerationProgress(status.progress);
+      if (status.is_done) return status;
+    }
+    return { is_done: false, timed_out: true, message_ar: t('generationFailedDefault') };
+  }, [api, schoolId, t]);
+
   const handleAutoGenerate = useCallback(async () => {
     if (!schoolId) {
       nassaqError(t('cannotDetermineSchool'));
@@ -860,16 +933,38 @@ export default function SchedulePageNew() {
     if (generating) return;
 
     setGenerating(true);
+    setGenerationProgress(null);
     setInsightsDismissed(false);
     setUnresolvedConflicts([]);
 
     try {
-      const response = await api.post(
-        `/smart-scheduling/generate/${schoolId}`,
+      // ──────────────────────────────────────────────────────────────────
+      // التوليد يعمل الآن كمهمة خلفية على الخادم: نطلب بدء المهمة فنستلم
+      // معرّفها فوراً، ثم نستعلم عن حالتها دورياً. السبب: التوليد يستغرق
+      // من ثانية إلى ~27 ثانية حسب حجم المدرسة، وهي مدّة تكفي لأن يقطعها
+      // الوسيط أو المتصفّح فيبدو الأمر فشلاً بينما الجدول قد أُنشئ فعلاً.
+      // كما أن هذا يحرّر المدير من انتظار الصفحة.
+      // ──────────────────────────────────────────────────────────────────
+      const startRes = await api.post(
+        `/smart-scheduling/generate/${schoolId}/job`,
         {},
         { headers: { 'X-School-Context': schoolId } },
       );
-      const data = response.data || {};
+      const jobId = startRes.data?.job_id;
+      if (!jobId) throw new Error('missing job id');
+
+      const job = await pollGenerationJob(jobId);
+      if (job.cancelled) return;
+      if (!job.result) {
+        // انتهت المهمة دون نتيجة قابلة للعرض (فشل أو توقّف).
+        nassaqError(
+          job.message_ar || t('generationFailedDefault'),
+          { title: t('failedToGenerateScheduleTitle') },
+        );
+        return;
+      }
+
+      const data = job.result;
       const scheduled = data.scheduled_sessions ?? 0;
       const total = data.total_sessions ?? 0;
       const conflicts = data.conflicts_count ?? 0;
@@ -987,8 +1082,9 @@ export default function SchedulePageNew() {
       nassaqError(msg, { title: t('failedToGenerateScheduleTitle') });
     } finally {
       setGenerating(false);
+      setGenerationProgress(null);
     }
-  }, [api, schoolId, generating, loadGrid, nassaqError, nassaqWarning, t]);
+  }, [api, schoolId, generating, loadGrid, nassaqError, nassaqWarning, t, pollGenerationJob]);
 
   const handleLogAbsence = useCallback(() => {
     setAbsenceTeacherId('');
@@ -1704,12 +1800,10 @@ export default function SchedulePageNew() {
           conflicts={unresolvedConflicts}
           retrying={generating}
           onNavigate={(tab) => {
-            // فتح تبويب الإعدادات الفرعي المناسب في تبويب رئيسي جديد كي
-            // تبقى نتائج التوليد ظاهرة. عند الفشل (مانع نوافذ منبثقة
-            // مثلاً) نستخدم navigate كحلّ احتياطي داخل التبويب نفسه.
-            const url = `/school/schedule?tab=settings&sub=${encodeURIComponent(tab)}`;
-            const win = window.open(url, '_blank', 'noopener');
-            if (!win) navigate(url);
+            // نغلق الدرج أولاً ثم ننتقل إلى تبويب الإعدادات المناسب
+            // داخل التبويب نفسه (SPA navigation) لتفادي الفتح المزدوج.
+            setInsightsDrawerOpen(false);
+            navigate(`/principal/schedule?tab=settings&sub=${encodeURIComponent(tab)}`);
           }}
           onRetry={() => {
             setInsightsDrawerOpen(false);
@@ -2156,7 +2250,7 @@ export default function SchedulePageNew() {
             <MasterMatrixSkeleton
               rows={Math.min(MASTER_GRID_TEACHER_WINDOW, totalTeachersAll || 12)}
               days={viewMode === 'daily' ? 1 : ((grid?.days?.length) || days.length || 5)}
-              periods={(grid?.periods?.length) || 7}
+              periods={(grid?.periods?.length) || SKELETON_GRID_COLS}
               isDaily={viewMode === 'daily'}
             />
           ) : error ? (
@@ -2269,7 +2363,7 @@ export default function SchedulePageNew() {
               يظهر فقط أثناء التوليد التلقائي. يستخدم تعبير "ai-thinking"
               من معرض حكيم مع نبضة ضوئية بنفسجية لتأكيد أن المحرك يقرأ
               القيود ويبني الجدول الذكي. */}
-          {generating && <HakimGeneratingOverlay />}
+          {generating && <HakimGeneratingOverlay serverProgress={generationProgress} />}
         </div>
         </div>
 

@@ -228,7 +228,7 @@ export const NassaqAlertProvider = ({ children }) => {
                 variant="outline"
                 onClick={handleSecondaryAction}
                 data-testid="nassaq-alert-secondary-action"
-                className="rounded-xl px-6 py-2.5 text-sm font-bold font-cairo border-indigo-300 text-indigo-700 hover:bg-indigo-50 mt-0"
+                className="rounded-xl px-6 py-2.5 text-sm font-bold font-cairo border-indigo-300 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-700 mt-0"
               >
                 {alertState.secondaryActionText}
               </Button>

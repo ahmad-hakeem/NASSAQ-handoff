@@ -880,7 +880,7 @@ async def get_students_for_grading(
             "student_code": student.get('student_code'),
             "full_name": student.get('full_name'),
             "full_name_en": student.get('full_name_en'),
-            "avatar_url": student.get('avatar_url'),
+            "avatar_url": student.get('avatar_url'),  # students table has no avatar_url column — always None
             "gender": student.get('gender'),
             "score": grade_record.get('score') if grade_record else None,
             "notes": grade_record.get('notes') if grade_record else None,

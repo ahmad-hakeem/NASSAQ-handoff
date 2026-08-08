@@ -41,14 +41,17 @@ async def _mk_independent_teacher() -> dict:
     user = {
         "id": uid,
         "role": UserRole.INDEPENDENT_TEACHER.value,
-        "tenant_id": None,
+        # Post-bootstrap state: users.tenant_id carries the workspace id.
+        # Routes that resolve the tenant from the DB row (e.g. GET /classes
+        # via resolve_school_id) fail closed with 403 when it is NULL.
+        "tenant_id": f"itw_{uid}",
         "email": f"it-{uid}@t.test",
         "full_name": f"IT-{uid[:6]}",
         "is_active": True,
         "password_hash": "x",
         "mfa_enrolled_at": now,
     }
-    await gd_insert(db.session, "users", user)
+    # Schools row FIRST: users.tenant_id has an FK to schools.id.
     wsid = independent_workspace_id(user)
     await gd_insert(db.session, "schools", {
         "id": wsid,
@@ -58,6 +61,7 @@ async def _mk_independent_teacher() -> dict:
         "country": "SA",
         "language": "ar",
     })
+    await gd_insert(db.session, "users", user)
     return user
 
 
@@ -277,7 +281,7 @@ async def test_independent_teacher_create_class_beyond_old_cap_succeeds(client):
             "is_active": True,
         })
 
-    payload = {"name_ar": "فصل إضافي", "grade_id": "الصف الخامس", "capacity": 10}
+    payload = {"name_ar": "فصل إضافي", "grade_id": "5", "capacity": 10}
     resp = await client.post("/classes/create", json=payload, headers=h)
     assert resp.status_code in (200, 201), resp.text
 

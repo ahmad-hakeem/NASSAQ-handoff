@@ -104,6 +104,8 @@ from models.product_hub_models import (
 
 logger = logging.getLogger("nassaq.product_hub")
 
+from utils.avatar_serving import signed_image_url
+
 router = APIRouter(prefix="/product-hub", tags=["Product Intelligence Hub"])
 
 
@@ -125,14 +127,15 @@ def _now_iso():
 
 async def _run_hakim_analysis(issue: dict) -> dict:
     try:
-        from openai import OpenAI
-        import os
-        api_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY", "")
-        base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL", "")
-        if not api_key:
-            return _fallback_analysis(issue)
+        from services.ai_client import (
+            PURPOSE_BACKGROUND,
+            ai_chat_completion,
+            build_openai_client,
+        )
 
-        client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
+        client = build_openai_client(PURPOSE_BACKGROUND)
+        if client is None:
+            return _fallback_analysis(issue)
 
         all_issues = await gd_find(db.session, "product_issues", {"status": {"$nin": ["rejected"]}}, order_by="created_at", desc_order=True, limit=50)
 
@@ -171,8 +174,9 @@ Respond in this exact JSON format (Arabic text preferred):
   "impact_assessment": "impact assessment in Arabic"
 }}"""
 
-        response = await asyncio.to_thread(
-            client.chat.completions.create,
+        response = await ai_chat_completion(
+            client,
+            purpose=PURPOSE_BACKGROUND,
             model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": "You are a product intelligence AI. Respond ONLY with valid JSON."},
@@ -601,33 +605,37 @@ def _fallback_engineering_prompt(facts: dict) -> str:
 
 
 def _llm_generate_engineering_prompt(facts: dict) -> Optional[str]:
-    """Ask Hakim to produce the engineering prompt. Returns None on any failure."""
-    try:
-        from openai import OpenAI
-        import os
-        api_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY", "")
-        base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL", "")
-        if not api_key:
-            return None
+    """Ask Hakim to produce the engineering prompt.
 
-        client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
-        response = client.chat.completions.create(
-            model="gpt-5-mini",
-            messages=[
-                {"role": "system", "content": _ENGINEERING_SYSTEM_PROMPT},
-                {"role": "user", "content": _build_engineering_user_prompt(facts)},
-            ],
-            max_completion_tokens=4096,
-            reasoning_effort="minimal",
-            timeout=60,
-        )
-        text = (response.choices[0].message.content or "").strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-        return text or None
-    except Exception as e:
-        logger.warning(f"Hakim engineering-prompt generation failed: {e}")
+    Blocking by design: it is always driven through
+    ``services.ai_client.run_bounded_sync`` (see ``_generate_prompt``), which
+    runs it in the bounded AI worker pool, enforces the outer ceiling, records
+    metrics and maps provider failures. Provider exceptions must therefore
+    propagate — swallowing them here would hide the failure from the metrics.
+    """
+    from services.ai_client import (
+        PURPOSE_BACKGROUND,
+        build_openai_client,
+        resolve_timeout,
+    )
+
+    client = build_openai_client(PURPOSE_BACKGROUND)
+    if client is None:
         return None
+    response = client.chat.completions.create(
+        model="gpt-5-mini",
+        messages=[
+            {"role": "system", "content": _ENGINEERING_SYSTEM_PROMPT},
+            {"role": "user", "content": _build_engineering_user_prompt(facts)},
+        ],
+        max_completion_tokens=4096,
+        reasoning_effort="minimal",
+        timeout=resolve_timeout(PURPOSE_BACKGROUND),
+    )
+    text = (response.choices[0].message.content or "").strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    return text or None
 
 
 async def _generate_prompt(issue: dict) -> str:
@@ -637,8 +645,26 @@ async def _generate_prompt(issue: dict) -> str:
     Tries Hakim (LLM) first, validates the structure, and falls back to a
     deterministic builder that always satisfies the canonical structure.
     """
+    from services.ai_client import (
+        PURPOSE_BACKGROUND,
+        AIProviderError,
+        run_bounded_sync,
+    )
+
     facts = _collect_issue_facts(issue)
-    llm_text = await asyncio.to_thread(_llm_generate_engineering_prompt, facts)
+    try:
+        llm_text = await run_bounded_sync(
+            _llm_generate_engineering_prompt, facts,
+            purpose=PURPOSE_BACKGROUND,
+        )
+    except AIProviderError as e:
+        # Already logged + counted by the helper; the deterministic builder
+        # below keeps the feature working while the provider is degraded.
+        logger.warning(f"Hakim engineering-prompt generation degraded: {e.code}")
+        llm_text = None
+    except Exception as e:
+        logger.warning(f"Hakim engineering-prompt generation failed: {e}")
+        llm_text = None
     if llm_text and _validate_engineering_prompt(llm_text):
         return llm_text
     return _fallback_engineering_prompt(facts)
@@ -1560,7 +1586,7 @@ async def get_mentionable_users(
     users = await gd_find(db.session, "users", {"is_active": True, "id": {"$in": list(allowed_ids)}}, order_by="full_name", desc_order=False, limit=200)
 
     return {"users": [
-        {"id": u.get("id", ""), "name": u.get("full_name", ""), "email": u.get("email", ""), "role": u.get("role", ""), "avatar": u.get("avatar_url")}
+        {"id": u.get("id", ""), "name": u.get("full_name", ""), "email": u.get("email", ""), "role": u.get("role", ""), "avatar": signed_image_url("avatar", u.get("id", ""), u.get("avatar_url"))}
         for u in users if u.get("id")
     ]}
 
@@ -2302,14 +2328,15 @@ async def hakim_generate_expected(
         _hub_error(422, "CURRENT_BEHAVIOR_TOO_SHORT", "يجب وصف الوضع الحالي أولاً (10 أحرف على الأقل)")
 
     try:
-        from openai import OpenAI
-        import os
-        api_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY", "")
-        base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL", "")
-        if not api_key:
-            return {"generated_text": "", "success": False}
+        from services.ai_client import (
+            PURPOSE_INTERACTIVE,
+            ai_chat_completion,
+            build_openai_client,
+        )
 
-        client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
+        client = build_openai_client(PURPOSE_INTERACTIVE)
+        if client is None:
+            return {"generated_text": "", "success": False}
 
         context_parts = []
         if title:
@@ -2323,7 +2350,9 @@ async def hakim_generate_expected(
 
         context = "\n".join(context_parts)
 
-        response = client.chat.completions.create(
+        response = await ai_chat_completion(
+            client,
+            purpose=PURPOSE_INTERACTIVE,
             model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق التعليمي.
@@ -2367,14 +2396,16 @@ async def hakim_generate_title(
         _hub_error(422, "INSUFFICIENT_DATA", "يرجى استكمال الوضع الحالي والوضع المتوقع لإنشاء عنوان دقيق")
 
     try:
-        from openai import OpenAI
-        import os, json as _json
-        api_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY", "")
-        base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL", "")
-        if not api_key:
-            return {"titles": [], "success": False}
+        import json as _json
+        from services.ai_client import (
+            PURPOSE_INTERACTIVE,
+            ai_chat_completion,
+            build_openai_client,
+        )
 
-        client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
+        client = build_openai_client(PURPOSE_INTERACTIVE)
+        if client is None:
+            return {"titles": [], "success": False}
 
         context_parts = []
         if issue_type:
@@ -2389,7 +2420,9 @@ async def hakim_generate_title(
 
         context = "\n".join(context_parts)
 
-        response = client.chat.completions.create(
+        response = await ai_chat_completion(
+            client,
+            purpose=PURPOSE_INTERACTIVE,
             model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق التعليمي.
@@ -2437,14 +2470,15 @@ async def hakim_improve_text(
         _hub_error(422, "TEXT_TOO_SHORT", "النص قصير جداً للتحسين")
 
     try:
-        from openai import OpenAI
-        import os
-        api_key = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY", "")
-        base_url = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL", "")
-        if not api_key:
-            return {"improved_text": text, "suggestions": []}
+        from services.ai_client import (
+            PURPOSE_INTERACTIVE,
+            ai_chat_completion,
+            build_openai_client,
+        )
 
-        client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
+        client = build_openai_client(PURPOSE_INTERACTIVE)
+        if client is None:
+            return {"improved_text": text, "suggestions": []}
 
         field_prompts = {
             "title": "إعادة صياغة عنوان التحدي ليكون مختصراً وواضحاً ودقيقاً، بحد أقصى جملة واحدة قصيرة تصف المشكلة أو الطلب",
@@ -2454,7 +2488,9 @@ async def hakim_improve_text(
         }
         field_instruction = field_prompts.get(field_type, "تحسين النص ليكون أوضح وأكثر تحديداً")
 
-        response = client.chat.completions.create(
+        response = await ai_chat_completion(
+            client,
+            purpose=PURPOSE_INTERACTIVE,
             model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": f"""أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق. مهمتك: {field_instruction}.

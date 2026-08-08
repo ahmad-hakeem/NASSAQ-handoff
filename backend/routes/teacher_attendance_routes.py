@@ -71,6 +71,8 @@ async def _resolve_user_name(db, user_id: Optional[str]) -> str:
 
 def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRole):
     """Create teacher attendance router"""
+    from utils.avatar_serving import signed_image_url
+
     router = APIRouter(prefix="/teacher-attendance", tags=["Teacher Attendance"])
     
     @router.get("/school-admins")
@@ -117,7 +119,7 @@ def create_teacher_attendance_routes(db, get_current_user, require_roles, UserRo
                 "phone": u.get("phone"),
                 "specialization": ROLE_LABEL_AR.get(role, role or ""),
                 "role": role,
-                "avatar_url": u.get("avatar_url"),
+                "avatar_url": signed_image_url("avatar", u.get("id"), u.get("avatar_url")),
                 "school_id": u.get("tenant_id"),
                 "is_active": u.get("is_active", True),
             })

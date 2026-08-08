@@ -61,8 +61,12 @@ def _get_client():
     if not api_key:
         return None
     try:
-        from openai import OpenAI
-        _client = OpenAI(api_key=api_key, base_url=base_url if base_url else None)
+        from services.ai_client import PURPOSE_INTERACTIVE, build_openai_client
+        _client = build_openai_client(
+            PURPOSE_INTERACTIVE, api_key=api_key, base_url=base_url or None
+        )
+        if _client is None:
+            _client_failed = True
         return _client
     except Exception as e:
         logger.error(f"[Hakim] failed to init OpenAI client: {e}")
@@ -839,7 +843,15 @@ async def hakim_generate(
             sharpen=sharpen,
         )
         try:
-            response = client.chat.completions.create(
+            from services.ai_client import (
+                PURPOSE_INTERACTIVE,
+                AIProviderTimeout,
+                ai_chat_completion,
+            )
+
+            response = await ai_chat_completion(
+                client,
+                purpose=PURPOSE_INTERACTIVE,
                 model=model,
                 messages=[
                     {"role": "system", "content": system},
@@ -849,6 +861,12 @@ async def hakim_generate(
                 reasoning_effort="minimal",
             )
             raw = (response.choices[0].message.content or "")
+        except AIProviderTimeout as e:
+            logger.warning(
+                f"[Hakim:{gen_id}] LLM timeout mode={mode} field={field} attempt={attempt}: {e}"
+            )
+            return _result(False, text_in, mode, field, model, language, gen_id, started,
+                           reason="LLM_TIMEOUT", retried=retried)
         except Exception as e:
             logger.warning(
                 f"[Hakim:{gen_id}] LLM call failed mode={mode} field={field} attempt={attempt}: {e}"

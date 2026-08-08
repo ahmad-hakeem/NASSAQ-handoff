@@ -7,7 +7,7 @@ client in ``conftest.py``) and prove the full round-trip:
     revoke → revoked_tokens / revoked_token_families populated
           → /auth/refresh rejects the matching refresh token
 
-We use a ``student`` role so the ``require_recent_mfa()`` gate is a
+We use a ``gatekeeper`` role so the ``require_recent_mfa()`` gate is a
 no-op (students sit outside Tier A/B/C in ``services.mfa_policy``); the
 revoke logic itself is role-independent — the bug was in the helper, not
 in the auth tier.
@@ -77,7 +77,7 @@ async def _seed_session(user_id: str, *, mfa_recent: bool = True) -> dict:
     now = datetime.now(timezone.utc)
     mfa_ts = int(now.timestamp()) if mfa_recent else None
     access_token = create_access_token(
-        {"sub": user_id, "role": "student", "tenant_id": None},
+        {"sub": user_id, "role": "gatekeeper", "tenant_id": None},
         mfa_recent_at=mfa_ts,
     )
     import jwt as _jwt
@@ -86,7 +86,7 @@ async def _seed_session(user_id: str, *, mfa_recent: bool = True) -> dict:
         access_token, JWT_SECRET, algorithms=[JWT_ALGORITHM]
     )
     refresh_token = create_refresh_token(
-        {"sub": user_id, "role": "student", "tenant_id": None},
+        {"sub": user_id, "role": "gatekeeper", "tenant_id": None},
         linked_access_jti=access_payload["jti"],
         family_id=str(uuid.uuid4()),
         mfa_recent_at=mfa_ts,
@@ -130,7 +130,7 @@ async def test_delete_session_revokes_access_and_refresh(
     ``revoked_token_families``. Without that, the device whose session
     was ended would re-authenticate on its next ``/auth/refresh``.
     """
-    user = await _mk_user(UserRole.STUDENT, tenant_a)
+    user = await _mk_user(UserRole.GATEKEEPER, tenant_a)
     current = await _seed_session(user["id"])
     other = await _seed_session(user["id"])
 
@@ -186,7 +186,7 @@ async def test_end_all_revokes_others_but_preserves_current(
     """``POST /settings/sessions/end-all`` MUST kill every OTHER refresh
     token (jti + family) and leave the caller's own refresh path alive.
     """
-    user = await _mk_user(UserRole.STUDENT, tenant_a)
+    user = await _mk_user(UserRole.GATEKEEPER, tenant_a)
     current = await _seed_session(user["id"])
     other_a = await _seed_session(user["id"])
     other_b = await _seed_session(user["id"])
@@ -258,7 +258,7 @@ async def test_revoked_refresh_jti_expiry_outlives_access_token(
     expired — letting the ended device silently revive on its next
     ``/auth/refresh``. Regression-guards the original review finding.
     """
-    user = await _mk_user(UserRole.STUDENT, tenant_a)
+    user = await _mk_user(UserRole.GATEKEEPER, tenant_a)
     current = await _seed_session(user["id"])
     other = await _seed_session(user["id"])
 
@@ -299,7 +299,7 @@ async def test_end_all_without_current_jti_returns_400(
     session and MUST fail closed with HTTP 400 — otherwise it would
     silently revoke EVERY session including the caller's.
     """
-    user = await _mk_user(UserRole.STUDENT, tenant_a)
+    user = await _mk_user(UserRole.GATEKEEPER, tenant_a)
     # Mint a token but do NOT insert a matching user_sessions row, so its
     # jti is unknown to the server. The route's guard inspects the BEARER
     # jti, not DB presence — the bearer carries a jti either way — so to
@@ -312,7 +312,7 @@ async def test_end_all_without_current_jti_returns_400(
     now = datetime.now(timezone.utc)
     payload = {
         "sub": user["id"],
-        "role": "student",
+        "role": "gatekeeper",
         "tenant_id": None,
         "type": "access",
         "iat": now,
@@ -367,20 +367,22 @@ async def _login(client, email: str, password: str) -> dict:
 
 
 async def _student_with_password(tenant_id: str, password: str) -> dict:
-    """Insert a STUDENT user with a real bcrypt password hash so it can
+    """Insert a GATEKEEPER user with a real bcrypt password hash so it can
     actually sign in via /auth/login (the conftest helper stores
     ``password_hash="x"`` which fails ``verify_password``).
 
-    STUDENT is chosen because it sits outside the MFA tier policy, so
+    GATEKEEPER is chosen because it sits outside the MFA tier policy
+    (STUDENT would too, but student bearers are rejected 401 platform-wide
+    while student login is disabled), so
     /auth/login returns real tokens and the session-revoke routes'
     ``require_recent_mfa()`` gate is a no-op — the same reason
-    ``test_delete_session_revokes_access_and_refresh`` above uses STUDENT.
+    ``test_delete_session_revokes_access_and_refresh`` above uses GATEKEEPER.
     """
     from dependencies import hash_password
     uid = str(uuid.uuid4())
     user = {
         "id": uid,
-        "role": UserRole.STUDENT.value,
+        "role": UserRole.GATEKEEPER.value,
         "tenant_id": tenant_id,
         "email": f"twobrowser-{uid}@example.com",
         "full_name": "Two Browser Student",
@@ -646,8 +648,8 @@ async def test_delete_session_for_other_users_id_returns_404(
     user_id-scoped lookup is the authz boundary; a leak would let a
     student end another user's session.
     """
-    me = await _mk_user(UserRole.STUDENT, tenant_a)
-    other_user = await _mk_user(UserRole.STUDENT, tenant_b)
+    me = await _mk_user(UserRole.GATEKEEPER, tenant_a)
+    other_user = await _mk_user(UserRole.GATEKEEPER, tenant_b)
     my_session = await _seed_session(me["id"])
     other_session = await _seed_session(other_user["id"])
 

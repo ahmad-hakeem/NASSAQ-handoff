@@ -13,6 +13,7 @@ from dependencies import (
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
 from auth_scope import require_request_school_id
 from middleware.rate_limiter import rate_store
+from sqlalchemy import bindparam, text as sa_text
 
 
 router = APIRouter()
@@ -523,11 +524,46 @@ async def directory_parents(
 
     parents = await gd_find(db.session, "parents", query, order_by="full_name", desc_order=False, offset=skip, limit=per_page)
 
+    # Batched children lookup (was an N+1: one students fetch per parent).
+    # The per-parent query linked students by parent_id == parent.id OR
+    # parent_user_id == parent.user_id, so we collect both id sets and fetch
+    # all matching students in ONE query, then group in memory with the same
+    # OR precedence and 20-per-parent cap.
+    parent_ids = [p["id"] for p in parents if p.get("id")]
+    parent_user_ids = list({p.get("user_id") for p in parents if p.get("user_id")})
+    children_by_parent: dict = {}
+    children_by_user: dict = {}
+    if parent_ids or parent_user_ids:
+        _or_clauses = []
+        if parent_ids:
+            _or_clauses.append({"parent_id": {"$in": parent_ids}})
+        if parent_user_ids:
+            _or_clauses.append({"parent_user_id": {"$in": parent_user_ids}})
+        _all_children = await gd_find(
+            db.session, "students",
+            {"tenant_id": school_id, "is_active": True, "$or": _or_clauses},
+            limit=5000,
+        )
+        for child in _all_children:
+            pid = child.get("parent_id")
+            if pid is not None:
+                children_by_parent.setdefault(pid, []).append(child)
+            puid = child.get("parent_user_id")
+            if puid is not None:
+                children_by_user.setdefault(puid, []).append(child)
+
     for p in parents:
-        children = await gd_find(db.session, "students", {"tenant_id": school_id, "is_active": True, "$or": [
-                {"parent_id": p["id"]},
-                {"parent_user_id": p.get("user_id")}
-            ]}, limit=20)
+        # Mirror the original OR: a child matches on parent_id OR
+        # parent_user_id. De-duplicate by student id while preserving order.
+        matched: list = []
+        _seen: set = set()
+        for child in children_by_parent.get(p["id"], []) + children_by_user.get(p.get("user_id"), []):
+            cid = child.get("id")
+            if cid in _seen:
+                continue
+            _seen.add(cid)
+            matched.append(child)
+        children = matched[:20]
         p["children"] = children
         p["children_count"] = len(children)
 
@@ -554,9 +590,38 @@ async def directory_classes(
     query["is_active"] = {"$ne": False}
     classes = await gd_find(db.session, "classes", query, order_by="name", desc_order=False, limit=200)
 
+    # Batched counts (was an N+1: one students COUNT + one teacher_assignments
+    # COUNT per returned class). Two grouped GROUP BY class_id queries replace
+    # the per-class calls. Note: on both tables the tenant column is school_id
+    # (gd_count's tenant_id filter aliases to school_id), so the raw SQL keys
+    # on school_id to preserve the exact tenant scoping.
+    class_id_list = [c["id"] for c in classes if c.get("id")]
+
+    student_count_by_class: dict = {}
+    teacher_count_by_class: dict = {}
+    if class_id_list:
+        _s_rows = (await db.session.execute(
+            sa_text(
+                "SELECT class_id, COUNT(id) AS cnt FROM students "
+                "WHERE school_id = :sid AND class_id IN :cids GROUP BY class_id"
+            ).bindparams(bindparam("cids", expanding=True)),
+            {"sid": school_id, "cids": class_id_list},
+        )).all()
+        student_count_by_class = {r[0]: int(r[1]) for r in _s_rows}
+
+        _t_rows = (await db.session.execute(
+            sa_text(
+                "SELECT class_id, COUNT(id) AS cnt FROM teacher_assignments "
+                "WHERE school_id = :sid AND class_id IN :cids AND is_active = true "
+                "GROUP BY class_id"
+            ).bindparams(bindparam("cids", expanding=True)),
+            {"sid": school_id, "cids": class_id_list},
+        )).all()
+        teacher_count_by_class = {r[0]: int(r[1]) for r in _t_rows}
+
     for c in classes:
-        c["student_count"] = await gd_count(db.session, "students", {"tenant_id": school_id, "class_id": c["id"]})
-        c["teacher_count"] = await gd_count(db.session, "teacher_assignments", {"tenant_id": school_id, "class_id": c["id"], "is_active": True})
+        c["student_count"] = student_count_by_class.get(c["id"], 0)
+        c["teacher_count"] = teacher_count_by_class.get(c["id"], 0)
 
     return {"classes": classes, "total": len(classes)}
 

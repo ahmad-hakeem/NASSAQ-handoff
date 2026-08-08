@@ -252,7 +252,11 @@ export default function ClassDetailPage() {
   const [showStudentWizard, setShowStudentWizard] = useState(false);
   const [grades, setGrades] = useState([]);
 
-  const managementPath = user?.role === 'school_principal' ? '/principal/users-management' : '/admin/users-management';
+  // Principal route audit 2026-07-28: this page is SCHOOL_ROLES-only (all
+  // leadership), so the management breadcrumb always points at the canonical
+  // /principal URL — the old role ternary leaked school_admin/sub_admin into
+  // the legacy /admin namespace.
+  const managementPath = '/principal/users-management';
 
   const headers = useMemo(() => {
     const h = {};

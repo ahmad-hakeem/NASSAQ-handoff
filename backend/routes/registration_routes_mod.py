@@ -314,6 +314,7 @@ async def _create_school_instant(
         preferred_language="ar",
         preferred_theme="light",
         created_at=now_iso,
+        updated_at=now_iso,
     )
 
     logger.info(f"[InstantSignup] School created and auto-logged-in: {school_name} (code={school_code}, principal={principal_id[:8]}…)")
@@ -479,6 +480,7 @@ async def _create_independent_teacher_instant(
         preferred_language="ar",
         preferred_theme="light",
         created_at=now_iso,
+        updated_at=now_iso,
     )
 
     logger.info(f"[InstantSignup] Independent teacher created and auto-logged-in: user={user_id[:8]}… email={teacher_email}")
@@ -732,7 +734,10 @@ async def approve_request_unified(
     """
     from engines.approval_engine import approval_engine
     notes = data.admin_note or ''
-    result = await approval_engine.approve(request_id, current_user, notes=notes)
+    # `school_id` is the reviewer's choice of which school an approved School
+    # Teacher joins — the signup form's school field is optional free text.
+    context = {"school_id": data.school_id}
+    result = await approval_engine.approve(request_id, current_user, notes=notes, context=context)
     if not result.success:
         raise HTTPException(status_code=400, detail=result.message)
     response = {

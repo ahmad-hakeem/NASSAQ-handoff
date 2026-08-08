@@ -129,10 +129,16 @@ async def _seed_extra_rows(wsid: str) -> None:
 @pytest.mark.asyncio
 async def test_purge_403_for_independent_teacher_caller(client):
     """The §6.8 trust boundary: an IT bearer must never reach the
-    platform-admin purge router, even with a valid Tier-A token."""
+    platform-admin purge router, even with a valid Tier-A token.
+
+    The caller acts from a separate ACTIVE workspace: the archived
+    workspace's own bearer dies earlier with 401 (workspace-archived
+    auth gate), which would mask the role check under test here.
+    """
     ctx = await mk_it_workspace()
+    caller = await mk_it_workspace()
     h = headers(
-        ctx["uid"], ctx["user"]["role"], ctx["wsid"],
+        caller["uid"], caller["user"]["role"], caller["wsid"],
         mfa_recent_at=now_ts(),
     )
     await _flip_pending_hard_delete(ctx["wsid"])

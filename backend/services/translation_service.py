@@ -2,7 +2,13 @@ import os
 import json
 import logging
 from typing import Optional
-from openai import OpenAI
+
+from services.ai_client import (
+    PURPOSE_INTERACTIVE,
+    AIProviderError,
+    ai_chat_completion,
+    build_openai_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +20,8 @@ _client = None
 def _get_client():
     global _client
     if _client is None and AI_INTEGRATIONS_OPENAI_API_KEY and AI_INTEGRATIONS_OPENAI_BASE_URL:
-        _client = OpenAI(
+        _client = build_openai_client(
+            PURPOSE_INTERACTIVE,
             api_key=AI_INTEGRATIONS_OPENAI_API_KEY,
             base_url=AI_INTEGRATIONS_OPENAI_BASE_URL,
         )
@@ -45,7 +52,9 @@ async def translate_text(text: str, source_lang: str, target_lang: str) -> Optio
         lang_names = {"ar": "Arabic", "en": "English"}
         src = lang_names.get(source_lang, source_lang)
         tgt = lang_names.get(target_lang, target_lang)
-        response = client.chat.completions.create(
+        response = await ai_chat_completion(
+            client,
+            purpose=PURPOSE_INTERACTIVE,
             model="gpt-5-mini",
             messages=[
                 {
@@ -59,6 +68,10 @@ async def translate_text(text: str, source_lang: str, target_lang: str) -> Optio
         )
         translated = response.choices[0].message.content.strip()
         return translated
+    except AIProviderError as e:
+        # Timeout / provider outage — degrade to the untranslated text.
+        logger.warning(f"Translation unavailable ({e.code}): {e}")
+        return None
     except Exception as e:
         logger.error(f"Translation failed: {e}")
         return None

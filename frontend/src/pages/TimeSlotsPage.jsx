@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
+import { formatTimeStr } from '../utils/timeFormat';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -234,14 +235,7 @@ export const TimeSlotsPage = () => {
     }
   };
 
-  const formatTime = (time) => {
-    if (!time) return '';
-    const [hours, minutes] = time.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? (t('pm')) : (t('am'));
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
+  const formatTime = (time) => formatTimeStr(time, user?.time_format || '12h', t);
 
   return (
     <Sidebar>
@@ -251,7 +245,7 @@ export const TimeSlotsPage = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button variant="ghost" size="icon" asChild className="rounded-xl">
-                <Link to="/admin/schedule">
+                <Link to="/principal/schedule">
                   <ArrowLeft className="h-5 w-5" />
                 </Link>
               </Button>

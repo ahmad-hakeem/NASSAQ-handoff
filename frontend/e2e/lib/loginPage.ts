@@ -1,4 +1,5 @@
 import { expect, Page } from '@playwright/test';
+import { totpCode } from './totp';
 
 /**
  * Minimal page-object helpers for the login flow.
@@ -14,10 +15,35 @@ export async function gotoLogin(page: Page) {
   await expect(page.getByTestId('login-page')).toBeVisible();
 }
 
-export async function signInWith(page: Page, email: string, password: string) {
+export async function signInWith(
+  page: Page,
+  email: string,
+  password: string,
+  totpSecret?: string,
+) {
   await page.getByTestId('login-email-input').fill(email);
   await page.getByTestId('login-password-input').fill(password);
   await page.getByTestId('login-submit-btn').click();
+  if (totpSecret) {
+    await completeTotpChallenge(page, totpSecret);
+  }
+}
+
+/**
+ * Completes the real MFA login challenge (MfaLoginChallengePanel) with a
+ * freshly generated TOTP code. Used for seeded accounts whose base32
+ * secret is exported by the CI seed (e.g. E2E_PARENT_TOTP_SECRET).
+ */
+export async function completeTotpChallenge(page: Page, totpSecret: string) {
+  await expect(page.getByTestId('mfa-challenge-panel')).toBeVisible({ timeout: 15_000 });
+  // Multi-factor accounts show a picker; single-factor TOTP goes straight
+  // to the code input.
+  const pickTotp = page.getByTestId('mfa-pick-totp');
+  if (await pickTotp.isVisible().catch(() => false)) {
+    await pickTotp.click();
+  }
+  await page.getByTestId('mfa-code-input').fill(totpCode(totpSecret));
+  await page.getByTestId('mfa-verify-btn').click();
 }
 
 export async function expectOnPath(page: Page, path: string, timeout = 15_000) {

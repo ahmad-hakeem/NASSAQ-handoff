@@ -20,6 +20,7 @@ Everything here is REAL-school only: Independent-Teacher synthetic workspaces
 (``itw_*``) manage their own model and are skipped by callers.
 """
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -165,18 +166,104 @@ async def get_grade_subject_ids(session, school_id: str, class_doc: Dict[str, An
     return set()
 
 
+_AR_DIACRITICS = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]")
+
+# Legacy/imported teacher records store the specialization as an English key
+# ("math", "arabic", ...) while the school's subjects are named in Arabic.
+# Each entry lists normalized Arabic names to try, most specific first; the
+# first name that exists in the school's catalogue wins (so a school that has
+# both "عربي" and "اللغة العربية" still resolves to exactly one subject).
+_SPECIALIZATION_ALIASES: Dict[str, Tuple[str, ...]] = {
+    "math": ("رياضيات",),
+    "maths": ("رياضيات",),
+    "mathematics": ("رياضيات",),
+    "arabic": ("لغه العربيه", "عربي", "لغه عربيه"),
+    "english": ("لغه الانجليزيه", "انجليزي", "لغه انجليزيه"),
+    "science": ("علوم",),
+    "islamic": ("تربيه الاسلاميه", "تربيه اسلاميه"),
+    "islamic studies": ("تربيه الاسلاميه", "تربيه اسلاميه"),
+    "pe": ("تربيه البدنيه", "تربيه بدنيه"),
+    "physical education": ("تربيه البدنيه", "تربيه بدنيه"),
+    "art": ("تربيه الفنيه", "تربيه فنيه"),
+    "computer": ("حاسوب", "حاسب الالي", "مهارات رقميه"),
+    "it": ("حاسوب", "مهارات رقميه"),
+    "social": ("دراسات الاجتماعيه", "دراسات اجتماعيه"),
+    "history": ("تاريخ",),
+    "geography": ("جغرافيا",),
+    "chemistry": ("كيمياء",),
+    "physics": ("فيزياء",),
+    "biology": ("احياء",),
+}
+
+
+def normalize_subject_name(value: Any) -> str:
+    """Normalize a subject/specialization name for matching.
+
+    Arabic subject catalogues and free-text teacher specializations rarely
+    agree character-for-character: "رياضيات" (specialization) vs "الرياضيات"
+    (subject name), أ/إ/آ vs ا, ة vs ه, stray diacritics/tatweel. Exact string
+    matching made the auto-resolver miss the teacher's own subject and raise a
+    false "no suitable subject" error, so every comparison goes through here.
+    """
+    if not value:
+        return ""
+    s = str(value).strip()
+    s = s.replace("\u0640", "")  # tatweel
+    s = _AR_DIACRITICS.sub("", s)
+    s = re.sub(r"[أإآٱ]", "ا", s)
+    s = s.replace("ة", "ه").replace("ى", "ي").replace("ؤ", "و").replace("ئ", "ي")
+    s = re.sub(r"\s+", " ", s).strip().lower()
+    # Definite article: "الرياضيات" == "رياضيات". Guarded by a length floor so
+    # short words that merely start with those letters are left alone.
+    if s.startswith("ال") and len(s) > 4:
+        s = s[2:]
+    return s
+
+
 def build_subject_name_index(subjects: List[Dict[str, Any]]) -> Dict[str, str]:
-    """name (ar/en) -> subject_id, for resolving a teacher's text specialization."""
+    """name (ar/en) -> subject_id, for resolving a teacher's text specialization.
+
+    Both the raw and the normalized name are indexed so callers can match a
+    free-text specialization that differs only in orthography.
+    """
     by_name: Dict[str, str] = {}
+    norm_hits: Dict[str, Set[str]] = {}
     for s in subjects:
         sid = s.get("id") or s.get("subject_id")
         if not sid:
             continue
         for key in ("name_ar", "name", "name_en"):
             v = s.get(key)
-            if v:
-                by_name.setdefault(str(v).strip(), sid)
+            if not v:
+                continue
+            by_name.setdefault(str(v).strip(), sid)
+            norm = normalize_subject_name(v)
+            if norm:
+                norm_hits.setdefault(norm, set()).add(sid)
+    # Normalized keys never override an exact name, and a key claimed by two
+    # different subjects (e.g. both "الرياضيات" and "رياضيات" exist) is dropped:
+    # matching stays deterministic and the choice goes to the principal instead
+    # of depending on whichever row the database returned first.
+    for norm, ids in norm_hits.items():
+        if len(ids) == 1:
+            by_name.setdefault(norm, next(iter(ids)))
     return by_name
+
+
+def match_subject_by_name(name: Any, subject_by_name: Dict[str, str]) -> Optional[str]:
+    """Resolve a free-text subject/specialization to a subject id."""
+    if not name or not subject_by_name:
+        return None
+    raw = str(name).strip()
+    if raw in subject_by_name:
+        return subject_by_name[raw]
+    norm = normalize_subject_name(raw)
+    if norm and norm in subject_by_name:
+        return subject_by_name[norm]
+    for alias in _SPECIALIZATION_ALIASES.get(norm, ()):  # English legacy keys
+        if alias in subject_by_name:
+            return subject_by_name[alias]
+    return None
 
 
 def teacher_subject_ids_from_doc(
@@ -195,11 +282,9 @@ def teacher_subject_ids_from_doc(
             ids.add(sid)
     if subject_by_name:
         for key in ("subject", "specialization"):
-            name = teacher_doc.get(key)
-            if name:
-                sid = subject_by_name.get(str(name).strip())
-                if sid:
-                    ids.add(sid)
+            sid = match_subject_by_name(teacher_doc.get(key), subject_by_name)
+            if sid:
+                ids.add(sid)
     if extra_subject_ids:
         ids |= extra_subject_ids
     return ids
@@ -229,23 +314,108 @@ def resolve_subject(
     # schools still get a sensible default.
     if not grade_subject_ids and len(teacher_subject_ids) == 1:
         return next(iter(teacher_subject_ids)), "no_curriculum_single"
+    if not grade_subject_ids and len(teacher_subject_ids) > 1:
+        # The teacher can teach several subjects and the grade has no
+        # curriculum to narrow them down: this is a CHOICE, not a missing
+        # assignment — say so, so the caller offers a picker instead of
+        # telling the principal to assign a subject they already assigned.
+        return None, "ambiguous"
     return None, "none"
 
 
 async def resolve_class_subject(
     session, school_id: str, teacher_doc: Dict[str, Any], class_doc: Dict[str, Any]
 ) -> Tuple[Optional[str], str]:
-    """Convenience wrapper that loads the maps for a single (teacher, class)."""
+    """Resolve the subject for an interactive (teacher, class) assignment.
+
+    Resolution order:
+      1. "previous" — a deactivated canonical row for this exact pair keeps the
+         subject that was valid before the unassignment; reassigning restores
+         it (the unassign → reassign lifecycle must be a clean inverse).
+      2. Own-doc subjects (primary/subject_ids/specialization name match) —
+         the teacher's own subject must not be drowned out by unrelated
+         subjects harvested from other class rows.
+      3. Legacy widened pool (own ∪ subjects on the teacher's other active
+         assignment rows) — preserved as a fallback for teachers whose record
+         carries no resolvable subject of its own.
+    """
     subjects = await gd_find(session, "subjects", {"school_id": school_id}, limit=5000)
+    subject_ids = {(s.get("id") or s.get("subject_id")) for s in subjects}
     subject_by_name = build_subject_name_index(subjects)
+    teacher_id = teacher_doc.get("id")
+    class_id = class_doc.get("id")
+
+    # 1) Reassignment of a previously assigned pair: reuse its subject.
+    if teacher_id and class_id:
+        prior_rows = await gd_find(session, "teacher_assignments", {
+            "school_id": school_id, "teacher_id": teacher_id,
+            "class_id": class_id, "is_active": False,
+        }, limit=50)
+        prior_rows = [r for r in prior_rows if r.get("subject_id") in subject_ids]
+        if prior_rows:
+            prior_rows.sort(
+                key=lambda r: (r.get("updated_at") or r.get("created_at") or ""),
+                reverse=True,
+            )
+            return prior_rows[0].get("subject_id"), "previous"
+
+    grade_subj = await get_grade_subject_ids(session, school_id, class_doc)
+
+    # 2) Own-doc subjects first.
+    own_subj = teacher_subject_ids_from_doc(teacher_doc, subject_by_name, None)
+    sid, reason = resolve_subject(teacher_doc, grade_subj, own_subj)
+    if sid:
+        return sid, reason
+
+    # 3) Widen with subjects from the teacher's other active assignment rows.
     ta = await gd_find(
         session, "teacher_assignments",
-        {"school_id": school_id, "teacher_id": teacher_doc.get("id"), "is_active": True}, limit=2000,
+        {"school_id": school_id, "teacher_id": teacher_id, "is_active": True}, limit=2000,
     )
     extra = {a.get("subject_id") for a in ta if a.get("subject_id")}
-    teacher_subj = teacher_subject_ids_from_doc(teacher_doc, subject_by_name, extra)
+    if not extra:
+        return sid, reason
+    return resolve_subject(teacher_doc, grade_subj, own_subj | extra)
+
+
+async def class_subject_candidates(
+    session, school_id: str, teacher_doc: Dict[str, Any], class_doc: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Subjects the principal can choose from when auto-resolution fails.
+
+    Narrowest useful set first: the teacher's own + assigned subjects (limited
+    to the class grade's curriculum when the school has one), falling back to
+    the grade curriculum and finally to the whole school catalogue — so the
+    "pick a subject" dialog is never empty and the pairing is never a dead end.
+    """
+    subjects = await gd_find(session, "subjects", {"school_id": school_id}, limit=5000)
+    by_id = {
+        (s.get("id") or s.get("subject_id")): s
+        for s in subjects
+        if (s.get("id") or s.get("subject_id")) and s.get("is_active") is not False
+    }
+    subject_by_name = build_subject_name_index(subjects)
+
+    own = teacher_subject_ids_from_doc(teacher_doc, subject_by_name, None)
+    ta = await gd_find(
+        session, "teacher_assignments",
+        {"school_id": school_id, "teacher_id": teacher_doc.get("id"), "is_active": True},
+        limit=2000,
+    )
+    pool = own | {a.get("subject_id") for a in ta if a.get("subject_id")}
+
     grade_subj = await get_grade_subject_ids(session, school_id, class_doc)
-    return resolve_subject(teacher_doc, grade_subj, teacher_subj)
+    if grade_subj:
+        pool = (pool & grade_subj) or pool or grade_subj
+    if not pool:
+        pool = set(by_id)
+
+    out = [
+        {"id": sid, "name": (by_id[sid].get("name_ar") or by_id[sid].get("name") or "")}
+        for sid in pool if sid in by_id
+    ]
+    out.sort(key=lambda x: x["name"])
+    return out
 
 
 # ---------------------------------------------------------------------------

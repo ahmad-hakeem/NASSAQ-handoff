@@ -12,6 +12,7 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 # FIX (D8): Use the canonical UserRole enum for the seed-account role string
 # instead of a hardcoded "student" literal.
 from dependencies import UserRole
+from utils.subject_display import build_subject_name_map
 
 
 # FIX (C2): Validate `send_student_message` payload via Pydantic so the backend
@@ -87,13 +88,17 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
                 tch_ids = list(set(s.get("teacher_id") for s in sessions if s.get("teacher_id")))
                 subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
                 tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=100)
-                sub_map = {s["id"]: s.get("name_ar", "غير محدد") for s in subs}
-                tch_map = {t["id"]: t.get("full_name", "غير محدد") for t in tchs}
+                sub_map = build_subject_name_map(subs)
+                tch_map = {t["id"]: (t.get("full_name") or "") for t in tchs}
                 for session in sorted(sessions, key=lambda x: x.get("period_number", 0)):
                     schedule_entries.append({
                         "period": session.get("period_number"),
-                        "subject": sub_map.get(session.get("subject_id"), "غير محدد"),
-                        "teacher": tch_map.get(session.get("teacher_id"), "غير محدد"),
+                        "subject": (sub_map.get(session.get("subject_id"))
+                                    or (session.get("subject_name") or "").strip()
+                                    or "غير محدد"),
+                        "teacher": (tch_map.get(session.get("teacher_id"))
+                                    or (session.get("teacher_name") or "").strip()
+                                    or "غير محدد"),
                         "start_time": session.get("start_time"),
                         "end_time": session.get("end_time")
                     })
@@ -334,15 +339,19 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
                 tch_ids = list(set(s.get("teacher_id") for s in all_sessions if s.get("teacher_id")))
                 subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
                 tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=100)
-                sub_map = {s["id"]: s.get("name_ar", "غير محدد") for s in subs}
-                tch_map = {t["id"]: t.get("full_name", "غير محدد") for t in tchs}
+                sub_map = build_subject_name_map(subs)
+                tch_map = {t["id"]: (t.get("full_name") or "") for t in tchs}
                 for session in all_sessions:
                     day_ar = day_en_to_ar.get(session.get("day_of_week", ""), "")
                     if day_ar in schedule_by_day:
                         schedule_by_day[day_ar].append({
                             "period": session.get("period_number"),
-                            "subject": sub_map.get(session.get("subject_id"), "غير محدد"),
-                            "teacher": tch_map.get(session.get("teacher_id"), "غير محدد"),
+                            "subject": (sub_map.get(session.get("subject_id"))
+                                        or (session.get("subject_name") or "").strip()
+                                        or "غير محدد"),
+                            "teacher": (tch_map.get(session.get("teacher_id"))
+                                        or (session.get("teacher_name") or "").strip()
+                                        or "غير محدد"),
                             "start_time": session.get("start_time"),
                             "end_time": session.get("end_time")
                         })
@@ -498,7 +507,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
                 teacher_ids_list = list(teacher_ids_set)
                 sub_ids = list(set(sid for sids in teacher_subject_map.values() for sid in sids))
                 subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
-                sub_name_map = {s["id"]: s.get("name_ar", "") for s in subs}
+                sub_name_map = build_subject_name_map(subs)
                 
                 teacher_docs = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids_list}, "school_id": school_id}, limit=100)
                 

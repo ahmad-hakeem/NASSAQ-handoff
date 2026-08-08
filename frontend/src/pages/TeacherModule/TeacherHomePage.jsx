@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
 import { maskInternalId } from '../../utils/internalId';
+import { formatDateObjTime } from '../../utils/timeFormat';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -369,7 +370,15 @@ export default function TeacherHomePage() {
                       </div>
                       <div className="min-w-0">
                         <h1 className="font-cairo text-lg font-bold leading-tight">
-                          {t('theTeacherName').replace('{0}', teacherInfo?.name)}
+                          {/* Profile title (اللقب) propagation: prefer the
+                              user-chosen title from AuthContext over the
+                              hardcoded "الأستاذ" prefix so a title saved in
+                              the profile page shows here too (both school
+                              teacher and IT). Falls back to the legacy
+                              format when no title is set. */}
+                          {user?.title && user.title !== 'none'
+                            ? `${user.title} ${teacherInfo?.name || ''}`.trim()
+                            : t('theTeacherName').replace('{0}', teacherInfo?.name)}
                         </h1>
                         {teacherInfo?.rank && (
                           <Badge className="mt-1 bg-brand-turquoise/20 text-brand-turquoise border-brand-turquoise/30 text-[11px] font-tajawal px-2 py-0">
@@ -412,7 +421,7 @@ export default function TeacherHomePage() {
                       {dateInfo?.full || formatHijriDate()}
                     </p>
                     <p className="font-cairo font-bold text-lg tabular-nums text-brand-turquoise ms-3 flex-shrink-0">
-                      {now.toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+                      {formatDateObjTime(now, user?.time_format || '12h', isRTL ? 'ar-SA' : 'en-US')}
                     </p>
                   </div>
 

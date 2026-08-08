@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Routes, Route, Navigate, useParams } from "react-router-dom";
+import { Routes, Route, Navigate, useParams, useLocation } from "react-router-dom";
 import { ProtectedRoute, PublicRoute } from "../components/guards/RouteGuards";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -9,6 +9,26 @@ import { useAuth } from "../contexts/AuthContext";
 const ParentStudentTabRedirect = ({ tab }) => {
   const { childId } = useParams();
   return <Navigate to={`/parent/children?child=${childId}&tab=${tab}`} replace />;
+};
+
+// Canonical principal-namespace normalizer (principal route audit 2026-07-28):
+// every school-leadership page canonically lives under `/principal/...`. The
+// legacy `/admin/...` and `/school/...` page URLs stay registered so old
+// bookmarks, notifications, and saved deep links keep working, but a
+// school-leadership viewer (EFFECTIVE role — covers platform-admin school
+// preview) is replace-redirected to the canonical `/principal` URL,
+// preserving route params, the query string (e.g. `?filter=students`) and
+// hash. Non-leadership viewers that legitimately share a page (e.g. school
+// teachers on /admin/attendance) render it in place — their namespace is not
+// part of this normalization.
+const CanonicalSchoolAlias = ({ to, children }) => {
+  const { getEffectiveRole, user } = useAuth();
+  const params = useParams();
+  const location = useLocation();
+  const role = (typeof getEffectiveRole === 'function' ? getEffectiveRole() : null) || user?.role;
+  if (!SCHOOL_ROLES.includes(role)) return children;
+  const target = to.replace(/:(\w+)/g, (m, key) => (params[key] != null ? encodeURIComponent(params[key]) : m));
+  return <Navigate to={`${target}${location.search}${location.hash}`} replace />;
 };
 
 // --- Eager: small + first-paint critical (no recharts/jspdf chains) ---
@@ -334,9 +354,11 @@ export default function AppRoutes() {
           <ProtectedRoute allowedRoles={['platform_admin', 'school_principal']}><PlatformSettingsPage /></ProtectedRoute>
         } />
 
-        {/* School Dashboard */}
+        {/* School Dashboard — legacy alias of the canonical /principal
+            dashboard (both render SchoolDashboardContent); leadership viewers
+            are normalized onto /principal. */}
         <Route path="/school" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SchoolDashboard /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal"><SchoolDashboard /></CanonicalSchoolAlias></ProtectedRoute>
         } />
 
         {/* Teacher Routes */}
@@ -639,9 +661,14 @@ export default function AppRoutes() {
           <ProtectedRoute allowedRoles={['parent']}><ParentStudentAnalyticsPage /></ProtectedRoute>
         } />
 
-        {/* Principal Dashboard */}
+        {/* Principal Dashboard — canonical home for ALL school leadership.
+            Principal route audit 2026-07-28: school_sub_admin was previously
+            excluded here and landed on the near-duplicate /school dashboard
+            (both render SchoolDashboardContent), while the shared sidebar
+            already pointed every leadership role at /principal — so a
+            sub-admin clicking "لوحة القيادة" got bounced by the guard. */}
         <Route path="/principal" element={
-          <ProtectedRoute allowedRoles={['school_principal', 'school_admin']}><PrincipalDashboard /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><PrincipalDashboard /></ProtectedRoute>
         } />
         <Route path="/principal/communication" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CommunicationCenterPage /></ProtectedRoute>
@@ -656,9 +683,16 @@ export default function AppRoutes() {
           <Navigate to="/principal/communication/excuses" replace />
         } />
 
-        {/* School Management Routes (attendance, assessments, users, classes, subjects) */}
+        {/* School Management Routes (attendance, assessments, users, classes, subjects).
+            Canonical URLs live under /principal/... — the /admin/... and
+            /school/... variants below are legacy aliases kept alive for
+            bookmarks/old notifications; CanonicalSchoolAlias replace-redirects
+            leadership viewers onto the /principal URL (query preserved). */}
+        <Route path="/principal/attendance" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><AttendancePage /></ProtectedRoute>
+        } />
         <Route path="/admin/attendance" element={
-          <ProtectedRoute allowedRoles={SCHOOL_TEACHING_ROLES}><AttendancePage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={SCHOOL_TEACHING_ROLES}><CanonicalSchoolAlias to="/principal/attendance"><AttendancePage /></CanonicalSchoolAlias></ProtectedRoute>
         } />
         <Route path="/principal/users-management" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><UsersClassesManagement /></ProtectedRoute>
@@ -671,75 +705,100 @@ export default function AppRoutes() {
         */}
         <Route path="/admin/assessments" element={<Navigate to="/dashboard" replace />} />
         <Route path="/admin/users-management" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><UsersClassesManagement /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/users-management"><UsersClassesManagement /></CanonicalSchoolAlias></ProtectedRoute>
         } />
+        {/* /admin/teachers and /school/teachers were plain aliases of the
+            users-management page (it keys its tab off ?filter=, not the
+            pathname), so both collapse onto the canonical URL. */}
         <Route path="/admin/teachers" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><UsersClassesManagement /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/users-management"><UsersClassesManagement /></CanonicalSchoolAlias></ProtectedRoute>
         } />
-        <Route path="/admin/students" element={
+        <Route path="/school/teachers" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/users-management"><UsersClassesManagement /></CanonicalSchoolAlias></ProtectedRoute>
+        } />
+        <Route path="/principal/students" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><StudentsPage /></ProtectedRoute>
         } />
-        <Route path="/admin/classes" element={
+        <Route path="/admin/students" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/students"><StudentsPage /></CanonicalSchoolAlias></ProtectedRoute>
+        } />
+        <Route path="/school/students" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/students"><StudentsPage /></CanonicalSchoolAlias></ProtectedRoute>
+        } />
+        <Route path="/principal/classes" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><ClassesPage /></ProtectedRoute>
         } />
-        <Route path="/admin/classes/:classId" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><ClassDetailPage /></ProtectedRoute>
+        <Route path="/admin/classes" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/classes"><ClassesPage /></CanonicalSchoolAlias></ProtectedRoute>
+        } />
+        <Route path="/school/classes" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/classes"><ClassesPage /></CanonicalSchoolAlias></ProtectedRoute>
         } />
         <Route path="/principal/classes/:classId" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><ClassDetailPage /></ProtectedRoute>
         } />
-        <Route path="/admin/students/:studentId" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><AdminStudentProfilePage /></ProtectedRoute>
+        <Route path="/admin/classes/:classId" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/classes/:classId"><ClassDetailPage /></CanonicalSchoolAlias></ProtectedRoute>
+        } />
+        <Route path="/school/classes/:classId" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/classes/:classId"><ClassDetailPage /></CanonicalSchoolAlias></ProtectedRoute>
         } />
         <Route path="/principal/students/:studentId" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><AdminStudentProfilePage /></ProtectedRoute>
         } />
-        <Route path="/admin/subjects" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SubjectsPage /></ProtectedRoute>
-        } />
-
-        {/* School-prefixed aliases for principal-facing navigation (used by readiness panel fix links) */}
-        <Route path="/school/classes" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><ClassesPage /></ProtectedRoute>
-        } />
-        <Route path="/school/classes/:classId" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><ClassDetailPage /></ProtectedRoute>
-        } />
-        <Route path="/school/subjects" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SubjectsPage /></ProtectedRoute>
-        } />
-        <Route path="/school/teachers" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><UsersClassesManagement /></ProtectedRoute>
-        } />
-        <Route path="/school/students" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><StudentsPage /></ProtectedRoute>
+        <Route path="/admin/students/:studentId" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/students/:studentId"><AdminStudentProfilePage /></CanonicalSchoolAlias></ProtectedRoute>
         } />
         <Route path="/school/students/:studentId" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><AdminStudentProfilePage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/students/:studentId"><AdminStudentProfilePage /></CanonicalSchoolAlias></ProtectedRoute>
         } />
-        <Route path="/academic-structure" element={<Navigate to="/school/settings?section=academic" replace />} />
+        <Route path="/principal/subjects" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SubjectsPage /></ProtectedRoute>
+        } />
+        <Route path="/admin/subjects" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/subjects"><SubjectsPage /></CanonicalSchoolAlias></ProtectedRoute>
+        } />
+        <Route path="/school/subjects" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/subjects"><SubjectsPage /></CanonicalSchoolAlias></ProtectedRoute>
+        } />
+        <Route path="/academic-structure" element={<Navigate to="/principal/settings?section=academic" replace />} />
 
-        {/* Scheduling */}
-        <Route path="/admin/schedule" element={
+        {/* Scheduling — canonical under /principal, aliases normalized */}
+        <Route path="/principal/schedule" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SchedulePageNew /></ProtectedRoute>
+        } />
+        <Route path="/admin/schedule" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/schedule"><SchedulePageNew /></CanonicalSchoolAlias></ProtectedRoute>
         } />
         <Route path="/school/schedule" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><SchedulePageNew /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/schedule"><SchedulePageNew /></CanonicalSchoolAlias></ProtectedRoute>
+        } />
+        <Route path="/principal/standby" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><StandbyRosterPage /></ProtectedRoute>
         } />
         <Route path="/school/standby" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><StandbyRosterPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/standby"><StandbyRosterPage /></CanonicalSchoolAlias></ProtectedRoute>
         } />
         <Route path="/admin/standby" element={
-          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><StandbyRosterPage /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/standby"><StandbyRosterPage /></CanonicalSchoolAlias></ProtectedRoute>
         } />
-        <Route path="/admin/time-slots" element={
+        <Route path="/principal/time-slots" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><TimeSlotsPage /></ProtectedRoute>
         } />
-        <Route path="/admin/teacher-assignments" element={
+        <Route path="/admin/time-slots" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/time-slots"><TimeSlotsPage /></CanonicalSchoolAlias></ProtectedRoute>
+        } />
+        <Route path="/principal/teacher-assignments" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><TeacherAssignmentsPage /></ProtectedRoute>
         } />
-        <Route path="/admin/teacher-attendance" element={
+        <Route path="/admin/teacher-assignments" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/teacher-assignments"><TeacherAssignmentsPage /></CanonicalSchoolAlias></ProtectedRoute>
+        } />
+        <Route path="/principal/teacher-attendance" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><TeacherAttendancePage /></ProtectedRoute>
+        } />
+        <Route path="/admin/teacher-attendance" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/teacher-attendance"><TeacherAttendancePage /></CanonicalSchoolAlias></ProtectedRoute>
         } />
 
         {/* School Principal Settings & Reports */}
@@ -747,13 +806,16 @@ export default function AppRoutes() {
           <ProtectedRoute allowedRoles={SCHOOL_PRINCIPAL_ROLES}><SchoolSettingsPagePro /></ProtectedRoute>
         } />
         <Route path="/school/settings" element={
-          <ProtectedRoute allowedRoles={SCHOOL_PRINCIPAL_ROLES}><SchoolSettingsPagePro /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={SCHOOL_PRINCIPAL_ROLES}><CanonicalSchoolAlias to="/principal/settings"><SchoolSettingsPagePro /></CanonicalSchoolAlias></ProtectedRoute>
         } />
-        <Route path="/school/academic-structure" element={<Navigate to="/school/settings?section=academic" replace />} />
-        <Route path="/principal/academic-structure" element={<Navigate to="/school/settings?section=academic" replace />} />
-        <Route path="/principal/timetable" element={<Navigate to="/school/schedule" replace />} />
-        <Route path="/school/teacher-class-assignments" element={
+        <Route path="/school/academic-structure" element={<Navigate to="/principal/settings?section=academic" replace />} />
+        <Route path="/principal/academic-structure" element={<Navigate to="/principal/settings?section=academic" replace />} />
+        <Route path="/principal/timetable" element={<Navigate to="/principal/schedule" replace />} />
+        <Route path="/principal/teacher-class-assignments" element={
           <ProtectedRoute allowedRoles={SCHOOL_ROLES}><TeacherClassAssignmentPage /></ProtectedRoute>
+        } />
+        <Route path="/school/teacher-class-assignments" element={
+          <ProtectedRoute allowedRoles={SCHOOL_ROLES}><CanonicalSchoolAlias to="/principal/teacher-class-assignments"><TeacherClassAssignmentPage /></CanonicalSchoolAlias></ProtectedRoute>
         } />
         {/* 2026-05-19 — `independent_teacher` added to the allow-list
             so the IT sidebar entry actually mounts the page instead of

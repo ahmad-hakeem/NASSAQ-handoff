@@ -742,7 +742,7 @@ export const TeachersPage = () => {
                                 variant="outline"
                                 onClick={() => handleRestoreTeacher(teacher)}
                                 disabled={restoringId === teacher.id}
-                                className="rounded-xl border-brand-turquoise text-brand-turquoise hover:bg-brand-turquoise/10"
+                                className="rounded-xl border-brand-turquoise text-brand-turquoise hover:bg-brand-turquoise/10 hover:text-brand-turquoise"
                                 data-testid={`restore-teacher-${teacher.id}`}
                               >
                                 {restoringId === teacher.id ? (

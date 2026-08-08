@@ -419,3 +419,60 @@ async def test_search_global_and_directory_teachers_sanitized(
     _assert_no_sensitive_keys(body)
     for t in body.get("teachers", []):
         assert set(t.keys()) <= {"id", "full_name", "email", "phone", "is_active"}
+
+
+# ------------------------------------------------------------------ (D)
+# Add-flow audit 2026-07-28: /classes/options/students must emit grade_id in
+# the SAME id space as /classes/options/grades (tenant grade_levels row id
+# when one matches, else the canonical grade number), or the class wizard's
+# `student.grade_id === selected grade id` filter hides the whole roster.
+
+@pytest.mark.asyncio
+async def test_class_students_options_grade_id_matches_grades_options(
+    client, tenant_a
+):
+    # Tenant grade_levels row with a UUID id for canonical grade 3.
+    grade3_row_id = str(uuid.uuid4())
+    await gd_insert(db.session, "grade_levels", {
+        "id": grade3_row_id, "school_id": tenant_a, "grade": 3,
+        "name_ar": "الصف الثالث الابتدائي",
+    })
+
+    cls_id = str(uuid.uuid4())
+    await gd_insert(db.session, "classes", {
+        "id": cls_id, "school_id": tenant_a, "tenant_id": tenant_a,
+        "name": "فصل ثالث", "grade_id": grade3_row_id, "is_active": True,
+    })
+
+    # s1: own canonical grade value; s2: grade only derivable via the class;
+    # s3: messy legacy value -> unknown ("" — must stay visible client-side).
+    s1, s2, s3 = (str(uuid.uuid4()) for _ in range(3))
+    await gd_insert(db.session, "students", {
+        "id": s1, "school_id": tenant_a, "tenant_id": tenant_a,
+        "full_name": "طالب-أ", "grade": "3", "is_active": True,
+    })
+    await gd_insert(db.session, "students", {
+        "id": s2, "school_id": tenant_a, "tenant_id": tenant_a,
+        "full_name": "طالب-ب", "class_id": cls_id, "is_active": True,
+    })
+    await gd_insert(db.session, "students", {
+        "id": s3, "school_id": tenant_a, "tenant_id": tenant_a,
+        "full_name": "طالب-ج", "grade": "0125", "is_active": True,
+    })
+
+    headers, _ = await _mk_role_user_headers(UserRole.SCHOOL_ADMIN, tenant_a)
+
+    r = await client.get("/classes/options/grades", headers=headers)
+    assert r.status_code == 200, r.text
+    grade3_option = next(g for g in r.json()["grades"] if g["grade"] == 3)
+    assert grade3_option["id"] == grade3_row_id  # tenant row id preserved
+
+    r = await client.get("/classes/options/students", headers=headers)
+    assert r.status_code == 200, r.text
+    by_id = {s["student_id"]: s for s in r.json()["students"]}
+    # Both resolvable students must carry the SAME id the grades dropdown
+    # uses, so the wizard's equality filter matches.
+    assert by_id[s1]["grade_id"] == grade3_option["id"]
+    assert by_id[s2]["grade_id"] == grade3_option["id"]
+    # Unknown grades stay "" (frontend keeps these students visible).
+    assert by_id[s3]["grade_id"] == ""

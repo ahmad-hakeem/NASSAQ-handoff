@@ -133,6 +133,11 @@ async def test_my_roles_no_itw_prefix_schools_leak_into_preview(client):
 
     itw_archived = await _mk_it_workspace(status="archived")
     itw_active = await _mk_it_workspace(status="active")
+    # The positive half of this guard needs at least one REAL school in the
+    # DB — on a fresh CI database nothing else seeds one, so create it here
+    # (with an active principal, mirroring what the preview list surfaces).
+    real_school = await _mk_real_school()
+    await _seed_principal(real_school)
 
     res = await client.get("/user-roles/my-roles", headers=headers)
     assert res.status_code == 200, res.text
@@ -253,7 +258,9 @@ async def test_role_switch_returns_403_for_itw_school_id(client, monkeypatch):
     assert res.status_code == 403, (
         f"Expected 403 when switching to itw_* school, got {res.status_code}: {res.text}"
     )
-    assert MSG_INDEPENDENT_TEACHER_WORKSPACE in res.json().get("detail", "")
+    body = res.json()
+    msg = (body.get("error") or {}).get("message") or body.get("detail") or ""
+    assert MSG_INDEPENDENT_TEACHER_WORKSPACE in msg
 
 
 @pytest.mark.asyncio
@@ -287,7 +294,9 @@ async def test_role_switch_returns_403_for_archived_status_school(client, monkey
     assert res.status_code == 403, (
         f"Expected 403 when switching to archived school, got {res.status_code}: {res.text}"
     )
-    assert MSG_ARCHIVED in res.json().get("detail", "")
+    body = res.json()
+    msg = (body.get("error") or {}).get("message") or body.get("detail") or ""
+    assert MSG_ARCHIVED in msg
 
 
 @pytest.mark.asyncio

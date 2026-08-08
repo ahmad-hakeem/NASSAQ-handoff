@@ -19,7 +19,7 @@ from sqlalchemy import (
     Sequence, text
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from db import Base
 
 
@@ -54,7 +54,23 @@ class User(Base):
     linked_roles = Column(JSONB, default=list)
     preferred_language = Column(String, default="ar")
     preferred_theme = Column(String, default="light")
+    # User-configurable display preferences (persisted via PUT /users/me/preferences).
+    # These three columns were missing, causing the preferences endpoint to
+    # silently drop saves and always return the hardcoded defaults.
+    time_format = Column(String, default="12h")
+    date_format = Column(String, default="dd/mm/yyyy")
+    first_day_of_week = Column(String, default="sunday")
     avatar_url = Column(String, nullable=True)
+
+    @validates("avatar_url")
+    def _validate_avatar_url_bounded(self, key, value):
+        # ORM-level chokepoint: no write path (gd_* helpers, engines
+        # constructing User(...) directly, attribute assignment) may persist
+        # an unnormalised inline image. See utils.avatar_image.
+        from utils.avatar_image import assert_stored_image_bounded
+        assert_stored_image_bounded("users", key, value)
+        return value
+
     tenant_id = Column(String, ForeignKey("schools.id", ondelete="SET NULL"), nullable=True, index=True)
     primary_tenant_id = Column(String, nullable=True)
     has_generic_name = Column(Boolean, default=False)
@@ -129,6 +145,13 @@ class School(Base):
     district = Column(String, nullable=True)
     country = Column(String, default="SA")
     logo_url = Column(String, nullable=True)
+
+    @validates("logo_url")
+    def _validate_logo_url_bounded(self, key, value):
+        # ORM-level chokepoint mirroring User.avatar_url — see utils.avatar_image.
+        from utils.avatar_image import assert_stored_image_bounded
+        assert_stored_image_bounded("schools", key, value)
+        return value
     status = Column(String, default="pending", index=True)
     school_type = Column(String, default="public")
     stage = Column(String, nullable=True)
@@ -436,6 +459,12 @@ class TimetableRun(Base):
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    # Overflow for the run/progress fields the scheduling engine writes that
+    # have no dedicated column (started_at, finished_at, completion_percentage,
+    # timetable_id, created_by, ...). Without it dict_to_model drops them
+    # silently, which is exactly what used to happen. See migration
+    # tj01runs02data.
+    data = Column(JSONB, default=dict)
 
 
 class ScheduleSession(Base):
@@ -1847,4 +1876,25 @@ class PublicHakimRateCounter(Base):
 
     __table_args__ = (
         Index("ix_public_hakim_rate_counters_expires_at", "expires_at"),
+    )
+
+
+class RateLimitCounter(Base):
+    """Shared, cross-worker counters for the auth / brute-force limiter.
+
+    Keyed by ``<namespace>:<sha256(logical key)>:<window>:<bucket>``. Two
+    adjacent buckets are read per check so the window slides instead of
+    resetting on a hard boundary. Rows carry ``expires_at`` and are swept
+    opportunistically, exactly like the public-Hakim counters — but in a
+    separate table so neither surface can evict the other's rows.
+    """
+
+    __tablename__ = "rate_limit_counters"
+
+    key = Column(String(200), primary_key=True)
+    count = Column(Integer, nullable=False, server_default=text("0"))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("ix_rate_limit_counters_expires_at", "expires_at"),
     )

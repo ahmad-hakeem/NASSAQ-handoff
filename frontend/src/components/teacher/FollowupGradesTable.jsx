@@ -28,10 +28,13 @@ export default function FollowupGradesTable({
   const courseworkCols = visibleColumns.filter(c => c.group === 'coursework');
   const examCols = visibleColumns.filter(c => c.group === 'exams');
 
+  // Only numeric (درجة) columns participate in totals — check (تحقق) and
+  // text (نص) column values are statuses/notes, not scores.
+  const isScorable = (col) => !col.type || col.type === 'grade';
   const sumFor = (studentData, cols) =>
-    cols.reduce((sum, col) => sum + (Number(studentData[col.id]) || 0), 0);
+    cols.reduce((sum, col) => sum + (isScorable(col) ? (Number(studentData[col.id]) || 0) : 0), 0);
   const maxSum = (cols) =>
-    cols.reduce((sum, col) => sum + (Number(col.maxGrade) || 0), 0);
+    cols.reduce((sum, col) => sum + (isScorable(col) ? (Number(col.maxGrade) || 0) : 0), 0);
 
   const courseworkMax = maxSum(courseworkCols);
   const examMax = maxSum(examCols);
@@ -69,7 +72,9 @@ export default function FollowupGradesTable({
         {courseworkCols.map(col => (
           <th key={col.id} className="border px-2 py-2 text-center font-cairo font-bold text-[11px] min-w-[90px]">
             <div className="truncate">{col.name}</div>
-            <div className="text-[10px] text-muted-foreground font-normal">/{col.maxGrade}</div>
+            <div className="text-[10px] text-muted-foreground font-normal">
+              {isScorable(col) ? `/${col.maxGrade}` : (col.type === 'check' ? (t('checkType') || 'تحقق') : (t('textType') || 'نص'))}
+            </div>
           </th>
         ))}
         {courseworkCols.length > 0 && (
@@ -81,7 +86,9 @@ export default function FollowupGradesTable({
         {examCols.map(col => (
           <th key={col.id} className="border px-2 py-2 text-center font-cairo font-bold text-[11px] min-w-[90px]">
             <div className="truncate">{col.name}</div>
-            <div className="text-[10px] text-muted-foreground font-normal">/{col.maxGrade}</div>
+            <div className="text-[10px] text-muted-foreground font-normal">
+              {isScorable(col) ? `/${col.maxGrade}` : (col.type === 'check' ? (t('checkType') || 'تحقق') : (t('textType') || 'نص'))}
+            </div>
           </th>
         ))}
         {examCols.length > 0 && (
@@ -97,6 +104,39 @@ export default function FollowupGradesTable({
   const renderGradeCell = (student, col) => {
     const studentData = gradesData[student.id] || {};
     const value = studentData[col.id] ?? '';
+    // تحقق — binary checkbox. Stored as 1 when checked; unchecked clears the
+    // cell (empty = no value), so it never masquerades as a numeric score.
+    if (col.type === 'check') {
+      const checked = value !== '' && value !== 0 && value !== '0' && Boolean(value);
+      return (
+        <td key={col.id} className="border px-1 py-1.5 text-center">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={e => onGradeChange?.(student.id, col.id, e.target.checked ? 1 : '')}
+            className="h-4 w-4 mx-auto block accent-brand-turquoise cursor-pointer disabled:cursor-not-allowed"
+            aria-label={`${col.name} — ${student.full_name}`}
+            disabled={!onGradeChange}
+          />
+        </td>
+      );
+    }
+    // نص — free text, never coerced to a number.
+    if (col.type === 'text') {
+      return (
+        <td key={col.id} className="border px-1 py-1.5">
+          <input
+            type="text"
+            value={value === 0 ? '' : String(value)}
+            onChange={e => onGradeChange?.(student.id, col.id, e.target.value)}
+            maxLength={120}
+            className="w-24 h-8 mx-auto block text-center text-xs font-cairo bg-card dark:bg-muted outline-none border border-border dark:border-border rounded-full focus:border-brand-turquoise focus:ring-2 focus:ring-brand-turquoise/30 transition"
+            aria-label={`${col.name} — ${student.full_name}`}
+            disabled={!onGradeChange}
+          />
+        </td>
+      );
+    }
     return (
       <td key={col.id} className="border px-1 py-1.5">
         <input

@@ -42,7 +42,28 @@ from utils.public_hakim_limiter import (
     STREAM_MAX_CHUNKS as _PUBLIC_HAKIM_STREAM_MAX_CHUNKS,
 )
 import time as _time
-from openai import OpenAI
+from services.cpu_offload import run_cpu_bound
+from services.ai_client import (
+    PURPOSE_BACKGROUND,
+    PURPOSE_INTERACTIVE,
+    PURPOSE_STREAM,
+    AIProviderError,
+    AIProviderTimeout,
+    ai_chat_completion,
+    build_openai_client,
+    record_ai_outcome,
+    report_ai_failure,
+)
+
+#: Streaming replies drive their own chunk loop (Starlette runs the sync
+#: generator in a threadpool, so the event loop stays free), but they must
+#: still land in the AI metrics / structured logs like every other call.
+_AI_STREAM_ENDPOINT = "chat.completions.stream"
+
+#: Max silence between two streamed events before the SDK aborts the socket.
+#: Deliberately well below the per-stream wall-clock caps: together they bound
+#: a stream at (wall clock + one inactivity window).
+_AI_STREAM_INACTIVITY_S = 30.0
 from typing import Literal
 
 router = APIRouter()
@@ -59,7 +80,9 @@ def get_openai_client():
     if not _ai_is_configured():
         return None
     if _openai_client is None:
-        _openai_client = OpenAI(
+        # Bounded transport timeout + capped retries (services/ai_client.py).
+        _openai_client = build_openai_client(
+            PURPOSE_INTERACTIVE,
             api_key=AI_INTEGRATIONS_OPENAI_API_KEY,
             base_url=AI_INTEGRATIONS_OPENAI_BASE_URL,
         )
@@ -373,7 +396,9 @@ async def hakim_contextual_message(req: HakimContextualRequest, current_user: di
 
 أنتج رسالة واحدة فقط بدون أي تنسيق أو رموز إضافية."""
 
-        response = client.chat.completions.create(
+        response = await ai_chat_completion(
+            client,
+            purpose=PURPOSE_INTERACTIVE,
             model="gpt-5-mini",
             messages=[{"role": "system", "content": system_prompt}],
             max_completion_tokens=400,
@@ -581,6 +606,96 @@ async def _build_parent_child_context(child_id: str, school_id: str) -> str:
     return "\n".join(context_parts)
 
 
+def _hakim_nav_links_for_role(user_role: str) -> str:
+    """Role-aware navigation links for the Hakim chat system prompt.
+
+    Every path here MUST be a route actually registered in
+    frontend/src/routes/appRoutes.js for that role. Any path not
+    registered hits the frontend catch-all (path="*") which redirects
+    to "/" — the "link opens the homepage" bug. Keep this table in sync
+    with appRoutes.js; never list an alias namespace the role cannot
+    access (ProtectedRoute bounces the viewer to their own dashboard).
+
+    Notes:
+    - Leadership uses the canonical /principal namespace.
+    - Leadership has NO assessments link: the module is hidden
+      (/admin/assessments → redirect) and /school/assessments was
+      never a route at all.
+    - Teacher/IT self-scoping pages live under /teacher/*.
+    """
+    teacher_links = [
+        ("الصفحة الرئيسية", "/teacher/home"),
+        ("الجدول الدراسي", "/teacher/schedule"),
+        ("فصولي", "/teacher/classes"),
+        ("الحضور والغياب", "/teacher/attendance"),
+        ("الاختبارات والتقييمات", "/teacher/assessments"),
+        ("سلوك الطلاب", "/teacher/behavior"),
+        ("طلابي", "/teacher/students"),
+        ("مركز التواصل", "/teacher/communication"),
+        ("ملف الإنجاز", "/teacher/achievements"),
+        ("الإشعارات", "/notifications"),
+    ]
+    role_links = {
+        "teacher": teacher_links,
+        "independent_teacher": teacher_links + [
+            ("إدارة الوقت والتخطيط", "/teacher/planning"),
+        ],
+        "school_principal": None,  # filled below (shared leadership list)
+        "school_admin": None,
+        "school_sub_admin": None,
+        # Platform roles do NOT share one table: appRoutes.js allowedRoles
+        # differ per sub-role (/admin/monitoring and /admin/communication
+        # are platform_admin-only; /admin/schools and /admin/users exclude
+        # platform_operations_manager). Emitting a link the role cannot
+        # open makes ProtectedRoute bounce them — same broken-navigation
+        # class as the original bug.
+        "platform_admin": [
+            ("لوحة التحكم", "/admin"),
+            ("إدارة المدارس", "/admin/schools"),
+            ("إدارة المستخدمين", "/admin/users"),
+            ("المراقبة والأداء", "/admin/monitoring"),
+            ("مركز التواصل", "/admin/communication"),
+            ("الإشعارات", "/notifications"),
+        ],
+        # NOTE: /notifications is ALL_AUTHENTICATED_ROLES which does NOT
+        # include platform_sub_admin / platform_operations_manager — so
+        # those roles get no notifications link either.
+        "platform_sub_admin": [
+            ("لوحة التحكم", "/admin"),
+            ("إدارة المدارس", "/admin/schools"),
+            ("إدارة المستخدمين", "/admin/users"),
+        ],
+        "platform_operations_manager": [
+            ("لوحة التحكم", "/admin"),
+        ],
+    }
+    leadership_links = [
+        ("لوحة التحكم", "/principal"),
+        ("الجدول الدراسي", "/principal/schedule"),
+        ("إدارة الحضور", "/principal/attendance"),
+        ("إدارة الطلاب", "/principal/students"),
+        ("إدارة الفصول", "/principal/classes"),
+        ("المواد الدراسية", "/principal/subjects"),
+        ("إدارة المستخدمين والمعلمين", "/principal/users-management"),
+        ("مركز التواصل", "/principal/communication"),
+        ("رؤى الذكاء الاصطناعي", "/principal/ai-insights"),
+        ("الإشعارات", "/notifications"),
+    ]
+    for r in ("school_principal", "school_admin", "school_sub_admin"):
+        role_links[r] = leadership_links
+
+    links = role_links.get(user_role)
+    if not links:
+        # Unknown/unmapped role: no safe link table — instruct the model
+        # to answer without emitting internal links rather than guessing
+        # paths that would bounce the user to the homepage.
+        return "\nلا توجد روابط تنقل متاحة لهذا الدور — لا تُدرج أي روابط داخلية في ردك."
+    lines = "\n".join(f"- {label}: {path}" for label, path in links)
+    return f"""
+روابط صفحات النظام المتاحة (استخدمها عند التوجيه — حصراً هذه المسارات):
+{lines}"""
+
+
 async def _prepare_hakim_chat(
     message: HakimChatRequest, current_user: dict
 ):
@@ -729,19 +844,7 @@ async def _prepare_hakim_chat(
 
 دور المستخدم: ولي أمر"""
     else:
-        nav_links = """
-روابط صفحات النظام المتاحة (استخدمها عند التوجيه):
-- مركز القيادة: /school/dashboard
-- الجدول الدراسي: /school/schedule
-- الاختبارات والتقييمات: /school/assessments
-- مركز التواصل: /school/communication
-- رؤى الذكاء الاصطناعي: /school/ai-insights
-- إدارة الحضور: /admin/attendance
-- إدارة الطلاب: /admin/students
-- إدارة المعلمين: /admin/teachers
-- إدارة الفصول: /admin/classes
-- إدارة المستخدمين: /admin/users-management
-- التقارير: /admin/reports"""
+        nav_links = _hakim_nav_links_for_role(user_role)
 
         system_prompt = f"""أنت حكيم، المساعد الذكي الرسمي لمنصة نَسَّق لإدارة المدارس.
 أنت خبير في الشؤون التعليمية والإدارية المدرسية.
@@ -750,7 +853,8 @@ async def _prepare_hakim_chat(
 1. **نسّق ردك دائماً باستخدام Markdown** (عناوين ##، قوائم -، نص **عريض**، إلخ)
 2. **اجعل الرد منظماً بصرياً** بأقسام واضحة وعناوين فرعية عند الحاجة
 3. **أضف روابط تنقل** عند الإشارة لصفحات النظام بهذا الشكل: [اسم الصفحة](/المسار)
-   مثال: [الجدول الدراسي](/school/schedule) أو [إدارة الحضور](/admin/attendance)
+   استخدم حصراً الروابط المذكورة في قائمة "روابط صفحات النظام المتاحة" أدناه بنفس المسار حرفياً.
+   لا تخترع مسارات أخرى أبداً، ولا تضع رابطاً لصفحة غير موجودة في القائمة — اذكرها نصاً بدون رابط.
 4. **استخدم الرموز التعبيرية** بشكل مناسب (📊 📅 👨‍🎓 ✅ ⚠️ 📝 🏫 📈 🎯) لتحسين القراءة
 5. **اجعل الرد مختصراً ومفيداً** - لا تكرر ولا تطيل بلا فائدة
 6. **عند تقديم بيانات رقمية** استخدم جداول أو قوائم منظمة
@@ -835,7 +939,9 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
         if short is not None:
             return short
 
-        response = client.chat.completions.create(
+        response = await ai_chat_completion(
+            client,
+            purpose=PURPOSE_INTERACTIVE,
             model="gpt-5-mini",
             messages=messages_list,
             max_completion_tokens=8192,
@@ -927,11 +1033,16 @@ async def chat_with_hakim_stream(
         started = _time.monotonic()
         chunk_count = 0
         truncated = False
+        timed_out = False
         accumulated: List[str] = []
         any_text = False
         try:
+            # Two distinct bounds: the SDK timeout below caps *inactivity*
+            # between events (a stalled read can never pin the worker), while
+            # the in-loop check caps total wall time. Worst case is therefore
+            # the wall-clock cap plus one inactivity window, not "forever".
             stream = client.with_options(
-                timeout=_AUTH_HAKIM_STREAM_MAX_DURATION_S
+                timeout=_AI_STREAM_INACTIVITY_S
             ).chat.completions.create(
                 model="gpt-5-mini",
                 messages=messages_list,
@@ -941,6 +1052,7 @@ async def chat_with_hakim_stream(
             for event in stream:
                 if (_time.monotonic() - started) >= _AUTH_HAKIM_STREAM_MAX_DURATION_S:
                     truncated = True
+                    timed_out = True
                     break
                 if chunk_count >= _AUTH_HAKIM_STREAM_MAX_CHUNKS:
                     truncated = True
@@ -965,7 +1077,13 @@ async def chat_with_hakim_stream(
 
             if not any_text:
                 # Provider returned no usable text — fall back to the same
-                # localized fallback the non-streaming path uses.
+                # localized fallback the non-streaming path uses. Still an
+                # unhealthy provider answer, so it must be counted.
+                record_ai_outcome(
+                    "timeouts" if timed_out else "errors",
+                    endpoint=_AI_STREAM_ENDPOINT,
+                    elapsed_ms=int((_time.monotonic() - started) * 1000),
+                )
                 fb = _hakim_fallback(message.message)
                 yield _sse({"type": "chunk", "text": fb.response})
                 yield _sse({"type": "done", "suggestions": list(fb.suggestions or [])})
@@ -973,9 +1091,21 @@ async def chat_with_hakim_stream(
 
             full_reply = "".join(accumulated)
             _persist_hakim_session(session_key, user_content, full_reply)
+            # Only the wall-clock cut is a provider-health timeout; hitting our
+            # own chunk cap is application-side output limiting.
+            record_ai_outcome(
+                "timeouts" if timed_out else "successes",
+                endpoint=_AI_STREAM_ENDPOINT,
+                elapsed_ms=int((_time.monotonic() - started) * 1000),
+            )
             yield _sse({"type": "done", "suggestions": suggestions, "truncated": truncated})
         except Exception as e:
-            logging.error(f"Hakim auth stream error: {e}")
+            report_ai_failure(
+                e, purpose=PURPOSE_STREAM, endpoint=_AI_STREAM_ENDPOINT,
+                model="gpt-5-mini",
+                elapsed_ms=int((_time.monotonic() - started) * 1000),
+                timeout_s=_AUTH_HAKIM_STREAM_MAX_DURATION_S,
+            )
             yield _sse({
                 "type": "error",
                 "text": "عذراً، حدث خطأ أثناء الإجابة. يرجى المحاولة مرة أخرى.",
@@ -1358,14 +1488,15 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
         started = _time.monotonic()
         chunk_count = 0
         truncated = False
+        timed_out = False
         try:
             # SECURITY (task #674): bound the *upstream* HTTP read on the
             # SDK itself so a stalled provider connection can't pin the
-            # worker open between events — the in-loop wall-clock check
-            # only fires while we're receiving chunks, so the timeout
-            # below is the real hard ceiling on stuck reads.
+            # worker open between events. This is an *inactivity* cap; the
+            # in-loop check below caps total wall time, so the two together
+            # bound the stream at (wall clock + one inactivity window).
             stream = client.with_options(
-                timeout=_PUBLIC_HAKIM_STREAM_MAX_DURATION_S
+                timeout=min(_AI_STREAM_INACTIVITY_S, _PUBLIC_HAKIM_STREAM_MAX_DURATION_S)
             ).chat.completions.create(
                 model="gpt-5-mini",
                 messages=messages_list,
@@ -1376,6 +1507,7 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
             for event in stream:
                 if (_time.monotonic() - started) >= _PUBLIC_HAKIM_STREAM_MAX_DURATION_S:
                     truncated = True
+                    timed_out = True
                     break
                 if chunk_count >= _PUBLIC_HAKIM_STREAM_MAX_CHUNKS:
                     truncated = True
@@ -1398,10 +1530,23 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
                 pass
             if not any_text:
                 yield _line({"type": "chunk", "text": _PUBLIC_HAKIM_ERROR[locale]})
+            # Only the wall-clock cut counts as a provider timeout; our own
+            # chunk cap is application-side output limiting. An answer with no
+            # text at all is a failed call, not a success.
+            record_ai_outcome(
+                "timeouts" if timed_out else ("successes" if any_text else "errors"),
+                endpoint=_AI_STREAM_ENDPOINT,
+                elapsed_ms=int((_time.monotonic() - started) * 1000),
+            )
             yield _line({"type": "done", "suggestions": suggestions,
                           "truncated": truncated})
         except Exception as e:
-            logging.error(f"Public Hakim chat stream error: {e}")
+            report_ai_failure(
+                e, purpose=PURPOSE_STREAM, endpoint=_AI_STREAM_ENDPOINT,
+                model="gpt-5-mini",
+                elapsed_ms=int((_time.monotonic() - started) * 1000),
+                timeout_s=_PUBLIC_HAKIM_STREAM_MAX_DURATION_S,
+            )
             # Emit a terminal error event so the client can REPLACE the
             # in-flight bubble with the localized safe error (rather than
             # leaving a half-written, orphaned partial answer behind).
@@ -1487,7 +1632,9 @@ async def public_hakim_chat(req: PublicHakimChatRequest, request: Request):
                     messages_list.append({"role": role, "content": content[:2000]})
         messages_list.append({"role": "user", "content": req.message[:2000]})
 
-        response = client.chat.completions.create(
+        response = await ai_chat_completion(
+            client,
+            purpose=PURPOSE_INTERACTIVE,
             model="gpt-5-mini",
             messages=messages_list,
             max_completion_tokens=2048,
@@ -1903,6 +2050,162 @@ async def get_ai_insights_overview(
         }
     }
 
+# --------------------------------------------------------------------------
+# Semantic classification of AI Insights cards.
+#
+# `/ai/insights/predictions` returns a heterogeneous list: some cards are
+# genuine forward-looking statements, most are descriptions of what the data
+# already shows. Rendering all of them under one "Predictions & Forecasts"
+# heading made a "not enough data" notice read as a medium-risk forecast.
+#
+# Every card now declares WHAT KIND of statement it is:
+#   forecast      -> an explicit claim about the future
+#   trend         -> an observed change between two past windows
+#   current_state -> a descriptive reading of the latest window
+#   risk_signal   -> a present fact that needs action now
+#   data_gap      -> not enough data to say anything (never a risk level)
+#
+# plus `time_window` (which period it describes) and `basis` (the records the
+# number was computed from). `confidence` is only populated where a certainty
+# estimate is meaningful; descriptive cards carry a real `measure` instead of
+# a fabricated percentage.
+# --------------------------------------------------------------------------
+INSIGHT_KIND_FORECAST = "forecast"
+INSIGHT_KIND_TREND = "trend"
+INSIGHT_KIND_CURRENT_STATE = "current_state"
+INSIGHT_KIND_RISK_SIGNAL = "risk_signal"
+INSIGHT_KIND_DATA_GAP = "data_gap"
+
+
+def _ar_days(days: int) -> str:
+    """Arabic day-count wording (3-10 -> أيام, otherwise يوماً)."""
+    if days == 1:
+        return "اليوم"
+    if days == 2:
+        return "يومين"
+    if 3 <= days <= 10:
+        return f"{days} أيام"
+    return f"{days} يوماً"
+
+
+def _ar_count(n: int, one: str, two: str, few: str, many: str) -> str:
+    """Arabic counted-noun agreement for a generated sentence.
+
+    Arabic changes the counted noun by quantity: 1 (singular, no digit),
+    2 (dual, no digit), 3-10 (plural), 11+ (accusative singular). Writing
+    "9 طالباً" or "16 فصول" reads as broken Arabic to a native speaker, so
+    every generated card that interpolates a count goes through here.
+    """
+    if n == 1:
+        return one
+    if n == 2:
+        return two
+    if 3 <= n % 100 <= 10:
+        return f"{n} {few}"
+    return f"{n} {many}"
+
+
+def _past_window(days: int) -> Dict[str, Any]:
+    return {
+        "direction": "past",
+        "days": days,
+        "label": {"ar": f"آخر {_ar_days(days)}", "en": f"Last {days} days"},
+    }
+
+
+def _insight_card(card_id: str, kind: str, *, title: dict, description: dict,
+                  category: str, impact: str, time_window: dict, basis: dict,
+                  confidence: Optional[int] = None,
+                  measure: Optional[dict] = None) -> Dict[str, Any]:
+    card: Dict[str, Any] = {
+        "id": card_id,
+        "insight_kind": kind,
+        "title": title,
+        "description": description,
+        "category": category,
+        "impact": impact,
+        # Explicitly null (not 0) when a certainty estimate does not apply —
+        # a 0 renders as "0% likely" instead of "not applicable".
+        "confidence": confidence,
+        "time_window": time_window,
+        "basis": basis,
+    }
+    if measure is not None:
+        card["measure"] = measure
+    return card
+
+
+def _scope_descriptor_from_classes(classes: List[Dict[str, Any]],
+                                   is_teacher: bool,
+                                   total_count: Optional[int] = None
+                                   ) -> Dict[str, Any]:
+    """Human-readable description of WHAT the insights cover.
+
+    Teachers get their own class names ("فصلك: 8أ") so a card can name the
+    class it applies to instead of saying a generic "your class".
+    Principals get a whole-school label with the class count.
+    """
+    names = [c.get("name") or c.get("id") for c in classes if c]
+    names = [n for n in names if n]
+    name_map = {c["id"]: (c.get("name") or c["id"])
+                for c in classes if c.get("id")}
+    # `classes` may be a capped page of a larger set. Counting the loaded rows
+    # would understate the scope ("whole school (100 classes)" for a 140-class
+    # school), so the caller passes the real total when it knows it.
+    total = len(names) if total_count is None else max(total_count, len(names))
+
+    if is_teacher:
+        scope_level = "classroom"
+        if not names:
+            label = {"ar": "طلابك", "en": "your students"}
+        elif total == 1:
+            label = {"ar": f"فصلك: {names[0]}", "en": f"your class {names[0]}"}
+        else:
+            shown = "، ".join(names[:3])
+            shown_en = ", ".join(names[:3])
+            extra = total - len(names[:3])
+            if extra > 0:
+                more_ar = _ar_count(extra, "فصل آخر", "فصلين آخرين",
+                                    "فصول أخرى", "فصلاً آخر")
+                label = {
+                    "ar": f"فصولك: {shown} و{more_ar}",
+                    "en": f"your classes {shown_en} and {extra} more",
+                }
+            else:
+                label = {"ar": f"فصولك: {shown}",
+                         "en": f"your classes {shown_en}"}
+    else:
+        scope_level = "school"
+        classes_ar = _ar_count(total, "فصل واحد", "فصلان",
+                               "فصول", "فصلاً")
+        label = {
+            "ar": f"المدرسة كاملة ({classes_ar})" if names
+                  else "المدرسة كاملة",
+            "en": f"whole school ({total} classes)" if names
+                  else "whole school",
+        }
+
+    return {
+        "scope_level": scope_level,
+        "scope_label": label,
+        "class_names": names,
+        "class_name_map": name_map,
+    }
+
+
+async def _resolve_scope_descriptor(teacher_scope: Optional[Dict[str, Any]],
+                                    school_id: Optional[str]
+                                    ) -> Dict[str, Any]:
+    """Load the caller's classes and describe the scope they cover."""
+    classes_q = _scope_query_for(teacher_scope, school_id, "classes")
+    active_q = {**classes_q, "is_active": {"$ne": False}}
+    classes = await gd_find(db.session, "classes", active_q, limit=100)
+    total = (len(classes) if len(classes) < 100
+             else await gd_count(db.session, "classes", active_q))
+    return _scope_descriptor_from_classes(
+        classes, teacher_scope is not None, total_count=total)
+
+
 @router.get("/ai/insights/predictions")
 async def get_ai_predictions(
     current_user: dict = Depends(require_roles([
@@ -1951,45 +2254,102 @@ async def get_ai_predictions(
     have_attendance_signal = (
         this_week_total >= MIN_ATT_RECORDS and last_week_total >= MIN_ATT_RECORDS
     )
+    scope_desc = await _resolve_scope_descriptor(teacher_scope, school_id)
+    scope_ar = scope_desc["scope_label"]["ar"]
+    scope_en = scope_desc["scope_label"]["en"]
+    week_window = _past_window(7)
+
     if have_attendance_signal:
         pred_id += 1
+        att_basis = {
+            "ar": (f"مقارنة {_ar_count(this_week_total, 'سجل حضور واحد', 'سجلَي حضور', 'سجلات حضور', 'سجل حضور')} "
+                   f"خلال آخر 7 أيام بـ "
+                   f"{_ar_count(last_week_total, 'سجل واحد', 'سجلين', 'سجلات', 'سجلاً')} "
+                   f"في الأسبوع السابق ({scope_ar})"),
+            "en": (f"Comparing {this_week_total} attendance records from the "
+                   f"last 7 days with {last_week_total} from the week before "
+                   f"({scope_en})"),
+        }
         if att_trend > 2:
-            predictions.append({
-                "id": str(pred_id),
-                "title": {"ar": "توقع تحسن الحضور", "en": "Attendance Improvement Predicted"},
-                "description": {"ar": f"ارتفعت نسبة الحضور من {last_rate}% إلى {this_rate}%. من المتوقع استمرار التحسن الأسبوع القادم", "en": f"Attendance rose from {last_rate}% to {this_rate}%. Improvement expected to continue"},
-                "confidence": min(90, 70 + int(att_trend)),
-                "impact": "positive",
-                "category": "attendance"
-            })
+            # An observed week-over-week change — a description of what
+            # already happened, NOT a projection of next week.
+            predictions.append(_insight_card(
+                str(pred_id), INSIGHT_KIND_TREND,
+                title={"ar": "ارتفاع في نسبة الحضور",
+                       "en": "Attendance Rose"},
+                description={
+                    "ar": (f"ارتفعت نسبة الحضور من {last_rate}% إلى "
+                           f"{this_rate}% خلال آخر 7 أيام ({scope_ar})."),
+                    "en": (f"Attendance rose from {last_rate}% to "
+                           f"{this_rate}% over the last 7 days ({scope_en})."),
+                },
+                category="attendance", impact="positive",
+                confidence=min(90, 70 + int(att_trend)),
+                time_window=week_window, basis=att_basis,
+            ))
         elif att_trend < -2:
-            predictions.append({
-                "id": str(pred_id),
-                "title": {"ar": "تحذير: انخفاض الحضور", "en": "Warning: Attendance Decline"},
-                "description": {"ar": f"انخفضت نسبة الحضور من {last_rate}% إلى {this_rate}%. يُنصح بالتدخل المبكر", "en": f"Attendance dropped from {last_rate}% to {this_rate}%. Early intervention advised"},
-                "confidence": min(90, 70 + int(abs(att_trend))),
-                "impact": "high",
-                "category": "attendance"
-            })
+            predictions.append(_insight_card(
+                str(pred_id), INSIGHT_KIND_TREND,
+                title={"ar": "انخفاض في نسبة الحضور",
+                       "en": "Attendance Declined"},
+                description={
+                    "ar": (f"انخفضت نسبة الحضور من {last_rate}% إلى "
+                           f"{this_rate}% خلال آخر 7 أيام ({scope_ar}). "
+                           "يُنصح بمراجعة أسباب الغياب الآن."),
+                    "en": (f"Attendance dropped from {last_rate}% to "
+                           f"{this_rate}% over the last 7 days ({scope_en}). "
+                           "Review absence causes now."),
+                },
+                category="attendance", impact="high",
+                confidence=min(90, 70 + int(abs(att_trend))),
+                time_window=week_window, basis=att_basis,
+            ))
         else:
-            predictions.append({
-                "id": str(pred_id),
-                "title": {"ar": "استقرار نسبة الحضور", "en": "Attendance Stable"},
-                "description": {"ar": f"نسبة الحضور الحالية {this_rate}% مستقرة مقارنة بالأسبوع الماضي ({last_rate}%)", "en": f"Current attendance {this_rate}% is stable compared to last week ({last_rate}%)"},
-                "confidence": 85,
-                "impact": "medium",
-                "category": "attendance"
-            })
+            # Descriptive reading: show the measured rate itself instead of
+            # an invented confidence number.
+            predictions.append(_insight_card(
+                str(pred_id), INSIGHT_KIND_CURRENT_STATE,
+                title={"ar": "استقرار نسبة الحضور",
+                       "en": "Attendance Stable"},
+                description={
+                    "ar": (f"نسبة الحضور {this_rate}% خلال آخر 7 أيام، "
+                           f"قريبة من الأسبوع السابق ({last_rate}%) — "
+                           f"{scope_ar}."),
+                    "en": (f"Attendance is {this_rate}% over the last 7 days, "
+                           f"close to the previous week ({last_rate}%) — "
+                           f"{scope_en}."),
+                },
+                category="attendance", impact="info",
+                time_window=week_window, basis=att_basis,
+                measure={"value": this_rate, "unit": "percent",
+                         "label": {"ar": "نسبة الحضور",
+                                   "en": "Attendance rate"}},
+            ))
     elif this_week_total > 0 or last_week_total > 0:
         pred_id += 1
-        predictions.append({
-            "id": str(pred_id),
-            "title": {"ar": "بيانات حضور غير كافية", "en": "Insufficient Attendance Data"},
-            "description": {"ar": "لا توجد سجلات حضور كافية لتوقع اتجاه موثوق هذا الأسبوع.", "en": "Not enough attendance records to predict a reliable trend this week."},
-            "confidence": 0,
-            "impact": "low",
-            "category": "attendance"
-        })
+        predictions.append(_insight_card(
+            str(pred_id), INSIGHT_KIND_DATA_GAP,
+            title={"ar": "بيانات حضور غير كافية",
+                   "en": "Insufficient Attendance Data"},
+            description={
+                "ar": (f"عدد سجلات الحضور خلال آخر 7 أيام "
+                       f"({_ar_count(this_week_total, 'سجل واحد', 'سجلان', 'سجلات', 'سجلاً')}) "
+                       f"أقل من الحد اللازم ({MIN_ATT_RECORDS}) لأي قراءة "
+                       "موثوقة. سجّل الحضور بانتظام لتظهر مؤشرات دقيقة."),
+                "en": (f"Only {this_week_total} attendance records in the "
+                       f"last 7 days — below the {MIN_ATT_RECORDS} needed for "
+                       "a reliable reading. Record attendance regularly."),
+            },
+            category="attendance", impact="info",
+            time_window=week_window,
+            basis={
+                "ar": (f"{_ar_count(this_week_total, 'سجل حضور واحد', 'سجلَي حضور', 'سجلات حضور', 'سجل حضور')} "
+                       f"هذا الأسبوع و{last_week_total} في الأسبوع السابق "
+                       f"({scope_ar})"),
+                "en": (f"{this_week_total} records this week and "
+                       f"{last_week_total} the week before ({scope_en})"),
+            },
+        ))
 
     recent_grades = await gd_find(db.session, "grades", {**grades_q, "created_at": {"$gte": week_ago.isoformat()}}, limit=500)
     older_grades = await gd_find(db.session, "grades", {**grades_q, "created_at": {"$gte": two_weeks_ago.isoformat(), "$lt": week_ago.isoformat()}}, limit=500)
@@ -2003,33 +2363,88 @@ async def get_ai_predictions(
         MIN_GRADE_RECORDS = 3
         have_grade_signal = len(recent_grades) >= MIN_GRADE_RECORDS and len(older_grades) >= MIN_GRADE_RECORDS
         pred_id += 1
+        grade_basis = {
+            "ar": (f"مقارنة {len(recent_grades)} درجة خلال آخر 7 أيام بـ "
+                   f"{len(older_grades)} درجة في الأسبوع السابق ({scope_ar})"),
+            "en": (f"Comparing {len(recent_grades)} grades from the last 7 "
+                   f"days with {len(older_grades)} from the week before "
+                   f"({scope_en})"),
+        }
         if have_grade_signal and grade_trend > 3:
-            predictions.append({
-                "id": str(pred_id),
-                "title": {"ar": "تحسن أداء الطلاب الأكاديمي", "en": "Student Academic Improvement"},
-                "description": {"ar": f"ارتفع متوسط الدرجات بمقدار {abs(grade_trend):.1f}% هذا الأسبوع. التوقع: استمرار التحسن", "en": f"Average grades increased by {abs(grade_trend):.1f}% this week. Expected to continue"},
-                "confidence": min(88, 65 + int(grade_trend)),
-                "impact": "positive",
-                "category": "academic"
-            })
+            predictions.append(_insight_card(
+                str(pred_id), INSIGHT_KIND_TREND,
+                title={"ar": "ارتفاع في متوسط الدرجات",
+                       "en": "Grade Average Rose"},
+                description={
+                    "ar": (f"ارتفع متوسط الدرجات بمقدار {abs(grade_trend):.1f}% "
+                           f"خلال آخر 7 أيام ليصل إلى {recent_avg:.1f}% "
+                           f"({scope_ar})."),
+                    "en": (f"Grade average rose {abs(grade_trend):.1f}% over "
+                           f"the last 7 days to {recent_avg:.1f}% "
+                           f"({scope_en})."),
+                },
+                category="academic", impact="positive",
+                confidence=min(88, 65 + int(grade_trend)),
+                time_window=week_window, basis=grade_basis,
+            ))
         elif have_grade_signal and grade_trend < -3:
-            predictions.append({
-                "id": str(pred_id),
-                "title": {"ar": "تحذير: تراجع الأداء الأكاديمي", "en": "Warning: Academic Performance Decline"},
-                "description": {"ar": f"انخفض متوسط الدرجات بمقدار {abs(grade_trend):.1f}% هذا الأسبوع. يُنصح بمراجعة خطط التدريس", "en": f"Average grades dropped by {abs(grade_trend):.1f}%. Teaching plans review recommended"},
-                "confidence": min(88, 65 + int(abs(grade_trend))),
-                "impact": "high",
-                "category": "academic"
-            })
+            predictions.append(_insight_card(
+                str(pred_id), INSIGHT_KIND_TREND,
+                title={"ar": "انخفاض في متوسط الدرجات",
+                       "en": "Grade Average Declined"},
+                description={
+                    "ar": (f"انخفض متوسط الدرجات بمقدار {abs(grade_trend):.1f}% "
+                           f"خلال آخر 7 أيام ليصبح {recent_avg:.1f}% "
+                           f"({scope_ar}). راجع خطة الدروس للموضوعات الأخيرة."),
+                    "en": (f"Grade average dropped {abs(grade_trend):.1f}% over "
+                           f"the last 7 days to {recent_avg:.1f}% ({scope_en}). "
+                           "Review the lesson plan for recent topics."),
+                },
+                category="academic", impact="high",
+                confidence=min(88, 65 + int(abs(grade_trend))),
+                time_window=week_window, basis=grade_basis,
+            ))
+        elif have_grade_signal:
+            predictions.append(_insight_card(
+                str(pred_id), INSIGHT_KIND_CURRENT_STATE,
+                title={"ar": "استقرار متوسط الدرجات",
+                       "en": "Grade Average Stable"},
+                description={
+                    "ar": (f"متوسط الدرجات {recent_avg:.1f}% خلال آخر 7 أيام، "
+                           f"قريب من الأسبوع السابق ({older_avg:.1f}%) — "
+                           f"{scope_ar}."),
+                    "en": (f"Grade average is {recent_avg:.1f}% over the last "
+                           f"7 days, close to the previous week "
+                           f"({older_avg:.1f}%) — {scope_en}."),
+                },
+                category="academic", impact="info",
+                time_window=week_window, basis=grade_basis,
+                measure={"value": round(recent_avg, 1), "unit": "percent",
+                         "label": {"ar": "متوسط الدرجات",
+                                   "en": "Grade average"}},
+            ))
         else:
-            predictions.append({
-                "id": str(pred_id),
-                "title": {"ar": "استقرار الأداء الأكاديمي", "en": "Stable Academic Performance"},
-                "description": {"ar": f"متوسط الدرجات الحالي {recent_avg:.1f}% مستقر", "en": f"Current grade average {recent_avg:.1f}% is stable"},
-                "confidence": 80,
-                "impact": "medium",
-                "category": "academic"
-            })
+            # Grades exist, but not enough in BOTH windows to compare. Report
+            # the measurement honestly instead of calling it "stable".
+            predictions.append(_insight_card(
+                str(pred_id), INSIGHT_KIND_CURRENT_STATE,
+                title={"ar": "متوسط الدرجات المسجّلة حديثاً",
+                       "en": "Recently Recorded Grade Average"},
+                description={
+                    "ar": (f"متوسط {len(recent_grades)} درجة سُجّلت خلال آخر "
+                           f"7 أيام هو {recent_avg:.1f}% ({scope_ar}). عدد "
+                           "الدرجات لا يكفي للمقارنة بالأسبوع السابق."),
+                    "en": (f"The {len(recent_grades)} grades recorded in the "
+                           f"last 7 days average {recent_avg:.1f}% "
+                           f"({scope_en}). Too few to compare with the "
+                           "previous week."),
+                },
+                category="academic", impact="info",
+                time_window=week_window, basis=grade_basis,
+                measure={"value": round(recent_avg, 1), "unit": "percent",
+                         "label": {"ar": "متوسط الدرجات",
+                                   "en": "Grade average"}},
+            ))
 
     absent_pipeline = [
         {"$match": {**attendance_q, "status": "absent", "date": {"$gte": week_ago_str}}},
@@ -2041,14 +2456,29 @@ async def get_ai_predictions(
     chronic_absent = absent_result[0]["total"] if absent_result else 0
     if chronic_absent > 0:
         pred_id += 1
-        predictions.append({
-            "id": str(pred_id),
-            "title": {"ar": "طلاب يحتاجون متابعة عاجلة", "en": "Students Need Urgent Follow-up"},
-            "description": {"ar": f"يوجد {chronic_absent} طالب غابوا 3 أيام أو أكثر خلال الأسبوع الماضي. يُنصح بالتواصل مع أولياء أمورهم", "en": f"{chronic_absent} students were absent 3+ days last week. Contact parents recommended"},
-            "confidence": 92,
-            "impact": "high",
-            "category": "intervention"
-        })
+        # A counted fact about the present, not a probabilistic prediction —
+        # so it carries no confidence percentage.
+        predictions.append(_insight_card(
+            str(pred_id), INSIGHT_KIND_RISK_SIGNAL,
+            title={"ar": "طلاب يحتاجون متابعة عاجلة",
+                   "en": "Students Need Urgent Follow-up"},
+            description={
+                "ar": (f"{chronic_absent} من الطلاب غابوا 3 أيام أو أكثر خلال "
+                       f"آخر 7 أيام ({scope_ar}). تواصل مع أولياء أمورهم "
+                       "لمعرفة السبب."),
+                "en": (f"{chronic_absent} students were absent 3+ days in the "
+                       f"last 7 days ({scope_en}). Contact their guardians."),
+            },
+            category="intervention", impact="high",
+            time_window=week_window,
+            basis={
+                "ar": (f"إحصاء سجلات الغياب خلال آخر 7 أيام: "
+                       f"{_ar_count(chronic_absent, 'طالب واحد', 'طالبان', 'طلاب', 'طالباً')} "
+                       "تجاوزوا 3 أيام غياب"),
+                "en": (f"Counted from absence records in the last 7 days: "
+                       f"{chronic_absent} students exceeded 3 absent days"),
+            },
+        ))
 
     return predictions
 
@@ -2081,19 +2511,48 @@ def _is_teacher_role(role: str) -> bool:
     return role in _TEACHER_CLASS_ROLES
 
 
-def _build_attendance_rec(rec_id: str, att_rate: float, *, is_teacher: bool) -> dict:
+def _rec_context(scope_desc: Dict[str, Any], *, days: int,
+                 evidence: dict, scope_level: str,
+                 class_names: Optional[List[str]] = None,
+                 scope_label: Optional[dict] = None,
+                 student_count: Optional[int] = None) -> Dict[str, Any]:
+    """Explicit "what does this apply to" block on every recommendation.
+
+    Without it a card reads as generic advice ("activate continuous
+    assessment in your class") with no way to tell WHICH class, over WHICH
+    window, or on WHAT evidence it was raised.
+    """
+    ctx: Dict[str, Any] = {
+        "scope_level": scope_level,
+        "scope_label": scope_label or scope_desc["scope_label"],
+        "class_names": (class_names if class_names is not None
+                        else list(scope_desc.get("class_names") or [])),
+        "time_window": _past_window(days),
+        "evidence": evidence,
+    }
+    if student_count is not None:
+        ctx["student_count"] = student_count
+    return ctx
+
+
+def _build_attendance_rec(rec_id: str, att_rate: float, *, is_teacher: bool,
+                          context: Dict[str, Any]) -> dict:
+    scope_ar = context["scope_label"]["ar"]
+    scope_en = context["scope_label"]["en"]
     if is_teacher:
         body = {
             "category": {"ar": "الحضور والانضباط", "en": "Attendance & Discipline"},
             "title": {"ar": "تحسين حضور فصلك",
                       "en": "Improve Your Class Attendance"},
             "description": {
-                "ar": (f"نسبة حضور طلابك الحالية {att_rate}% أقل من المستوى "
-                       "المطلوب (85%). تواصل مع طلابك وأولياء أمورهم وراجع "
-                       "أسباب الغياب داخل فصلك."),
-                "en": (f"Your students' attendance is {att_rate}% — below the "
-                       "85% target. Reach out to your students and their "
-                       "guardians and review absence causes inside your class."),
+                "ar": (f"نسبة حضور طلابك في {scope_ar} خلال آخر 30 يوماً "
+                       f"{att_rate}% وهي أقل من المستوى المطلوب (85%). تواصل "
+                       "مع أولياء أمور الطلاب الأكثر غياباً وراجع أسباب "
+                       "الغياب في بداية كل حصة."),
+                "en": (f"Attendance for {scope_en} over the last 30 days is "
+                       f"{att_rate}% — below the 85% target. Contact the "
+                       "guardians of the most-absent students and review "
+                       "absence causes at the start of each lesson."),
             },
             "action_owner": "teacher",
             "scope_level": "classroom",
@@ -2118,23 +2577,28 @@ def _build_attendance_rec(rec_id: str, att_rate: float, *, is_teacher: bool) -> 
         "expected_impact": int(85 - att_rate),
         "recommendation_type": "attendance_improve",
         "audience": _ALL_SCHOOL_AUDIENCE,
+        "context": context,
         **body,
     }
 
 
-def _build_tardiness_rec(rec_id: str, late_pct: float, *, is_teacher: bool) -> dict:
+def _build_tardiness_rec(rec_id: str, late_pct: float, *, is_teacher: bool,
+                         context: Dict[str, Any]) -> dict:
+    scope_ar = context["scope_label"]["ar"]
+    scope_en = context["scope_label"]["en"]
     if is_teacher:
         body = {
             "category": {"ar": "الحضور والانضباط", "en": "Attendance & Discipline"},
             "title": {"ar": "متابعة تأخر طلابك",
                       "en": "Follow Up on Your Students' Tardiness"},
             "description": {
-                "ar": (f"نسبة التأخر بين طلابك {late_pct}% مرتفعة. ذكّر "
-                       "طلابك بأهمية الالتزام بموعد الحصة وتواصل مع أسر "
-                       "المتأخرين باستمرار."),
-                "en": (f"Your students' tardiness rate is {late_pct}%. Remind "
-                       "your class about punctuality and contact the families "
-                       "of the students who arrive late."),
+                "ar": (f"نسبة التأخر في {scope_ar} بلغت {late_pct}% خلال آخر "
+                       "30 يوماً. ذكّر طلابك ببداية الحصة وتواصل مع أسر "
+                       "المتكرر تأخرهم."),
+                "en": (f"Tardiness in {scope_en} reached {late_pct}% over the "
+                       "last 30 days. Remind your students about the lesson "
+                       "start time and contact the families of repeat "
+                       "latecomers."),
             },
             "action_owner": "teacher",
             "scope_level": "classroom",
@@ -2158,12 +2622,14 @@ def _build_tardiness_rec(rec_id: str, late_pct: float, *, is_teacher: bool) -> d
         "expected_impact": 10,
         "recommendation_type": "tardiness_address",
         "audience": _ALL_SCHOOL_AUDIENCE,
+        "context": context,
         **body,
     }
 
 
 def _build_low_att_classes_rec(rec_id: str, class_names: str,
-                               *, is_teacher: bool) -> dict:
+                               *, is_teacher: bool,
+                               context: Dict[str, Any]) -> dict:
     """Class-level low-attendance card.
 
     Principal variant: school-wide coordination wording — "follow up with
@@ -2205,6 +2671,7 @@ def _build_low_att_classes_rec(rec_id: str, class_names: str,
         "expected_impact": 15,
         "recommendation_type": "class_low_attendance",
         "audience": _ALL_SCHOOL_AUDIENCE,
+        "context": context,
         **body,
     }
 
@@ -2280,14 +2747,45 @@ async def get_ai_recommendations(
     month_ago = today - timedelta(days=30)
     month_ago_str = month_ago.strftime("%Y-%m-%d")
 
+    # Loaded up-front so every card can name the classes it applies to
+    # (a recommendation that says "your class" without naming it is not
+    # actionable when a teacher owns several classes).
+    active_classes_q = {**classes_q, "is_active": {"$ne": False}}
+    classes_list = await gd_find(db.session, "classes", active_classes_q,
+                                 limit=100)
+    class_ids_all = [c["id"] for c in classes_list]
+    cls_name_map = {c["id"]: c.get("name", c["id"]) for c in classes_list}
+    # The load is capped; count separately so the scope label states the real
+    # number of classes instead of the page size.
+    classes_total = (len(classes_list) if len(classes_list) < 100
+                     else await gd_count(db.session, "classes",
+                                         active_classes_q))
+    scope_desc = _scope_descriptor_from_classes(
+        classes_list, is_teacher, total_count=classes_total)
+    scope_level = scope_desc["scope_level"]
+
     total_att = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": month_ago_str}})
     present_att = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": month_ago_str}, "status": "present"})
     att_rate = round((present_att / total_att) * 100, 1) if total_att > 0 else 100
 
+    total_students = await gd_count(db.session, "students", students_q)
+
     if att_rate < 85:
         rec_id += 1
         recommendations.append(
-            _build_attendance_rec(str(rec_id), att_rate, is_teacher=is_teacher)
+            _build_attendance_rec(
+                str(rec_id), att_rate, is_teacher=is_teacher,
+                context=_rec_context(
+                    scope_desc, days=30, scope_level=scope_level,
+                    student_count=total_students,
+                    evidence={
+                        "ar": (f"{present_att} حضور من أصل {total_att} سجل "
+                               "خلال آخر 30 يوماً"),
+                        "en": (f"{present_att} present out of {total_att} "
+                               "attendance records in the last 30 days"),
+                    },
+                ),
+            )
         )
 
     late_count = await gd_count(db.session, "attendance", {**attendance_q, "date": {"$gte": month_ago_str}, "status": "late"})
@@ -2295,10 +2793,24 @@ async def get_ai_recommendations(
         rec_id += 1
         late_pct = round(late_count / total_att * 100, 1)
         recommendations.append(
-            _build_tardiness_rec(str(rec_id), late_pct, is_teacher=is_teacher)
+            _build_tardiness_rec(
+                str(rec_id), late_pct, is_teacher=is_teacher,
+                context=_rec_context(
+                    scope_desc, days=30, scope_level=scope_level,
+                    student_count=total_students,
+                    evidence={
+                        "ar": (f"{_ar_count(late_count, 'حالة تأخر واحدة', 'حالتا تأخر', 'حالات تأخر', 'حالة تأخر')} "
+                               f"من أصل "
+                               f"{_ar_count(total_att, 'سجل حضور واحد', 'سجلَي حضور', 'سجلات حضور', 'سجل حضور')} "
+                               "خلال آخر 30 يوماً"),
+                        "en": (f"{late_count} late arrivals out of "
+                               f"{total_att} attendance records in the last "
+                               "30 days"),
+                    },
+                ),
+            )
         )
 
-    total_students = await gd_count(db.session, "students", students_q)
     total_teachers = await gd_count(db.session, "teachers", teachers_q)
     # The HR/staffing recommendation ("Strengthen Teaching Staff") is a
     # school-admin concern — teachers can't hire colleagues, so it carries
@@ -2320,11 +2832,18 @@ async def get_ai_recommendations(
                 "audience": list(_PRINCIPAL_AUDIENCE),
                 "action_owner": "principal",
                 "scope_level": "school",
+                "context": _rec_context(
+                    scope_desc, days=30, scope_level="school",
+                    student_count=total_students,
+                    evidence={
+                        "ar": (f"{total_students} طالباً مقابل "
+                               f"{_ar_count(total_teachers, 'معلم واحد', 'معلمَين', 'معلمين', 'معلماً')} "
+                               f"(نسبة {ratio:.0f}:1)"),
+                        "en": (f"{total_students} students to {total_teachers} "
+                               f"teachers ({ratio:.0f}:1)"),
+                    },
+                ),
             })
-
-    classes_list = await gd_find(db.session, "classes", {**classes_q, "is_active": {"$ne": False}}, limit=100)
-    class_ids_all = [c["id"] for c in classes_list]
-    cls_name_map = {c["id"]: c.get("name", c["id"]) for c in classes_list}
 
     cls_att_pipeline = [
         {"$match": {"class_id": {"$in": class_ids_all}, "date": {"$gte": month_ago_str}}},
@@ -2352,10 +2871,30 @@ async def get_ai_recommendations(
                 low_att_classes.append({"name": cls_name_map.get(cid, cid), "rate": cls_rate})
     if low_att_classes:
         rec_id += 1
-        class_names = ", ".join([c["name"] for c in low_att_classes[:3]])
+        shown_low = low_att_classes[:3]
+        class_names = ", ".join([c["name"] for c in shown_low])
+        detail_ar = "، ".join(f"{c['name']} ({c['rate']}%)" for c in shown_low)
+        detail_en = ", ".join(f"{c['name']} ({c['rate']}%)" for c in shown_low)
+        low_label = {
+            "ar": (f"الفصل {shown_low[0]['name']}" if len(shown_low) == 1
+                   else f"الفصول: {class_names}"),
+            "en": (f"class {shown_low[0]['name']}" if len(shown_low) == 1
+                   else f"classes: {class_names}"),
+        }
         recommendations.append(
             _build_low_att_classes_rec(
-                str(rec_id), class_names, is_teacher=is_teacher
+                str(rec_id), class_names, is_teacher=is_teacher,
+                context=_rec_context(
+                    scope_desc, days=30, scope_level=scope_level,
+                    class_names=[c["name"] for c in low_att_classes],
+                    scope_label=low_label,
+                    evidence={
+                        "ar": (f"نسبة الحضور خلال آخر 30 يوماً أقل من 80% في: "
+                               f"{detail_ar}"),
+                        "en": (f"Attendance below 80% over the last 30 days "
+                               f"in: {detail_en}"),
+                    },
+                ),
             )
         )
 
@@ -2369,11 +2908,16 @@ async def get_ai_recommendations(
                 "title": {"ar": "فعّل التقييم المستمر في فصلك",
                           "en": "Activate Continuous Assessment in Your Class"},
                 "description": {
-                    "ar": ("لم تُسجَّل أي تقييمات لطلابك خلال الشهر الماضي. "
-                           "أنشئ اختبارات قصيرة في فصلك لمتابعة مستوى طلابك."),
-                    "en": ("No assessments recorded for your students this "
-                           "month. Create short quizzes in your class to "
-                           "track your students' progress."),
+                    "ar": (f"لم تُسجَّل أي تقييمات لـ "
+                           f"{_ar_count(total_students, 'طالب واحد', 'طالبين', 'طلاب', 'طالباً')} "
+                           f"في {scope_desc['scope_label']['ar']} خلال آخر 30 "
+                           "يوماً. أنشئ اختباراً قصيراً في الحصة القادمة "
+                           "لقياس مستوى الطلاب في آخر درس."),
+                    "en": (f"No assessments recorded for {total_students} "
+                           f"students in {scope_desc['scope_label']['en']} "
+                           "over the last 30 days. Run a short quiz in your "
+                           "next lesson to measure understanding of the most "
+                           "recent topic."),
                 },
                 "action_owner": "teacher",
                 "scope_level": "classroom",
@@ -2385,10 +2929,13 @@ async def get_ai_recommendations(
                 "title": {"ar": "تفعيل التقييم المستمر",
                           "en": "Activate Continuous Assessment"},
                 "description": {
-                    "ar": ("لم يتم تسجيل أي تقييمات خلال الشهر الماضي. يُنصح "
-                           "بإنشاء اختبارات قصيرة لمتابعة مستوى الطلاب"),
-                    "en": ("No assessments recorded this month. Create "
-                           "quizzes to track student progress"),
+                    "ar": (f"لم يتم تسجيل أي تقييم لـ "
+                           f"{_ar_count(total_students, 'طالب واحد', 'طالبين', 'طلاب', 'طالباً')} "
+                           "على مستوى المدرسة خلال آخر 30 يوماً. اتفق مع "
+                           "المعلمين على جدول اختبارات قصيرة دورية."),
+                    "en": (f"No assessments recorded for {total_students} "
+                           "students school-wide over the last 30 days. Agree "
+                           "a short-quiz schedule with your teachers."),
                 },
                 "action_owner": "principal",
                 "scope_level": "school",
@@ -2399,6 +2946,17 @@ async def get_ai_recommendations(
             "expected_impact": 25,
             "recommendation_type": "assessment_activate",
             "audience": _ALL_SCHOOL_AUDIENCE,
+            "context": _rec_context(
+                scope_desc, days=30, scope_level=scope_level,
+                student_count=total_students,
+                evidence={
+                    "ar": (f"0 تقييم مسجّل لـ "
+                           f"{_ar_count(total_students, 'طالب واحد', 'طالبين', 'طلاب', 'طالباً')} "
+                           "خلال آخر 30 يوماً"),
+                    "en": (f"0 assessments recorded for {total_students} "
+                           "students in the last 30 days"),
+                },
+            ),
             **assessment_body,
         })
 
@@ -2412,26 +2970,64 @@ async def get_ai_recommendations(
                 "id": "1",
                 "category": {"ar": "الأداء التعليمي", "en": "Teaching Performance"},
                 "title": {"ar": "فصولك تسير بشكل ممتاز", "en": "Your Classes Are Doing Great"},
-                "description": {"ar": "لا توجد توصيات عاجلة لفصولك حالياً. استمر في متابعة الأداء والمشاركة الصفية", "en": "No urgent recommendations for your classes right now. Keep monitoring participation and progress"},
+                "description": {
+                    "ar": (f"لا توجد مؤشرات تستدعي تدخلاً في "
+                           f"{scope_desc['scope_label']['ar']} خلال آخر 30 "
+                           f"يوماً (نسبة الحضور {att_rate}%). استمر في متابعة "
+                           "الأداء والمشاركة الصفية."),
+                    "en": (f"No indicators require action in "
+                           f"{scope_desc['scope_label']['en']} over the last "
+                           f"30 days (attendance {att_rate}%). Keep monitoring "
+                           "participation and progress."),
+                },
                 "priority": "low",
                 "expected_impact": 5,
                 "recommendation_type": "all_clear",
                 "audience": list(_TEACHER_AUDIENCE),
                 "action_owner": "teacher",
                 "scope_level": "classroom",
+                "context": _rec_context(
+                    scope_desc, days=30, scope_level=scope_level,
+                    student_count=total_students,
+                    evidence={
+                        "ar": (f"{_ar_count(total_att, 'سجل حضور واحد', 'سجلَي حضور', 'سجلات حضور', 'سجل حضور')} "
+                               f"خلال آخر 30 يوماً بنسبة حضور {att_rate}% "
+                               "ولا توجد فصول تحت 80%"),
+                        "en": (f"{total_att} attendance records in the last "
+                               f"30 days at {att_rate}%, no class below 80%"),
+                    },
+                ),
             })
         else:
             recommendations.append({
                 "id": "1",
                 "category": {"ar": "الأداء العام", "en": "General Performance"},
                 "title": {"ar": "أداء المدرسة جيد", "en": "School Performance is Good"},
-                "description": {"ar": "المؤشرات الحالية جيدة. استمر في متابعة الأداء بانتظام للحفاظ على هذا المستوى", "en": "Current indicators are good. Continue regular monitoring to maintain this level"},
+                "description": {
+                    "ar": (f"لا توجد مؤشرات تستدعي تدخلاً على مستوى المدرسة "
+                           f"خلال آخر 30 يوماً (نسبة الحضور {att_rate}%). "
+                           "استمر في المتابعة الدورية."),
+                    "en": (f"No school-wide indicators require action over "
+                           f"the last 30 days (attendance {att_rate}%). "
+                           "Continue regular monitoring."),
+                },
                 "priority": "low",
                 "expected_impact": 5,
                 "recommendation_type": "all_clear",
                 "audience": list(_PRINCIPAL_AUDIENCE),
                 "action_owner": "principal",
                 "scope_level": "school",
+                "context": _rec_context(
+                    scope_desc, days=30, scope_level=scope_level,
+                    student_count=total_students,
+                    evidence={
+                        "ar": (f"{_ar_count(total_att, 'سجل حضور واحد', 'سجلَي حضور', 'سجلات حضور', 'سجل حضور')} "
+                               f"خلال آخر 30 يوماً بنسبة حضور {att_rate}% "
+                               "ولا توجد فصول تحت 80%"),
+                        "en": (f"{total_att} attendance records in the last "
+                               f"30 days at {att_rate}%, no class below 80%"),
+                    },
+                ),
             })
 
     return recommendations
@@ -2464,7 +3060,7 @@ async def get_ai_alerts(
     # Teacher / independent-teacher callers must land on their own
     # self-scoping attendance page; the admin attendance page would 403 its
     # data call for them. Admin / principal / school-admin keep the admin path.
-    attendance_route = "/teacher/attendance" if teacher_scope else "/admin/attendance"
+    attendance_route = "/teacher/attendance" if teacher_scope else "/principal/attendance"
 
     consecutive_pipeline = [
         {"$match": {**attendance_q, "status": "absent", "date": {"$gte": week_ago_str}}},
@@ -2523,13 +3119,16 @@ async def get_ai_alerts(
                 "description": {"ar": f"يوجد {unassigned_sessions} حصة بدون معلم مُعيّن. قم بتعيين معلمين لها", "en": f"{unassigned_sessions} sessions have no teacher assigned"},
                 "timestamp": today.isoformat(),
                 "category": "scheduling",
-                "route": "/school/schedule"
+                "route": "/principal/schedule"
             })
 
     # Teacher / independent-teacher callers must land on their own
     # self-scoping behaviour page; the admin behaviour page would 403 its
     # data call for them. Admin / principal / school-admin keep the admin path.
-    behaviour_route = "/teacher/behavior" if teacher_scope else "/admin/behaviour"
+    # Leadership has no dedicated behaviour page — /admin/behaviour was
+    # never a registered route (catch-all → homepage). Route leadership
+    # to the students page where per-student conduct is reviewed.
+    behaviour_route = "/teacher/behavior" if teacher_scope else "/principal/students"
 
     recent_behaviour = await gd_count(db.session, "behaviour_records", {
         **behaviour_q,
@@ -2828,7 +3427,9 @@ async def _call_openai_for_recommendations(prompt: str) -> str:
     client = get_openai_client()
     if client is None:
         raise RuntimeError("openai_unavailable")
-    resp = client.chat.completions.create(
+    resp = await ai_chat_completion(
+        client,
+        purpose=PURPOSE_BACKGROUND,
         model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
         messages=[
             {"role": "system", "content": "أنت مستشار تعليمي. أجب حصراً بمصفوفة JSON دون نص إضافي."},
@@ -3387,7 +3988,9 @@ async def hakim_student_ai_plans(
         if client is None:
             plan_source = "fallback"
             raise ValueError("AI not configured")
-        response = client.chat.completions.create(
+        response = await ai_chat_completion(
+            client,
+            purpose=PURPOSE_BACKGROUND,
             model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": "أنت مساعد تعليمي ذكي متخصص في إنشاء خطط تعليمية. أجب بـ JSON فقط."},
@@ -3937,138 +4540,145 @@ async def export_student_plans_pdf(
     style_table_header = ParagraphStyle('TH', fontName='DejaVuSans-Bold', fontSize=9, alignment=TA_CENTER, textColor=white, leading=12)
     style_table_cell = ParagraphStyle('TD', fontName='DejaVuSans', fontSize=9, alignment=TA_RIGHT, textColor=DARK_GRAY_CLR, leading=12)
 
-    story = []
+    # CPU-bound from here down (Arabic shaping + ReportLab layout, no awaits):
+    # build it on the render pool so the event loop stays free — inline this
+    # blocks every other request for the whole build. See services/cpu_offload.py.
+    def _build_plans_pdf():
+        story = []
 
-    header_data = [[Paragraph(ar("NASSAQ  |  نَسَّق"), style_title)],
-                    [Paragraph(ar(plan_label), style_subtitle)]]
-    header_table = Table(header_data, colWidths=[17*cm])
-    header_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), NAVY),
-        ('TOPPADDING', (0, 0), (-1, 0), 14),
-        ('BOTTOMPADDING', (0, -1), (-1, -1), 10),
-        ('LEFTPADDING', (0, 0), (-1, -1), 10),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-        ('ROUNDEDCORNERS', [6, 6, 0, 0]),
-    ]))
-    story.append(header_table)
-    story.append(Spacer(1, 12))
+        header_data = [[Paragraph(ar("NASSAQ  |  نَسَّق"), style_title)],
+                        [Paragraph(ar(plan_label), style_subtitle)]]
+        header_table = Table(header_data, colWidths=[17*cm])
+        header_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), NAVY),
+            ('TOPPADDING', (0, 0), (-1, 0), 14),
+            ('BOTTOMPADDING', (0, -1), (-1, -1), 10),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('ROUNDEDCORNERS', [6, 6, 0, 0]),
+        ]))
+        story.append(header_table)
+        story.append(Spacer(1, 12))
 
-    grade_class = f"{student_grade} — {class_name}".strip(" —") if (student_grade or class_name) else "—"
-    info_rows = [
-        [Paragraph(ar(school_name or "—"), style_value), Paragraph(ar("اسم المدرسة"), style_label)],
-        [Paragraph(ar(academic_year_name or "—"), style_value), Paragraph(ar("السنة الدراسية"), style_label)],
-        [Paragraph(ar(student_name or "—"), style_value), Paragraph(ar("اسم الطالب"), style_label)],
-        [Paragraph(ar(grade_class), style_value), Paragraph(ar("الصف / الفصل"), style_label)],
-        [Paragraph(ar(teacher_name or "—"), style_value), Paragraph(ar("اسم المعلم"), style_label)],
-        [Paragraph(ar(export_date), style_value), Paragraph(ar("تاريخ التصدير"), style_label)],
-    ]
-    info_tbl = Table(info_rows, colWidths=[11*cm, 6*cm])
-    info_tbl.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#DDDDDD")),
-        ('BACKGROUND', (1, 0), (1, -1), LIGHT_GRAY),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    story.append(info_tbl)
+        grade_class = f"{student_grade} — {class_name}".strip(" —") if (student_grade or class_name) else "—"
+        info_rows = [
+            [Paragraph(ar(school_name or "—"), style_value), Paragraph(ar("اسم المدرسة"), style_label)],
+            [Paragraph(ar(academic_year_name or "—"), style_value), Paragraph(ar("السنة الدراسية"), style_label)],
+            [Paragraph(ar(student_name or "—"), style_value), Paragraph(ar("اسم الطالب"), style_label)],
+            [Paragraph(ar(grade_class), style_value), Paragraph(ar("الصف / الفصل"), style_label)],
+            [Paragraph(ar(teacher_name or "—"), style_value), Paragraph(ar("اسم المعلم"), style_label)],
+            [Paragraph(ar(export_date), style_value), Paragraph(ar("تاريخ التصدير"), style_label)],
+        ]
+        info_tbl = Table(info_rows, colWidths=[11*cm, 6*cm])
+        info_tbl.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#DDDDDD")),
+            ('BACKGROUND', (1, 0), (1, -1), LIGHT_GRAY),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(info_tbl)
 
-    def add_plan_section(plan, plan_type_key):
-        color = REMEDIAL_CLR if plan_type_key == "remedial" else ENRICHMENT_CLR
-        type_label = "الخطة العلاجية" if plan_type_key == "remedial" else "الخطة الإثرائية"
+        def add_plan_section(plan, plan_type_key):
+            color = REMEDIAL_CLR if plan_type_key == "remedial" else ENRICHMENT_CLR
+            type_label = "الخطة العلاجية" if plan_type_key == "remedial" else "الخطة الإثرائية"
 
-        story.append(Spacer(1, 16))
-        story.append(HRFlowable(width="100%", thickness=1, color=HexColor("#CCCCCC")))
-        story.append(Spacer(1, 10))
+            story.append(Spacer(1, 16))
+            story.append(HRFlowable(width="100%", thickness=1, color=HexColor("#CCCCCC")))
+            story.append(Spacer(1, 10))
 
-        section_style = ParagraphStyle('PlanTitle', fontName='DejaVuSans-Bold', fontSize=14, alignment=TA_RIGHT, textColor=color, leading=18)
-        title_text = plan.get("title", type_label) if plan else type_label
-        story.append(Paragraph(ar(title_text), section_style))
-        story.append(Spacer(1, 6))
-
-        summary = plan.get("summary", "") if plan else ""
-        if summary:
-            story.append(Paragraph(ar(summary), style_body_italic))
-            story.append(Spacer(1, 8))
-
-        goals = plan.get("goals", []) if plan else []
-        if goals:
-            story.append(Paragraph(ar("الأهداف:"), style_section))
-            story.append(Spacer(1, 4))
-            for g in goals:
-                goal_text = g if isinstance(g, str) else g.get("description", str(g))
-                story.append(Paragraph(ar(f"• {goal_text}"), style_body))
-            story.append(Spacer(1, 8))
-
-        steps = plan.get("steps", []) if plan else []
-        if steps:
-            story.append(Paragraph(ar("خطوات التنفيذ:"), style_section))
+            section_style = ParagraphStyle('PlanTitle', fontName='DejaVuSans-Bold', fontSize=14, alignment=TA_RIGHT, textColor=color, leading=18)
+            title_text = plan.get("title", type_label) if plan else type_label
+            story.append(Paragraph(ar(title_text), section_style))
             story.append(Spacer(1, 6))
 
-            step_headers = [
-                Paragraph(ar("المسؤول"), style_table_header),
-                Paragraph(ar("المدة"), style_table_header),
-                Paragraph(ar("الوصف"), style_table_header),
-                Paragraph(ar("الخطوة"), style_table_header),
-            ]
-            step_rows = [step_headers]
-            for idx, step in enumerate(steps):
-                step_rows.append([
-                    Paragraph(ar(step.get("responsible", "—")), style_table_cell),
-                    Paragraph(ar(step.get("duration", "—")), style_table_cell),
-                    Paragraph(ar(step.get("description", "—")), style_table_cell),
-                    Paragraph(ar(step.get("title", f"خطوة {idx + 1}")), style_table_cell),
-                ])
+            summary = plan.get("summary", "") if plan else ""
+            if summary:
+                story.append(Paragraph(ar(summary), style_body_italic))
+                story.append(Spacer(1, 8))
 
-            step_tbl = Table(step_rows, colWidths=[3.5*cm, 3*cm, 7*cm, 3.5*cm])
-            step_style_cmds = [
-                ('BACKGROUND', (0, 0), (-1, 0), NAVY),
-                ('TEXTCOLOR', (0, 0), (-1, 0), white),
-                ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#DDDDDD")),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('TOPPADDING', (0, 0), (-1, -1), 4),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-                ('LEFTPADDING', (0, 0), (-1, -1), 6),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-            ]
-            for idx in range(1, len(step_rows)):
-                bg = LIGHT_GRAY if idx % 2 == 1 else white
-                step_style_cmds.append(('BACKGROUND', (0, idx), (-1, idx), bg))
-            step_tbl.setStyle(TableStyle(step_style_cmds))
-            story.append(step_tbl)
+            goals = plan.get("goals", []) if plan else []
+            if goals:
+                story.append(Paragraph(ar("الأهداف:"), style_section))
+                story.append(Spacer(1, 4))
+                for g in goals:
+                    goal_text = g if isinstance(g, str) else g.get("description", str(g))
+                    story.append(Paragraph(ar(f"• {goal_text}"), style_body))
+                story.append(Spacer(1, 8))
 
-        notes = plan.get("notes", "") if plan else ""
-        if notes:
-            story.append(Spacer(1, 8))
-            story.append(Paragraph(ar(f"ملاحظات: {notes}"), style_body))
+            steps = plan.get("steps", []) if plan else []
+            if steps:
+                story.append(Paragraph(ar("خطوات التنفيذ:"), style_section))
+                story.append(Spacer(1, 6))
 
-        outcome = plan.get("expected_outcome", "") if plan else ""
-        if outcome:
-            story.append(Spacer(1, 8))
-            outcome_style = ParagraphStyle('Outcome', fontName='DejaVuSans-Bold', fontSize=10, alignment=TA_RIGHT, textColor=color, leading=14)
-            story.append(Paragraph(ar(f"النتيجة المتوقعة: {outcome}"), outcome_style))
+                step_headers = [
+                    Paragraph(ar("المسؤول"), style_table_header),
+                    Paragraph(ar("المدة"), style_table_header),
+                    Paragraph(ar("الوصف"), style_table_header),
+                    Paragraph(ar("الخطوة"), style_table_header),
+                ]
+                step_rows = [step_headers]
+                for idx, step in enumerate(steps):
+                    step_rows.append([
+                        Paragraph(ar(step.get("responsible", "—")), style_table_cell),
+                        Paragraph(ar(step.get("duration", "—")), style_table_cell),
+                        Paragraph(ar(step.get("description", "—")), style_table_cell),
+                        Paragraph(ar(step.get("title", f"خطوة {idx + 1}")), style_table_cell),
+                    ])
 
-    if plan_type in ("remedial", "both") and remedial_plan:
-        add_plan_section(remedial_plan, "remedial")
+                step_tbl = Table(step_rows, colWidths=[3.5*cm, 3*cm, 7*cm, 3.5*cm])
+                step_style_cmds = [
+                    ('BACKGROUND', (0, 0), (-1, 0), NAVY),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), white),
+                    ('GRID', (0, 0), (-1, -1), 0.5, HexColor("#DDDDDD")),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('TOPPADDING', (0, 0), (-1, -1), 4),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ]
+                for idx in range(1, len(step_rows)):
+                    bg = LIGHT_GRAY if idx % 2 == 1 else white
+                    step_style_cmds.append(('BACKGROUND', (0, idx), (-1, idx), bg))
+                step_tbl.setStyle(TableStyle(step_style_cmds))
+                story.append(step_tbl)
 
-    if plan_type in ("enrichment", "both") and enrichment_plan:
-        add_plan_section(enrichment_plan, "enrichment")
+            notes = plan.get("notes", "") if plan else ""
+            if notes:
+                story.append(Spacer(1, 8))
+                story.append(Paragraph(ar(f"ملاحظات: {notes}"), style_body))
 
-    story.append(Spacer(1, 20))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#CCCCCC")))
-    story.append(Spacer(1, 6))
-    story.append(Paragraph(ar(f"تم التصدير من نظام نَسَّق  •  {export_date}"), style_footer))
+            outcome = plan.get("expected_outcome", "") if plan else ""
+            if outcome:
+                story.append(Spacer(1, 8))
+                outcome_style = ParagraphStyle('Outcome', fontName='DejaVuSans-Bold', fontSize=10, alignment=TA_RIGHT, textColor=color, leading=14)
+                story.append(Paragraph(ar(f"النتيجة المتوقعة: {outcome}"), outcome_style))
 
-    buffer = io.BytesIO()
-    pdf_doc = SimpleDocTemplate(
-        buffer, pagesize=A4,
-        topMargin=1.5*cm, bottomMargin=1.5*cm,
-        leftMargin=2*cm, rightMargin=2*cm,
-        title=plan_label, author="NASSAQ"
-    )
-    pdf_doc.build(story)
-    buffer.seek(0)
+        if plan_type in ("remedial", "both") and remedial_plan:
+            add_plan_section(remedial_plan, "remedial")
+
+        if plan_type in ("enrichment", "both") and enrichment_plan:
+            add_plan_section(enrichment_plan, "enrichment")
+
+        story.append(Spacer(1, 20))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=HexColor("#CCCCCC")))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(ar(f"تم التصدير من نظام نَسَّق  •  {export_date}"), style_footer))
+
+        buffer = io.BytesIO()
+        pdf_doc = SimpleDocTemplate(
+            buffer, pagesize=A4,
+            topMargin=1.5*cm, bottomMargin=1.5*cm,
+            leftMargin=2*cm, rightMargin=2*cm,
+            title=plan_label, author="NASSAQ"
+        )
+        pdf_doc.build(story)
+        buffer.seek(0)
+        return buffer
+
+    buffer = await run_cpu_bound(_build_plans_pdf, kind="pdf")
 
     safe_name = student_name.replace(" ", "_")
     type_suffix = {"remedial": "Remedial_Plan", "enrichment": "Enrichment_Plan", "both": "Plans"}
@@ -4814,10 +5424,17 @@ async def export_student_full_profile_pdf(
     elements.append(Spacer(1, 4))
     elements.append(Paragraph(f"{ar(f'تم التصدير بواسطة: {exported_by}')} | {export_date} | NASSAQ", style_footer))
 
-    buf = io.BytesIO()
-    pdf_doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.5*cm, bottomMargin=1.5*cm, leftMargin=2*cm, rightMargin=2*cm)
-    pdf_doc.build(elements)
-    buf.seek(0)
+    # The layout pass is the expensive, non-awaiting part (Arabic shaping was
+    # already applied per element above): run it on the render pool so the
+    # event loop is not frozen for the length of the build.
+    def _build_profile_pdf():
+        buf = io.BytesIO()
+        pdf_doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.5*cm, bottomMargin=1.5*cm, leftMargin=2*cm, rightMargin=2*cm)
+        pdf_doc.build(elements)
+        buf.seek(0)
+        return buf
+
+    buf = await run_cpu_bound(_build_profile_pdf, kind="pdf")
 
     filename = f"NASSAQ_Profile_{student.get('full_name', 'student')}_{export_date}.pdf"
     from urllib.parse import quote

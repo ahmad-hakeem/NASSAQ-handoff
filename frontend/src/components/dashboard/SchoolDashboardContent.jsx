@@ -197,7 +197,7 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
       textColor: 'text-red-500',
       bgLight: 'bg-red-50 dark:bg-red-950/30',
       ringColor: 'ring-red-500/20',
-      path: '/admin/attendance',
+      path: '/principal/attendance',
       actionLabel: t('view'),
       priority: 'critical',
     },
@@ -209,7 +209,7 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
       textColor: 'text-amber-500',
       bgLight: 'bg-amber-50 dark:bg-amber-950/30',
       ringColor: 'ring-amber-500/20',
-      path: '/admin/attendance',
+      path: '/principal/attendance',
       actionLabel: t('followUp'),
       priority: 'high',
     },
@@ -221,7 +221,7 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
       textColor: 'text-orange-500',
       bgLight: 'bg-orange-50 dark:bg-orange-950/30',
       ringColor: 'ring-orange-500/20',
-      path: '/school/schedule',
+      path: '/principal/schedule',
       actionLabel: t('assign'),
       priority: 'high',
     },
@@ -257,7 +257,7 @@ const DailyOpsPanel = ({ data, isRTL, onNavigate }) => {
       textColor: 'text-rose-500',
       bgLight: 'bg-rose-50 dark:bg-rose-950/30',
       ringColor: 'ring-rose-500/20',
-      path: '/admin/users-management',
+      path: '/principal/users-management',
       actionLabel: isRTL ? 'متابعة' : 'Review',
       priority: 'medium',
     },
@@ -463,12 +463,12 @@ const PerformanceSnapshot = ({ metrics, attendance, isRTL }) => {
 const StrategicNav = ({ onAction, isRTL, onNavigate }) => {
   const { t } = useTranslation();
   const navItems = [
-    { id: 'users', label: t('userManagement'), icon: Users, path: '/admin/users-management', color: 'from-blue-500 to-blue-600' },
-    { id: 'schedule', label: t('timetable'), icon: CalendarDays, path: '/school/schedule', color: 'from-emerald-500 to-emerald-600' },
-    { id: 'attendance', label: t('attendance'), icon: ClipboardList, path: '/admin/attendance', color: 'from-violet-500 to-violet-600' },
+    { id: 'users', label: t('userManagement'), icon: Users, path: '/principal/users-management', color: 'from-blue-500 to-blue-600' },
+    { id: 'schedule', label: t('timetable'), icon: CalendarDays, path: '/principal/schedule', color: 'from-emerald-500 to-emerald-600' },
+    { id: 'attendance', label: t('attendance'), icon: ClipboardList, path: '/principal/attendance', color: 'from-violet-500 to-violet-600' },
     { id: 'insights', label: isRTL ? 'رؤى الذكاء' : 'AI Insights', icon: BarChart3, path: '/principal/ai-insights', color: 'from-amber-500 to-amber-600' },
     { id: 'communication', label: t('communication'), icon: Megaphone, path: '/principal/communication', color: 'from-pink-500 to-pink-600' },
-    { id: 'settings', label: t('schoolSettings'), icon: Settings, path: '/school/settings', color: 'from-slate-500 to-slate-600' },
+    { id: 'settings', label: t('schoolSettings'), icon: Settings, path: '/principal/settings', color: 'from-slate-500 to-slate-600' },
   ];
 
   return (

@@ -60,8 +60,11 @@ async def _bootstrap_it_workspace() -> dict:
         "is_active": True,
         "password_hash": "x",
     }
-    await gd_insert(db.session, "users", user)
     wsid = independent_workspace_id(user)
+    # Post-bootstrap state: the schools row exists FIRST (FK) and the user is
+    # tenant-bound to the workspace — routes that resolve the tenant from the
+    # DB row (e.g. session start) fail closed when tenant_id is NULL.
+    user["tenant_id"] = wsid
 
     await gd_insert(db.session, "schools", {
         "id": wsid,
@@ -72,6 +75,7 @@ async def _bootstrap_it_workspace() -> dict:
         "language": "ar",
         "school_type": "independent_teacher_workspace",
     })
+    await gd_insert(db.session, "users", user)
 
     await gd_insert(db.session, "teachers", {
         "id": teacher_id,
@@ -109,6 +113,19 @@ async def _bootstrap_it_workspace() -> dict:
         "name": "Math",
         "name_ar": "رياضيات",
         "school_id": wsid,
+        "is_active": True,
+    })
+
+    # Active teacher→class assignment: attendance write/read routes gate
+    # teacher/IT callers via can_view_class(), which requires a
+    # teacher_assignments (or class_sessions) link — same-tenant membership
+    # alone is not sufficient.
+    await gd_insert(db.session, "teacher_assignments", {
+        "id": str(uuid.uuid4()),
+        "school_id": wsid,
+        "teacher_id": teacher_id,
+        "class_id": class_id,
+        "subject_id": subject_id,
         "is_active": True,
     })
 
@@ -381,8 +398,11 @@ async def test_smoke_row10_notifications_receive(client):
 @pytest.mark.asyncio
 async def test_smoke_row11_personal_scope_attendance_export_xlsx(client):
     ctx = await _bootstrap_it_workspace()
+    # Teachers/ITs must scope attendance reports to an assigned class —
+    # school-wide reports (no class_id) are admin-only.
     resp = await client.get(
-        "/reports/school/attendance", headers=ctx["headers"],
+        f"/reports/school/attendance?class_id={ctx['class_id']}",
+        headers=ctx["headers"],
     )
     assert resp.status_code == 200, resp.text
 
@@ -391,8 +411,11 @@ async def test_smoke_row11_personal_scope_attendance_export_xlsx(client):
     # call; the un-stepped header still drives `/reports/...` above so
     # the no-MFA path remains exercised.
     await seed_active_passkey(ctx["user"]["id"])
+    # School-wide exports (school_*) are admin-only (Task #423); teachers/ITs
+    # export class-scoped data via the class_report path with an assigned
+    # class_id — that IS the §7 row 25 "personal scope".
     xlsx = await client.get(
-        "/export/report/school_attendance?format=xlsx",
+        f"/export/report/class_report?format=xlsx&class_id={ctx['class_id']}",
         headers=_it_headers_mfa(ctx["user"]),
     )
     assert xlsx.status_code == 200, xlsx.text

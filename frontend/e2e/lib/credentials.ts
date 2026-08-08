@@ -46,10 +46,13 @@ export function getPrincipalCredentials(): Credential {
   };
 }
 
-export function getParentCredentials(): Credential {
+export function getParentCredentials(): Credential & { totpSecret: string } {
   return {
     email: readEnv('E2E_PARENT_EMAIL'),
     password: readEnv('E2E_PARENT_PASSWORD'),
+    // Parents are MFA Tier C — the seed enrolls a real TOTP factor and
+    // exports its secret so specs complete the genuine login challenge.
+    totpSecret: readEnv('E2E_PARENT_TOTP_SECRET'),
   };
 }
 
@@ -74,10 +77,17 @@ export function getPlatformSubAdminCredentials(): Credential {
   };
 }
 
-export function getMfaUserCredentials(): Credential & { recoveryCode: string } {
+export function getMfaUserCredentials(): Credential & { recoveryCode: string; recoveryCodes: string[] } {
+  const pool = (process.env.E2E_MFA_USER_RECOVERY_CODES || '')
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean);
   return {
     email: readEnv('E2E_MFA_USER_EMAIL'),
     password: readEnv('E2E_MFA_USER_PASSWORD'),
     recoveryCode: readEnv('E2E_MFA_USER_RECOVERY_CODE'),
+    // Recovery codes are single-use: retries index into this pool with
+    // testInfo.retry so retry #1 never replays a consumed code.
+    recoveryCodes: pool.length ? pool : [readEnv('E2E_MFA_USER_RECOVERY_CODE')],
   };
 }

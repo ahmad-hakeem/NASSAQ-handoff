@@ -13,11 +13,12 @@ import uuid
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert
 from auth_scope import is_independent_workspace_id
 from utils.it_schedule import normalize_it_day, compute_it_slot_times
+from utils.subject_display import build_subject_name_map
 
 import logging
 
 from sqlalchemy.exc import ProgrammingError, OperationalError
-from sqlalchemy import select, func, and_, cast
+from sqlalchemy import select, func, and_, cast, bindparam, text as sa_text
 from sqlalchemy.types import Date as _SADate
 
 logger = logging.getLogger("nassaq.parent_portal_routes")
@@ -414,6 +415,12 @@ async def _resolve_class_today_sessions(session, school_id, class_id, today_en):
             "raw_period": raw_period,
             "subject_id": s.get("subject_id"),
             "teacher_id": s.get("teacher_id"),
+            # Modern-engine rows may also carry denormalised names (written by
+            # the manual timetable editor). Carry them the same way the IT
+            # branch does so the caller can fall back to them when the
+            # subjects/teachers lookup misses (deleted or dangling id).
+            "subject_name": s.get("subject_name") or "",
+            "teacher_name": s.get("teacher_name") or "",
             "start_time": _norm_hhmm(s.get("start_time")) or _norm_hhmm(slot_start),
             "end_time": _norm_hhmm(s.get("end_time")) or _norm_hhmm(slot_end),
         })
@@ -497,6 +504,43 @@ async def _merged_homework_counts(session, child: dict, school_id,
                 done += 1
 
     return done, total
+
+
+# Session rows in these states describe a lesson that is NOT taking place, so
+# they must never be the reason a teacher becomes messageable.
+_INACTIVE_SESSION_STATUSES = {"cancelled", "canceled", "deleted", "removed", "archived"}
+
+
+def _teacher_user_in_tenant(user: dict, school_id: str) -> bool:
+    """Is this ``users`` row an acceptable recipient for ``school_id``?
+
+    The tenant proof for a teacher is the school-pinned ``teachers`` row, not
+    the nullable ``users.tenant_id`` column: legacy teacher accounts were
+    provisioned without a tenant and were silently dropped from the parent's
+    recipient list even though they teach the child every week. A user row
+    that carries a DIFFERENT tenant is still rejected (fail closed).
+    """
+    if not user:
+        return False
+    user_tenant = user.get("tenant_id")
+    return not user_tenant or user_tenant == school_id
+
+
+def _active_schedule_sessions(rows: list) -> list:
+    """Drop ``schedule_sessions`` rows that describe a lesson which is not
+    taking place (cancelled/deleted); a cancelled period must never be the
+    reason a teacher becomes messageable.
+
+    Deliberately does NOT try to pick a single "current" ``schedule_id`` per
+    class: independent-teacher workspaces store legitimate week-specific
+    schedule generations side by side, so a newest-generation-wins rule would
+    hide a teacher who only teaches that class in another week. The legacy
+    ``schedules`` parent collection carries no status to anchor on either.
+    """
+    return [
+        r for r in rows
+        if str(r.get("status") or "").strip().lower() not in _INACTIVE_SESSION_STATUSES
+    ]
 
 
 def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
@@ -651,7 +695,147 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         from utils.parent_children_resolution import enrich_children_with_class_names
         children = await enrich_children_with_class_names(children, db.session, school_id)
 
+        # ------------------------------------------------------------------
+        # Batched enrichment (was a textbook N+1: per child ~5-6 queries —
+        # distinct-days + present/late counts + recent grades + all grades +
+        # school lookup). Replaced with a fixed handful of set-based queries
+        # whose semantics mirror the per-child helpers exactly.
+        # ------------------------------------------------------------------
+        # Resolve each child's effective school id once; the class-level path
+        # requires BOTH class_id and school_id (mirrors the old `if` branch).
+        _child_school = {
+            c.get("id"): (c.get("school_id") or school_id) for c in children
+        }
+        # (school_id, class_id) pairs whose distinct-day denominator we need.
+        _class_pairs = sorted({
+            (_child_school[c.get("id")], c.get("class_id"))
+            for c in children
+            if c.get("class_id") and _child_school[c.get("id")]
+        })
+        # (school_id, student_id) that use the no-class fallback branch.
+        _fallback_children = [
+            c for c in children
+            if not (c.get("class_id") and _child_school[c.get("id")])
+        ]
+
+        # (1) Distinct teaching-day count per (school_id, class_id) — the
+        #     class-level denominator, cast(date AS date) DISTINCT, mirroring
+        #     _att_distinct_days scoped by {school_id, class_id}.
+        _distinct_days_by_pair: dict = {}
+        if _class_pairs:
+            _pair_school_ids = list({p[0] for p in _class_pairs})
+            _pair_class_ids = list({p[1] for p in _class_pairs})
+            _dd_rows = (await db.session.execute(
+                sa_text(
+                    "SELECT school_id, class_id, COUNT(DISTINCT date::date) AS cnt "
+                    "FROM attendance "
+                    "WHERE school_id IN :sids AND class_id IN :cids "
+                    "GROUP BY school_id, class_id"
+                ).bindparams(
+                    bindparam("sids", expanding=True),
+                    bindparam("cids", expanding=True),
+                ),
+                {"sids": _pair_school_ids, "cids": _pair_class_ids},
+            )).all()
+            _distinct_days_by_pair = {(r[0], r[1]): int(r[2]) for r in _dd_rows}
+
+        # (2) present+late row counts per (school_id, class_id, student_id) for
+        #     class-scoped children — mirrors the two _att_count(present)+
+        #     _att_count(late) calls.
+        _present_by_triple: dict = {}
+        _class_child_ids = [
+            c.get("id") for c in children
+            if c.get("class_id") and _child_school[c.get("id")]
+        ]
+        if _class_child_ids:
+            # Tenant scope: the old per-child helper filtered school_id AND
+            # class_id explicitly — keep the query bounded to the children's
+            # own (school, class) universe, never a bare student_id scan.
+            _cc_school_ids = list({p[0] for p in _class_pairs})
+            _cc_class_ids = list({p[1] for p in _class_pairs})
+            _pl_rows = (await db.session.execute(
+                sa_text(
+                    "SELECT school_id, class_id, student_id, COUNT(id) AS cnt "
+                    "FROM attendance "
+                    "WHERE student_id IN :stids AND school_id IN :sids "
+                    "AND class_id IN :cids AND status IN ('present','late') "
+                    "GROUP BY school_id, class_id, student_id"
+                ).bindparams(
+                    bindparam("stids", expanding=True),
+                    bindparam("sids", expanding=True),
+                    bindparam("cids", expanding=True),
+                ),
+                {"stids": _class_child_ids, "sids": _cc_school_ids,
+                 "cids": _cc_class_ids},
+            )).all()
+            _present_by_triple = {(r[0], r[1], r[2]): int(r[3]) for r in _pl_rows}
+
+        # (3) Fallback branch (no class): total rows per (school_id, student_id)
+        #     and present+late per (school_id, student_id).
+        _fb_total_by_pair: dict = {}
+        _fb_present_by_pair: dict = {}
+        if _fallback_children:
+            _fb_ids = [c.get("id") for c in _fallback_children]
+            # Tenant scope: the old per-child helper filtered school_id too.
+            _fb_school_ids = list({
+                _child_school[c.get("id")] for c in _fallback_children
+                if _child_school[c.get("id")]
+            }) or [school_id]
+            _fb_total_rows = (await db.session.execute(
+                sa_text(
+                    "SELECT school_id, student_id, COUNT(id) AS cnt "
+                    "FROM attendance "
+                    "WHERE student_id IN :stids AND school_id IN :sids "
+                    "GROUP BY school_id, student_id"
+                ).bindparams(
+                    bindparam("stids", expanding=True),
+                    bindparam("sids", expanding=True),
+                ),
+                {"stids": _fb_ids, "sids": _fb_school_ids},
+            )).all()
+            _fb_total_by_pair = {(r[0], r[1]): int(r[2]) for r in _fb_total_rows}
+            _fb_present_rows = (await db.session.execute(
+                sa_text(
+                    "SELECT school_id, student_id, COUNT(id) AS cnt "
+                    "FROM attendance "
+                    "WHERE student_id IN :stids AND school_id IN :sids "
+                    "AND status IN ('present','late') "
+                    "GROUP BY school_id, student_id"
+                ).bindparams(
+                    bindparam("stids", expanding=True),
+                    bindparam("sids", expanding=True),
+                ),
+                {"stids": _fb_ids, "sids": _fb_school_ids},
+            )).all()
+            _fb_present_by_pair = {(r[0], r[1]): int(r[2]) for r in _fb_present_rows}
+
+        # (4) One grades fetch for ALL children, split in memory. `grades`
+        #     lives in generic_documents; gd_find supports {"$in": ids}.
+        _all_child_ids = [c.get("id") for c in children if c.get("id")]
+        _grades_by_child: dict = {}
+        if _all_child_ids:
+            _grades = await gd_find(
+                db.session, "grades", {"student_id": {"$in": _all_child_ids}}, limit=500 * len(_all_child_ids)
+            )
+            for g in _grades:
+                _grades_by_child.setdefault(g.get("student_id"), []).append(g)
+
+        # (5) One schools fetch via $in for the school-name fallback.
         school_name_cache = {}
+        _missing_school_ids = list({
+            (c.get("school_id") or school_id)
+            for c in children
+            if not c.get("school_name") and (c.get("school_id") or school_id)
+        })
+        if _missing_school_ids:
+            _school_docs = await gd_find(
+                db.session, "schools", {"id": {"$in": _missing_school_ids}}, limit=len(_missing_school_ids)
+            )
+            _school_by_id = {s.get("id"): s for s in _school_docs}
+            for sid in _missing_school_ids:
+                s_doc = _school_by_id.get(sid)
+                school_name_cache[sid] = s_doc.get("name") if s_doc else sid
+
         children_data = []
         for child in children:
             child_id = child.get("id")
@@ -663,41 +847,28 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             child_class_id = child.get("class_id")
             child_school_id = child.get("school_id") or school_id
             if child_class_id and child_school_id:
-                total_days = len(await _att_distinct_days(
-                    db.session,
-                    {"school_id": child_school_id, "class_id": child_class_id},
-                ))
+                total_days = _distinct_days_by_pair.get((child_school_id, child_class_id), 0)
                 # Count present + late as "attended" (late = physically present,
                 # just tardy). Consistent with the weekly-analysis formula (line 1557).
-                present_days = (
-                    await _att_count(db.session, {"school_id": child_school_id, "class_id": child_class_id,
-                                                   "student_id": child_id, "status": "present"})
-                    + await _att_count(db.session, {"school_id": child_school_id, "class_id": child_class_id,
-                                                    "student_id": child_id, "status": "late"})
-                )
+                present_days = _present_by_triple.get((child_school_id, child_class_id, child_id), 0)
             else:
-                total_days = await _att_count(
-                    db.session,
-                    {"school_id": child_school_id, "student_id": child_id},
-                )
-                present_days = (
-                    await _att_count(db.session, {"school_id": child_school_id, "student_id": child_id, "status": "present"})
-                    + await _att_count(db.session, {"school_id": child_school_id, "student_id": child_id, "status": "late"})
-                )
+                total_days = _fb_total_by_pair.get((child_school_id, child_id), 0)
+                present_days = _fb_present_by_pair.get((child_school_id, child_id), 0)
             # Honest empty: no sessions → null, not invented 100%. (Audit 2026-05-10.)
             attendance_rate = (present_days / total_days * 100) if total_days > 0 else None
 
-            recent_grades = await gd_find(db.session, "grades", {"student_id": child_id}, order_by="date", desc_order=True, limit=3)
-            all_grades = await gd_find(db.session, "grades", {"student_id": child_id}, limit=500)
+            _child_grades = _grades_by_child.get(child_id, [])
+            # recent_grades: ORDER BY date DESC LIMIT 3 (mirrors gd_find).
+            recent_grades = sorted(
+                _child_grades, key=lambda g: g.get("date") or "", reverse=True
+            )[:3]
+            all_grades = _child_grades
             # Honest empty for academics too — no grades => null, not a fake 0%.
             avg_score = (sum(g.get("percentage", 0) for g in all_grades) / len(all_grades)) if all_grades else None
 
             child_school_name = child.get("school_name")
             if not child_school_name:
                 sid = child.get("school_id") or school_id
-                if sid and sid not in school_name_cache:
-                    s_doc = await gd_find_one(db.session, "schools", {"id": sid})
-                    school_name_cache[sid] = s_doc.get("name") if s_doc else sid
                 child_school_name = school_name_cache.get(sid, "")
 
             children_data.append({
@@ -1150,7 +1321,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             # Fallback names for rows missing the denormalised copy (no N+1).
             sub_ids = list({s.get("subject_id") for s in rows if s.get("subject_id")})
             subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100) if sub_ids else []
-            sub_map = {s["id"]: (s.get("name_ar") or s.get("name_en") or s.get("name") or "") for s in subs}
+            sub_map = build_subject_name_map(subs)
 
             weekend_present = []  # ordered: friday then saturday, if used
             seen = set()
@@ -1216,8 +1387,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 tch_ids = list(set(s.get("teacher_id") for s in all_sessions if s.get("teacher_id")))
                 subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
                 tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=100)
-                sub_map = {s["id"]: s.get("name_ar", "") for s in subs}
-                tch_map = {t["id"]: t.get("full_name", "") for t in tchs}
+                sub_map = build_subject_name_map(subs)
+                tch_map = {t["id"]: (t.get("full_name") or "") for t in tchs}
 
                 # Resolve the canonical teaching-period model once, then place
                 # every session on its TRUE period row (no array-index packing)
@@ -1255,8 +1426,15 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                     schedule_by_day[day_ar].append({
                         "period": canonical,
                         "raw_period": raw_period,
-                        "subject": sub_map.get(session.get("subject_id"), "غير محدد"),
-                        "teacher": tch_map.get(session.get("teacher_id"), "غير محدد"),
+                        # Row-level denormalised names are the last resort
+                        # before the placeholder: a session whose subject was
+                        # deleted (dangling subject_id) still knows what it was.
+                        "subject": (sub_map.get(session.get("subject_id"))
+                                    or (session.get("subject_name") or "").strip()
+                                    or "غير محدد"),
+                        "teacher": (tch_map.get(session.get("teacher_id"))
+                                    or (session.get("teacher_name") or "").strip()
+                                    or "غير محدد"),
                         "start_time": session.get("start_time") or slot_start or "",
                         "end_time": session.get("end_time") or slot_end or ""
                     })
@@ -1316,8 +1494,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             tch_ids = list({s.get("teacher_id") for s in resolved_today if s.get("teacher_id")})
             subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=50) if sub_ids else []
             tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=50) if tch_ids else []
-            sub_map = {s["id"]: s.get("name_ar", s.get("name", "")) for s in subs}
-            tch_map = {t["id"]: t.get("full_name", "") for t in tchs}
+            sub_map = build_subject_name_map(subs)
+            tch_map = {t["id"]: (t.get("full_name") or "") for t in tchs}
 
             for s in resolved_today:
                 today_sessions.append({
@@ -3208,7 +3386,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         NOTE: the recipient set is the union of two schedule sources:
 
         1. ``schedule_sessions`` (legacy live timetable table), scoped by
-           both class and tenant.
+           both class and tenant, minus cancelled/deleted periods (see
+           ``_active_schedule_sessions``).
         2. ``timetable_sessions`` rows anchored to the school's LATEST
            PUBLISHED ``timetables`` row (the modern smart-engine store).
            Classes scheduled by the modern engine have NO
@@ -3251,6 +3430,9 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         sessions = await gd_find(db.session, "schedule_sessions",
                                  {"class_id": {"$in": class_ids},
                                   "school_id": school_id}, limit=2000)
+        # ...minus cancelled/deleted periods, which never make a teacher
+        # messageable.
+        sessions = _active_schedule_sessions(sessions)
         teacher_to_classes: dict = {}
         for s in sessions:
             tid = s.get("teacher_id")
@@ -3305,11 +3487,15 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         # schedule_sessions chain), just under a different user role.
         users = await gd_find(db.session, "users",
                               {"id": {"$in": user_ids},
-                               "tenant_id": school_id,
                                "role": {"$in": ["teacher", "independent_teacher"]},
                                "is_active": True},
                               limit=1000)
-        users_by_id = {u["id"]: u for u in users if u.get("id")}
+        # Tenant proof is the school-pinned teachers row resolved above; the
+        # nullable users.tenant_id only rejects a FOREIGN tenant.
+        users_by_id = {
+            u["id"]: u for u in users
+            if u.get("id") and _teacher_user_in_tenant(u, school_id)
+        }
         seen: set = set()
         recipients = []
         for t in teacher_rows:
@@ -3336,7 +3522,11 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                     uniq_labels.append(lbl)
             recipients.append({
                 "recipient_user_id": uid,
-                "teacher_name": user.get("full_name") or t.get("full_name") or "",
+                # The teachers row is the authoritative academic identity (it
+                # is what the Teachers page / schedule / lesson report show);
+                # a divergent users.full_name would surface a name the parent
+                # has never seen next to their child's class.
+                "teacher_name": t.get("full_name") or user.get("full_name") or "",
                 "child_ids": uniq_ids,
                 "child_labels": uniq_labels,
             })
@@ -3442,11 +3632,13 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 raise HTTPException(status_code=400, detail="المعلم المحدد غير متاح للمراسلة")
             receiver = await gd_find_one(db.session, "users", {
                 "id": requested_uid,
-                "tenant_id": school_id,
                 "role": {"$in": ["teacher", "independent_teacher"]},
                 "is_active": True,
             })
-            if not receiver:
+            # Same tenant rule as the recipient list: the school-pinned
+            # teachers row (already proven by ``allowed_row``) is the tenant
+            # anchor; a users row from ANOTHER tenant is still rejected.
+            if not receiver or not _teacher_user_in_tenant(receiver, school_id):
                 raise HTTPException(status_code=400, detail="المعلم المحدد غير متاح للمراسلة")
         else:
             raise HTTPException(status_code=400, detail="نوع المستلم غير صالح")
@@ -3607,7 +3799,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 if teacher_subject_map:
                     sub_ids = list(set(sid for sids in teacher_subject_map.values() for sid in sids))
                     subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
-                    sub_name_map = {s["id"]: s.get("name_ar", "") for s in subs}
+                    sub_name_map = build_subject_name_map(subs)
 
                     teacher_docs = await gd_find(db.session, "teachers", {"id": {"$in": list(teacher_subject_map.keys())}, "school_id": school_id}, limit=100)
 
@@ -3934,22 +4126,66 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         students = await _find_children(current_user, parent_phone, school_id)
 
+        # ------------------------------------------------------------------
+        # Batched enrichment (was N+1: per student 4 attendance COUNTs + one
+        # grades fetch + one behaviour fetch). Replaced with one grouped
+        # attendance count, one grades fetch, one behaviour fetch — all split
+        # in memory. Attendance is scoped by student_id only (no school scope),
+        # mirroring the original _att_count filters exactly.
+        # ------------------------------------------------------------------
+        _student_ids = [s.get("id") for s in students if s.get("id")]
+
+        # (1) status row counts per (student_id, status) — one grouped query
+        #     replaces total/present/absent/late COUNTs per student. total_att
+        #     mirrors _att_count({student_id}) = sum over all statuses.
+        _att_by_student: dict = {}
+        if _student_ids:
+            _att_rows = (await db.session.execute(
+                sa_text(
+                    "SELECT student_id, status, COUNT(id) AS cnt "
+                    "FROM attendance WHERE student_id IN :stids "
+                    "GROUP BY student_id, status"
+                ).bindparams(bindparam("stids", expanding=True)),
+                {"stids": _student_ids},
+            )).all()
+            for r in _att_rows:
+                _att_by_student.setdefault(r[0], {})[r[1]] = int(r[2])
+
+        # (2) One grades fetch for all students, split in memory.
+        _grades_by_student: dict = {}
+        if _student_ids:
+            _grades_all = await gd_find(
+                db.session, "grades", {"student_id": {"$in": _student_ids}}, limit=500 * len(_student_ids)
+            )
+            for g in _grades_all:
+                _grades_by_student.setdefault(g.get("student_id"), []).append(g)
+
+        # (3) One behaviour fetch for all students, split in memory.
+        _behaviour_by_student: dict = {}
+        if _student_ids:
+            _beh_all = await gd_find(
+                db.session, "behaviour_records", {"student_id": {"$in": _student_ids}}, limit=200 * len(_student_ids)
+            )
+            for b in _beh_all:
+                _behaviour_by_student.setdefault(b.get("student_id"), []).append(b)
+
         reports = []
         for s in students:
             sid = s.get("id")
 
-            total_att = await _att_count(db.session, {"student_id": sid})
-            present = await _att_count(db.session, {"student_id": sid, "status": "present"})
-            absent = await _att_count(db.session, {"student_id": sid, "status": "absent"})
-            late = await _att_count(db.session, {"student_id": sid, "status": "late"})
+            _status_counts = _att_by_student.get(sid, {})
+            present = _status_counts.get("present", 0)
+            absent = _status_counts.get("absent", 0)
+            late = _status_counts.get("late", 0)
+            total_att = sum(_status_counts.values())
             att_rate = round((present / total_att * 100), 1) if total_att > 0 else 0
 
-            grades = await gd_find(db.session, "grades", {"student_id": sid}, limit=500)
+            grades = _grades_by_student.get(sid, [])
             avg_grade = 0
             if grades:
                 avg_grade = round(sum(g.get("percentage", 0) for g in grades) / len(grades), 1)
 
-            behaviour_records = await gd_find(db.session, "behaviour_records", {"student_id": sid}, limit=200)
+            behaviour_records = _behaviour_by_student.get(sid, [])
             positive = sum(1 for b in behaviour_records if b.get("category") in ["positive", "إيجابي"])
             negative = sum(1 for b in behaviour_records if b.get("category") in ["negative", "سلبي"])
 

@@ -676,7 +676,7 @@ export const AdminDashboard = () => {
           </div>
 
           {/* AI Operations Panel */}
-          <QuickAIOperationsPanel />
+          <QuickAIOperationsPanel initialStats={s} />
 
         </div>
       </div>

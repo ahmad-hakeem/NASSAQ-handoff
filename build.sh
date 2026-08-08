@@ -59,6 +59,19 @@ rm -rf .local/share .local/state
 find . -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 pip cache purge 2>/dev/null || true
 
+# COLD-START: autoscale starts a fresh instance from the image on every
+# scale-from-zero, and the backend's import graph is large. Without cached
+# bytecode Python recompiles every module on that first request, which is the
+# slowest part of the cold start (and can outlast an uptime probe's timeout).
+# Precompiling here — after the __pycache__ purge above, so it is the LAST word
+# — bakes the .pyc files into the image so every instance starts warm.
+# The venv is already active from the top of this script; never re-source it
+# here (a missing path would trip `set -e` and fail an otherwise good build).
+echo "Precompiling Python bytecode (cold-start)..."
+python -m compileall -q -j 0 /home/runner/workspace/backend >/dev/null 2>&1 || true
+python -m compileall -q -j 0 /home/runner/workspace/.venv/lib >/dev/null 2>&1 || true
+echo "Bytecode precompiled."
+
 echo ""
 echo "Build complete."
 echo "=========================================="

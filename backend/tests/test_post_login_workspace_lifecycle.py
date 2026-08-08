@@ -160,11 +160,15 @@ async def _seed_recovery_code(user_id: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_mfa_verify_embeds_reactivation_banner_for_freshly_reactivated_it_user(client):
+async def test_mfa_verify_embeds_reactivation_banner_for_freshly_reactivated_it_user(client, monkeypatch):
     """The post-MFA token mint must also embed ``workspace_lifecycle``,
     not just the direct-token /auth/login path. We drive a real login →
     challenge → recovery_code verify cycle so any regression in the
     embed inside ``_complete_mfa_login``'s caller surfaces here."""
+    # This env runs with the demo kill switch (MFA_ENFORCEMENT_DISABLED=true),
+    # which makes login skip the MFA challenge and return a direct token.
+    # Turn enforcement back on so login issues the challenge this test needs.
+    monkeypatch.setenv("MFA_ENFORCEMENT_DISABLED", "false")
     ctx = await _mk_it_user_with_password(with_passkey=True)
     await _mark_reactivated(ctx["wsid"], days_archived=2)
     plaintext = await _seed_recovery_code(ctx["uid"])

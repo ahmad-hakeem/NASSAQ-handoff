@@ -182,7 +182,7 @@ async def _seed_it_parent(wsid: str) -> str:
 # 1. PUT /users/me/profile  (IT-conditional)
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_users_me_profile_it_no_mfa_returns_403_stepup(client):
+async def test_users_me_profile_it_no_mfa_returns_403_stepup(client, enforce_mfa):
     user = await _mk_it()
     resp = await client.put(
         "/users/me/profile",
@@ -221,7 +221,7 @@ async def test_users_me_profile_principal_unaffected(
 # 2. GET /export/report/{report_type}  (IT-conditional)
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_export_report_it_no_mfa_returns_403_stepup(client):
+async def test_export_report_it_no_mfa_returns_403_stepup(client, enforce_mfa):
     user = await _mk_it()
     resp = await client.get(
         "/export/report/timetable?format=pdf",
@@ -255,7 +255,7 @@ async def test_export_report_principal_unaffected(
 # 3. GET /export/attendance  (IT-conditional, IT now in role allow-list)
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_export_attendance_it_no_mfa_returns_403_stepup(client):
+async def test_export_attendance_it_no_mfa_returns_403_stepup(client, enforce_mfa):
     user = await _mk_it()
     resp = await client.get(
         "/export/attendance?start_date=2026-01-01&end_date=2026-01-07",
@@ -289,7 +289,7 @@ async def test_export_attendance_teacher_unaffected(
 # 4. GET /independent-teacher/schedule/export.pdf  (unconditional 403)
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_it_schedule_export_pdf_no_mfa_returns_403_stepup(client):
+async def test_it_schedule_export_pdf_no_mfa_returns_403_stepup(client, enforce_mfa):
     user = await _mk_it()
     resp = await client.get(
         "/independent-teacher/schedule/export.pdf",
@@ -312,7 +312,7 @@ async def test_it_schedule_export_pdf_with_mfa_passes_stepup_gate(client):
 # 5. PUT /students/{student_id}  (IT-conditional, IT now in role allow-list)
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_students_put_it_no_mfa_returns_403_stepup(client):
+async def test_students_put_it_no_mfa_returns_403_stepup(client, enforce_mfa):
     user = await _mk_it()
     wsid = independent_workspace_id(user)
     sid = await _seed_it_student(wsid)
@@ -355,7 +355,7 @@ async def test_students_put_principal_unaffected(
 # 6. DELETE /parents/{parent_id}  (IT-conditional, IT now in role allow-list)
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_parents_delete_it_no_mfa_returns_403_stepup(client):
+async def test_parents_delete_it_no_mfa_returns_403_stepup(client, enforce_mfa):
     user = await _mk_it()
     wsid = independent_workspace_id(user)
     pid = await _seed_it_parent(wsid)

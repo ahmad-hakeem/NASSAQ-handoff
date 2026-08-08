@@ -1,6 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
 import Cropper from 'react-easy-crop';
-import imageCompression from 'browser-image-compression';
 import {
   Dialog,
   DialogContent,
@@ -21,8 +20,9 @@ async function getCroppedImg(imageSrc, pixelCrop) {
     image.src = imageSrc;
   });
 
-  // Downscale to a reasonable avatar size (max 512px) to keep encoding fast & small
-  const MAX_DIM = 512;
+  // Always downscale to the final display size. Mirrors AVATAR_MAX_PX in
+  // backend/utils/avatar_image.py so client and server agree on dimensions.
+  const MAX_DIM = 256;
   const sw = pixelCrop.width;
   const sh = pixelCrop.height;
   const scale = Math.min(1, MAX_DIM / Math.max(sw, sh));
@@ -35,13 +35,31 @@ async function getCroppedImg(imageSrc, pixelCrop) {
   const ctx = canvas.getContext('2d');
   ctx.drawImage(image, pixelCrop.x, pixelCrop.y, sw, sh, 0, 0, dw, dh);
 
+  // Preserve transparency for logos that genuinely need it: encode as PNG
+  // only when the cropped pixels actually contain non-opaque alpha
+  // (the server re-encodes alpha images to WEBP). Everything else becomes
+  // a small JPEG.
+  let hasAlpha = false;
+  try {
+    const { data } = ctx.getImageData(0, 0, dw, dh);
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] < 255) {
+        hasAlpha = true;
+        break;
+      }
+    }
+  } catch (e) {
+    // getImageData can throw on tainted canvases; fall back to JPEG.
+  }
+  const mimeType = hasAlpha ? 'image/png' : 'image/jpeg';
+
   const blob = await new Promise((resolve) => {
-    canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.85);
+    canvas.toBlob((b) => resolve(b), mimeType, 0.85);
   });
   if (blob) return blob;
 
   // Fallback: synthesize a Blob from a data URL when canvas.toBlob is unavailable
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  const dataUrl = canvas.toDataURL(mimeType, 0.85);
   const byteString = atob(dataUrl.split(',')[1]);
   const mime = dataUrl.split(',')[0].split(':')[1].split(';')[0];
   const buf = new ArrayBuffer(byteString.length);
@@ -111,24 +129,9 @@ export function ImageCropModal({ open, onOpenChange, onSave, isRTL = true }) {
     setError('');
 
     try {
-      const croppedBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
-
-      let finalBlob = croppedBlob;
-      if (croppedBlob.size > 500 * 1024) {
-        try {
-          finalBlob = await imageCompression(
-            new File([croppedBlob], 'avatar.jpg', { type: 'image/jpeg' }),
-            {
-              maxSizeMB: 0.5,
-              maxWidthOrHeight: 512,
-              useWebWorker: false,
-              fileType: 'image/jpeg',
-            }
-          );
-        } catch (compressErr) {
-          console.warn('Image compression skipped:', compressErr);
-        }
-      }
+      // getCroppedImg already bounds the export to 256px, so the payload is
+      // a few kB — no secondary compression pass needed.
+      const finalBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
 
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();

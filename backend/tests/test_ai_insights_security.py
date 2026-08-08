@@ -67,12 +67,12 @@ AI_INSIGHTS_ENDPOINTS = (
 
 OVERVIEW_TOP_KEYS = {
     "overall_score", "trend", "trend_value", "has_data", "score_available",
-    "last_updated", "metrics",
+    "scope_level", "last_updated", "metrics",
 }
 OVERVIEW_METRIC_KEYS = {
-    "attendance_rate", "engagement_rate", "student_teacher_ratio",
-    "total_students", "total_teachers", "has_attendance_data",
-    "previous_month_score",
+    "attendance_rate", "engagement_rate", "has_engagement_data",
+    "student_teacher_ratio", "total_students", "total_teachers",
+    "has_attendance_data", "previous_month_score",
 }
 
 
@@ -87,20 +87,19 @@ def _headers(user_id: str, role: str, tenant_id):
 
 async def _mk_independent_teacher(*, with_workspace: bool):
     """Insert an independent_teacher user. Optionally also create the
-    workspace school row that resolve_ai_insights_scope looks up."""
+    workspace school row that resolve_ai_insights_scope looks up.
+
+    The minted bearer always carries ``tenant_id=itw_{uid}`` — the
+    post-bootstrap token shape. Since Task #183 the global
+    ``require_workspace_materialised`` gate 409s any IT bearer whose
+    ``tenant_id`` is NULL before the route runs, so a pre-bootstrap token
+    can no longer reach the AI Insights resolver at all. With
+    ``with_workspace=False`` the token is materialised but the workspace
+    row is absent — exercising the resolver's own fail-closed 403."""
     uid = str(uuid.uuid4())
-    await gd_insert(db.session, "users", {
-        "id": uid,
-        "role": UserRole.INDEPENDENT_TEACHER.value,
-        "tenant_id": None,
-        "email": f"it-{uid}@t.test",
-        "full_name": f"IT-{uid[:6]}",
-        "is_active": True,
-        "password_hash": "x",
-    })
-    workspace_id = None
+    workspace_id = f"itw_{uid}"
     if with_workspace:
-        workspace_id = f"itw_{uid}"
+        # Schools row FIRST: users.tenant_id has an FK to schools.id.
         await gd_insert(db.session, "schools", {
             "id": workspace_id,
             "name": f"Workspace-{uid[:6]}",
@@ -109,10 +108,21 @@ async def _mk_independent_teacher(*, with_workspace: bool):
             "country": "SA",
             "language": "ar",
         })
+    await gd_insert(db.session, "users", {
+        "id": uid,
+        "role": UserRole.INDEPENDENT_TEACHER.value,
+        # DB tenant_id only when the schools row exists (FK); the JWT below
+        # always carries it — the #183 gate is a JWT-only check.
+        "tenant_id": workspace_id if with_workspace else None,
+        "email": f"it-{uid}@t.test",
+        "full_name": f"IT-{uid[:6]}",
+        "is_active": True,
+        "password_hash": "x",
+    })
     return {
         "id": uid,
         "workspace_id": workspace_id,
-        "headers": _headers(uid, UserRole.INDEPENDENT_TEACHER.value, None),
+        "headers": _headers(uid, UserRole.INDEPENDENT_TEACHER.value, workspace_id),
     }
 
 
@@ -445,11 +455,19 @@ async def test_admin_predictions_recommendations_alerts_populated(
     the principal path was silently dropped)."""
     await _seed_teacher(seeded_school.id)
     await _seed_grade(seeded_school.id, seeded_school.students[0]["id"], 78.0)
+    # Predictions only emit an attendance card when there IS attendance data
+    # (A1: zero-data weeks emit nothing rather than a fake 0% trend). Seed a
+    # full two-week signal (>= 5 records in each week) so one of the three
+    # attendance branches deterministically fires.
+    await _seed_low_attendance(
+        seeded_school.id, seeded_school.students[0]["id"], days=14,
+    )
     admin = await _mk_admin_user(role, seeded_school.id)
 
     # All three list endpoints have at least one guaranteed entry once
     # the resolver hands the admin/principal the school scope:
-    #   - predictions: always appends one of three attendance branches.
+    #   - predictions: appends one of three attendance branches (or the
+    #     "insufficient data" card) whenever attendance data exists.
     #   - recommendations: always appends a default fallback if no rule
     #     fires.
     #   - alerts: always appends a default "no urgent alerts" entry if

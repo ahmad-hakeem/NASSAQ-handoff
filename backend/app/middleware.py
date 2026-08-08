@@ -21,6 +21,8 @@ logger = logging.getLogger("nassaq")
 
 
 def register_middleware(app: FastAPI):
+    from routes.health_routes import PROBE_PATHS as _PROBE_PATHS
+
     app.add_middleware(ErrorHandlerMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestTracingMiddleware)
@@ -29,6 +31,15 @@ def register_middleware(app: FastAPI):
     async def pg_session_middleware(request: Request, call_next):
         _p = request.url.path
         if _p.startswith("/api/ws/") or _p == "/ws":
+            return await call_next(request)
+
+        # Infrastructure probes must not borrow a pooled session. Liveness
+        # touches no dependency at all, and readiness deliberately opens its
+        # own connection to prove the pool can still hand one out — a
+        # request-scoped session here would hold a checkout for the probe's
+        # whole lifetime and let frequent probing amplify pool exhaustion
+        # into the very outage it is supposed to report.
+        if _p in _PROBE_PATHS:
             return await call_next(request)
 
         import os as _os

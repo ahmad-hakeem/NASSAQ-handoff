@@ -92,11 +92,22 @@ async def _mk_teacher(school_id: str) -> tuple[dict, str]:
 
 async def _assign(school_id: str, teacher_id: str, class_id: str,
                   is_active: bool = True) -> None:
-    await gd_insert(db.session, "teacher_class_assignments", {
+    # teacher_assignments is the authoritative visibility source consumed by
+    # get_teacher_allowed_class_ids(); teacher_class_assignments is
+    # intentionally excluded (auto-populated convenience table).
+    subject_id = str(uuid.uuid4())
+    await gd_insert(db.session, "subjects", {
+        "id": subject_id,
+        "school_id": school_id,
+        "name": f"Subj-{subject_id[:6]}",
+        "is_active": True,
+    })
+    await gd_insert(db.session, "teacher_assignments", {
         "id": str(uuid.uuid4()),
         "school_id": school_id,
         "teacher_id": teacher_id,
         "class_id": class_id,
+        "subject_id": subject_id,
         "is_active": is_active,
     })
 

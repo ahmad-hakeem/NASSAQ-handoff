@@ -42,6 +42,17 @@ BASE_URL = (
     os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
     or "http://localhost:8000"
 )
+
+# Live-server integration script: only meaningful against an explicitly
+# provided running backend — the localhost:8000 fallback must not be trusted
+# in the CI gate (no server there). See docs/ci/quarantine.md.
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("REACT_APP_BACKEND_URL", "").startswith(
+        ("http://", "https://")
+    ),
+    reason="live-server integration script: requires REACT_APP_BACKEND_URL "
+           "pointing at a running, seeded backend (docs/ci/quarantine.md)",
+)
 ADMIN_EMAIL = "admin@nassaq.com"
 ADMIN_PASSWORD = "Test@1234"
 

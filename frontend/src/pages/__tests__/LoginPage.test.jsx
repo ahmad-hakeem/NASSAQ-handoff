@@ -116,7 +116,7 @@ beforeEach(() => {
 describe('LoginPage — Task #195 success-and-error race', () => {
   test('successful teacher login: one toast, redirected to /teacher', async () => {
     mockLogin.mockResolvedValue({ success: true, user: { role: 'teacher' } });
-    mockRefreshUser.mockResolvedValue({ role: 'teacher' });
+    mockRefreshUser.mockResolvedValue({ role: 'teacher', mfa_enrolled_at: '2024-01-01T00:00:00Z' });
 
     render(<LoginPage />);
     fillCredentials();
@@ -208,7 +208,7 @@ describe('LoginPage — Task #195 success-and-error race', () => {
       success: false,
       mfaChallenge: { challenge_token: 'c', available_factor_kinds: ['email_otp'] },
     });
-    mockRefreshUser.mockResolvedValue({ role: 'teacher' });
+    mockRefreshUser.mockResolvedValue({ role: 'teacher', mfa_enrolled_at: '2024-01-01T00:00:00Z' });
 
     render(<LoginPage />);
     fillCredentials();
@@ -251,7 +251,7 @@ describe('LoginPage — Task #195 success-and-error race', () => {
   test('double-click submit only fires one /auth/login attempt', async () => {
     let resolveLogin;
     mockLogin.mockImplementation(() => new Promise((r) => { resolveLogin = r; }));
-    mockRefreshUser.mockResolvedValue({ role: 'teacher' });
+    mockRefreshUser.mockResolvedValue({ role: 'teacher', mfa_enrolled_at: '2024-01-01T00:00:00Z' });
 
     render(<LoginPage />);
     fillCredentials();

@@ -129,7 +129,7 @@ async def test_parse_returns_row_diagnostics(client):
 # (c) commit without recent MFA → 403 step-up envelope
 # ----------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_commit_requires_recent_mfa_403(client):
+async def test_commit_requires_recent_mfa_403(client, enforce_mfa):
     user = await _mk_it_workspace()
     # No mfa_recent_at on the token.
     h = _headers(user["id"], user["role"], user["tenant_id"])

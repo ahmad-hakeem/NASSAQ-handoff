@@ -28,7 +28,23 @@ from shared_models import (
     UserResponse
 )
 
+from utils.avatar_image import normalize_image_field_or_400
+
+from utils.avatar_serving import signed_image_url, is_internal_image_url
+
 router = APIRouter()
+
+
+async def _normalized_avatar(value: Optional[str]) -> Optional[str]:
+    """Bound any client-supplied avatar before it is persisted.
+
+    Every avatar write path routes through here. An oversized image stored on
+    ``users.avatar_url`` is shipped inline by /auth/me and every other user
+    serializer, so normalising at the write site is what keeps those payloads
+    small — the client-side cropper cannot be trusted to do it (it only
+    compresses above 500 kB, and it is bypassable anyway).
+    """
+    return await normalize_image_field_or_400(value)
 
 # Task #201 — IT §5.7 step-up backfill: a single shared dependency
 # instance so FastAPI can dedupe it across replays.
@@ -356,7 +372,13 @@ async def get_users_management_stats(
     students = await gd_count(db.session, "users", {"role": "student"})
     parents = await gd_count(db.session, "users", {"role": "parent"})
 
-    pending_requests = await gd_count(db.session, "registration_requests", {"status": "pending"})
+    # Requests queue with several "still open" statuses (pending_review,
+    # under_review, ...) — counting only the literal "pending" hid the
+    # entire school-teacher approval backlog (stat showed 0).
+    from engines.approval_engine import PENDING_STATUSES
+    pending_requests = await gd_count(
+        db.session, "registration_requests", {"status": {"$in": sorted(PENDING_STATUSES)}}
+    )
 
     return {
         "total_users": total_users,
@@ -435,7 +457,13 @@ async def get_platform_users(
             query["$or"] = search_conditions
 
     users = await gd_find(db.session, "users", query, offset=skip, limit=limit)
-    
+
+    # Task #1139 — never ship inline base64 avatars in list payloads; hand
+    # out the signed cacheable URL instead (non-data: values pass through).
+    for u in users:
+        if u.get("avatar_url"):
+            u["avatar_url"] = signed_image_url("avatar", u.get("id"), u.get("avatar_url"))
+
     total = await gd_count(db.session, "users", query)
 
     return {
@@ -504,6 +532,10 @@ async def get_users(
         query["role"] = role
     
     users = await gd_find(db.session, "users", query, limit=1000)
+    # Task #1139 — never ship inline base64 avatars; mint signed URLs.
+    for u in users:
+        if u.get("avatar_url"):
+            u["avatar_url"] = signed_image_url("avatar", u.get("id"), u.get("avatar_url"))
     return [UserResponse(**u) for u in users]
 
 
@@ -537,6 +569,8 @@ async def get_users_by_school(
         tenant_id = u.get("tenant_id")
         if not tenant_id:
             continue
+        if u.get("avatar_url"):
+            u["avatar_url"] = signed_image_url("avatar", u.get("id"), u.get("avatar_url"))
         grouped.setdefault(tenant_id, []).append(
             UserResponse(**u).model_dump(mode="json")
         )
@@ -1075,8 +1109,8 @@ async def update_user(
         updates["city"] = user_data.city
     if user_data.educational_department:
         updates["educational_department"] = user_data.educational_department
-    if user_data.avatar_url:
-        updates["avatar_url"] = user_data.avatar_url
+    if user_data.avatar_url and not is_internal_image_url(user_data.avatar_url):
+        updates["avatar_url"] = await _normalized_avatar(user_data.avatar_url)
     if user_data.role:
         valid_roles = [r.value for r in UserRole]
         if user_data.role not in valid_roles:
@@ -1296,9 +1330,11 @@ async def reset_user_password(
 
     try:
         from engines.email_service import send_admin_password_reset_notification
+        from services.email_client import send_email_off_loop
         user_email = user.get("email", "")
         if user_email:
-            send_admin_password_reset_notification(
+            await send_email_off_loop(
+                send_admin_password_reset_notification,
                 to_email=user_email,
                 user_name=user.get("full_name", ""),
                 admin_name=current_user.get("full_name", "المدير"),
@@ -1418,12 +1454,14 @@ async def upload_user_image(
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
     
+    normalized = await _normalized_avatar(data.image_data)
+
     await gd_update_one(db.session, "users", {"id": user_id}, {
-            "avatar_url": data.image_data,
+            "avatar_url": normalized,
             "updated_at": datetime.now(timezone.utc).isoformat()
         })
     
-    return {"message": "تم رفع الصورة بنجاح", "avatar_url": data.image_data}
+    return {"message": "تم رفع الصورة بنجاح", "avatar_url": signed_image_url("avatar", user_id, normalized)}
 
 @router.get("/users/{user_id}/activity")
 async def get_user_activity(
@@ -1506,12 +1544,16 @@ async def update_current_user_profile(
         if existing:
             raise HTTPException(status_code=400, detail="رقم الهاتف مستخدم مسبقاً")
         update_data["phone"] = data.phone
-    if data.avatar_url is not None:
-        update_data["avatar_url"] = data.avatar_url
+    if data.avatar_url is not None and not is_internal_image_url(data.avatar_url):
+        update_data["avatar_url"] = await _normalized_avatar(data.avatar_url)
     
     await gd_update_one(db.session, "users", {"id": current_user["id"]}, update_data)
     
     updated_user = await gd_find_one(db.session, "users", {"id": current_user["id"]})
+    if updated_user.get("avatar_url"):
+        updated_user["avatar_url"] = signed_image_url(
+            "avatar", updated_user.get("id"), updated_user.get("avatar_url")
+        )
     return UserResponse(**updated_user)
 
 @router.get("/users/me/preferences")
@@ -1661,9 +1703,11 @@ async def upload_user_avatar(
         except Exception:
             raise HTTPException(status_code=400, detail="بيانات الصورة غير صالحة | Invalid image data")
 
-        # Save avatar URL (base64 data URL)
+        # Bound the image before persisting: stored verbatim, it is re-sent
+        # inline by /auth/me on every app load.
+        normalized = await _normalized_avatar(image_data)
         update_data = {
-            "avatar_url": image_data,
+            "avatar_url": normalized,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
         
@@ -1672,7 +1716,7 @@ async def upload_user_avatar(
         return {
             "success": True,
             "message": "تم رفع الصورة بنجاح",
-            "avatar_url": image_data
+            "avatar_url": signed_image_url("avatar", current_user["id"], normalized)
         }
         
     except HTTPException:
@@ -1749,8 +1793,8 @@ async def update_user_profile_extended(
             if _teacher_collision and _teacher_collision.get("id") != _caller_teacher_id:
                 raise HTTPException(status_code=400, detail="رقم الهاتف مستخدم مسبقاً")
         update_data["phone"] = data.phone
-    if data.avatar_url is not None:
-        update_data["avatar_url"] = data.avatar_url
+    if data.avatar_url is not None and not is_internal_image_url(data.avatar_url):
+        update_data["avatar_url"] = await _normalized_avatar(data.avatar_url)
     if data.preferred_language is not None:
         update_data["preferred_language"] = data.preferred_language
     if data.bio is not None:

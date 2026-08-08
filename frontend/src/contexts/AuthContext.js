@@ -1092,30 +1092,107 @@ export const AuthProvider = ({ children }) => {
   // role-aware UI should read from here instead of hardcoding role →
   // permission mappings.
   const [permissions, setPermissions] = useState(null);
-  const [permissionsLoading, setPermissionsLoading] = useState(false);
+  // In-flight promise shared across concurrent callers. Sidebar, route
+  // guards, and pages all call fetchPermissions from mount effects in the
+  // same render pass — a React-state "loading" flag can't guard that race
+  // (every closure still sees the pre-update value), which is exactly how
+  // production traces ended up with /auth/me/permissions fetched twice
+  // back-to-back, and the losing caller handed `null` instead of data.
+  const permissionsInFlightRef = useRef(null);
+  // Generation counter: bumped on force refresh and on any authenticated-
+  // identity change. A completion from an older generation must neither
+  // populate the cache nor clear the newer generation's in-flight promise —
+  // otherwise a slow response fetched under a previous token/tenant/role
+  // could overwrite the fresh permission set (stale-authz UI risk).
+  const permissionsGenRef = useRef(0);
+  // Bearer token the cache / in-flight request was established under.
+  // Every token transition in the app (login, refresh, MFA step-up, role
+  // switch via updateToken, invite acceptance) writes localStorage
+  // 'nassaq_token' synchronously BEFORE the React state/user catch up, so
+  // comparing against it at read time closes the window where a caller
+  // under a new bearer could be served permissions cached under the old
+  // one. The identity effect below stays as defense in depth for
+  // user-object-only changes.
+  const permissionsTokenRef = useRef(null);
+  const invalidatePermissions = useCallback(() => {
+    permissionsGenRef.current += 1;
+    permissionsInFlightRef.current = null;
+    permissionsTokenRef.current = null;
+    setPermissions(null);
+  }, []);
+
+  // Invalidate the cached permission set whenever the authenticated
+  // identity changes (logout, login as someone else, role switch, tenant
+  // change). The first anon → user transition is deliberately exempt:
+  // the bootstrap permissions fetch runs under this same token, and
+  // clearing it here would force every consumer to refetch — recreating
+  // the double-fetch this cache exists to prevent.
+  const lastPermissionsIdentityRef = useRef(null);
+  useEffect(() => {
+    const key = user
+      ? `${user.id}|${user.tenant_id || ''}|${user.role || ''}|${user.is_switched ? '1' : '0'}`
+      : null;
+    const prev = lastPermissionsIdentityRef.current;
+    lastPermissionsIdentityRef.current = key;
+    if (prev !== null && prev !== key) {
+      invalidatePermissions();
+    }
+  }, [user, invalidatePermissions]);
+
   const fetchPermissions = useCallback(async ({ force = false } = {}) => {
     if (!token) return null;
+    // Authoritative bearer for this call: localStorage is written
+    // synchronously by every token-transition path, whereas the `token`
+    // state and `user` object lag a render / an /auth/me round-trip.
+    const bearer = localStorage.getItem('nassaq_token') || token;
     // Pass `force: true` after a tenant_id change (e.g. IT bootstrap)
     // so the cached permission set is discarded and rebuilt against the
     // freshly-set tenant. Without `force`, we keep the cached value to
     // avoid hammering /auth/me/permissions on every UI gate read.
     if (force) {
-      setPermissions(null);
+      invalidatePermissions();
+    } else if (permissionsTokenRef.current !== bearer) {
+      // Bearer/session transition (role switch, re-login, step-up) that
+      // the passive identity effect hasn't observed yet — the cache and
+      // any in-flight request belong to the previous auth context.
+      invalidatePermissions();
     } else if (permissions) {
       return permissions;
     }
-    if (permissionsLoading) return null;
-    setPermissionsLoading(true);
-    try {
-      const response = await api.get('/auth/me/permissions');
-      setPermissions(response.data);
-      return response.data;
-    } catch (error) {
-      return null;
-    } finally {
-      setPermissionsLoading(false);
+    if (permissionsInFlightRef.current) {
+      return permissionsInFlightRef.current;
     }
-  }, [token, api, permissions, permissionsLoading]);
+    const gen = permissionsGenRef.current;
+    permissionsTokenRef.current = bearer;
+    const request = (async () => {
+      try {
+        const response = await api.get('/auth/me/permissions');
+        if (
+          permissionsGenRef.current !== gen ||
+          (localStorage.getItem('nassaq_token') || token) !== bearer
+        ) {
+          // Superseded by a force refresh, identity change, or bearer
+          // transition while in flight — the payload belongs to a
+          // previous auth context.
+          return null;
+        }
+        setPermissions(response.data);
+        return response.data;
+      } catch (error) {
+        // Failures are not cached: clear the shared promise so the next
+        // caller can retry.
+        return null;
+      } finally {
+        // Only clear our own registration — a newer generation may have
+        // already replaced it.
+        if (permissionsInFlightRef.current === request) {
+          permissionsInFlightRef.current = null;
+        }
+      }
+    })();
+    permissionsInFlightRef.current = request;
+    return request;
+  }, [token, api, permissions, invalidatePermissions]);
 
   // Listen for user-updated events
   useEffect(() => {

@@ -273,3 +273,100 @@ async def test_parent_cannot_read_students_for_class(client, parent_headers, ten
         headers=parent_headers,
     )
     assert resp.status_code == 403, resp.text
+
+
+# --- Bulk-writer class authorization (teacher / independent teacher) --------
+#
+# The class card in "فصولي" now routes teachers into the in-class attendance
+# tab, whose "تسجيل بتاريخ آخر" action continues to the bulk writer. Tenant
+# membership alone must NOT let a teacher bulk-record attendance for a class
+# they are not linked to; an Independent Teacher owns every class in their own
+# `itw_{user_id}` workspace and must be allowed without an assignment row.
+
+async def _mk_teacher_assignment(school_id: str, teacher_id: str, class_id: str) -> None:
+    await gd_insert(db.session, "teacher_assignments", {
+        "id": str(uuid.uuid4()),
+        "school_id": school_id,
+        "teacher_id": teacher_id,
+        "class_id": class_id,
+        "is_active": True,
+    })
+    await db.session.flush()
+
+
+def _bulk_payload(class_id: str, student_ids: list) -> dict:
+    return {
+        "class_id": class_id,
+        "subject_id": None,
+        "time_slot_id": None,
+        "date": TODAY,
+        "records": [{"student_id": s, "status": "present"} for s in student_ids],
+    }
+
+
+@pytest.mark.asyncio
+async def test_bulk_attendance_teacher_without_assignment_denied(client, teacher_headers, tenant_a):
+    class_id, student_ids = await _seed_class_with_students(tenant_a, 2)
+
+    resp = await client.post(
+        "/attendance/bulk", json=_bulk_payload(class_id, student_ids), headers=teacher_headers,
+    )
+    assert resp.status_code == 403, resp.text
+
+
+@pytest.mark.asyncio
+async def test_bulk_attendance_it_owner_allowed_without_assignment(client):
+    from auth_scope import independent_workspace_id
+    from dependencies import create_access_token, UserRole
+
+    uid = str(uuid.uuid4())
+    it_user = {"id": uid, "role": UserRole.INDEPENDENT_TEACHER.value}
+    wsid = independent_workspace_id(it_user)
+    await gd_insert(db.session, "schools", {
+        "id": wsid,
+        "name": f"IT-WS-{uid[:6]}",
+        "code": f"IT{uid[:8]}",
+        "status": "active",
+        "country": "SA",
+        "language": "ar",
+        "school_type": "independent_teacher_workspace",
+    })
+    await gd_insert(db.session, "users", {
+        "id": uid,
+        "role": UserRole.INDEPENDENT_TEACHER.value,
+        "tenant_id": wsid,
+        "email": f"it-bulk-{uid}@t.test",
+        "full_name": "معلم مستقل",
+        "is_active": True,
+        "password_hash": "x",
+    })
+    await db.session.flush()
+
+    class_id, student_ids = await _seed_class_with_students(wsid, 2)
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': uid, 'role': UserRole.INDEPENDENT_TEACHER.value, 'tenant_id': wsid})}"}
+
+    # Own workspace class: allowed even though no teacher_assignments row exists.
+    ok = await client.post("/attendance/bulk", json=_bulk_payload(class_id, student_ids), headers=headers)
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["created"] == 2
+
+    # A class in a different tenant stays out of reach.
+    foreign_class, foreign_students = await _seed_class_with_students(await _other_school_id(), 1)
+    denied = await client.post(
+        "/attendance/bulk", json=_bulk_payload(foreign_class, foreign_students), headers=headers,
+    )
+    assert denied.status_code == 403, denied.text
+
+
+async def _other_school_id() -> str:
+    sid = str(uuid.uuid4())
+    await gd_insert(db.session, "schools", {
+        "id": sid,
+        "name": "مدرسة أخرى",
+        "code": f"OS{sid[:8]}",
+        "status": "active",
+        "country": "SA",
+        "language": "ar",
+    })
+    await db.session.flush()
+    return sid

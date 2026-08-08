@@ -14,6 +14,10 @@ import { AddTeacherWizard } from '../AddTeacherWizard';
 const mockApi = { get: jest.fn(), post: jest.fn() };
 const mockNassaqError = jest.fn();
 
+jest.mock('react-router-dom', () => ({
+  Link: ({ children, to, ...props }) => <a href={to} {...props}>{children}</a>,
+}));
+
 jest.mock('../../../contexts/ThemeContext', () => ({
   useTheme: () => ({ isRTL: false }),
   useTranslation: () => ({ t: (key) => key }),

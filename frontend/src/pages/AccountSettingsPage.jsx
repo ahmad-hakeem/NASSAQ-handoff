@@ -4,7 +4,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme , useTranslation } from '../contexts/ThemeContext';
 import { isGenericName } from '../components/GenericNameGuard';
 import { Sidebar } from '../components/layout/Sidebar';
-import TeachingStatsHero from '../components/teacher/TeachingStatsHero';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -1478,14 +1477,12 @@ const AccountSettingsPageInner = () => {
             <div className="space-y-6">
               {activeSection === 'profile' && (
                 <>
-                  {/* 2026-05-18 — Teaching overview hero migrated
-                      from the legacy /teacher/settings page so the
-                      unified "الملف الشخصي والإعدادات" hub keeps the
-                      read-only stats card that teacher / IT users
-                      relied on. Component self-gates on role and
-                      silently no-ops for non-teachers, so we don't
-                      need a wrapper conditional here. */}
-                  <TeachingStatsHero />
+                  {/* 2026-07-28 — Teaching stats hero (إحصائيات التدريس)
+                      hidden from the profile page for teacher / IT roles
+                      per product decision. The component and its backend
+                      endpoints are kept intact; re-render <TeachingStatsHero />
+                      here to restore it. Non-teacher roles never saw it
+                      (the component self-gates on role). */}
                   <Card className="card-nassaq" data-testid="account-section-profile">
                     <CardHeader className="pb-4">
                       <CardTitle className="font-cairo flex items-center gap-2 text-lg">

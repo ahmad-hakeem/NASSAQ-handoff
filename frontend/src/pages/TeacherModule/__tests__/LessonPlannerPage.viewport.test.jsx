@@ -15,7 +15,7 @@ import {
   TARGET_WIDTHS,
   setViewport,
   fingerprintContainer,
-} from '../../../__tests__/mobileViewportFingerprint';
+} from '../../../testUtils/mobileViewportFingerprint';
 
 jest.mock('react-router-dom', () => ({
   useLocation: () => ({ pathname: '/teacher/lesson-planner', search: '' }),

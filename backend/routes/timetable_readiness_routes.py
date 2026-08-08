@@ -425,15 +425,22 @@ async def _run_readiness_checks_impl(school_id: str):
     ])
     overloaded_teachers = []
     max_load = 24
-    for ta in ta_agg_results:
-        if not ta["_id"]:
-            continue
-        if ta["total"] > max_load:
-            teacher_user = await gd_find_one(db.session, "users", {"id": ta["_id"], "school_id": school_id, "role": "teacher"})
-            if not teacher_user:
-                teacher_user = await gd_find_one(db.session, "teachers", {"id": ta["_id"], "school_id": school_id})
-            t_name = (teacher_user.get("name_ar") or teacher_user.get("full_name") or teacher_user.get("name") or str(ta["_id"])[:8]) if teacher_user else str(ta["_id"])[:8]
-            overloaded_teachers.append({"id": str(ta["_id"]), "name": t_name, "load": ta["total"], "max": max_load})
+    # N+1 fix: collect all overloaded teacher ids first, then resolve names with
+    # ONE users fetch ($in) + ONE teachers fetch ($in) instead of two gd_find_one
+    # calls per overloaded teacher. Same fallback order: users first, then teachers.
+    _overloaded_ta = [ta for ta in ta_agg_results if ta["_id"] and ta["total"] > max_load]
+    _over_ids = [ta["_id"] for ta in _overloaded_ta]
+    _users_by_id = {}
+    _teachers_by_id = {}
+    if _over_ids:
+        _user_rows = await gd_find(db.session, "users", {"id": {"$in": _over_ids}, "school_id": school_id, "role": "teacher"}, limit=len(_over_ids))
+        _users_by_id = {u["id"]: u for u in _user_rows if u.get("id")}
+        _teacher_rows = await gd_find(db.session, "teachers", {"id": {"$in": _over_ids}, "school_id": school_id}, limit=len(_over_ids))
+        _teachers_by_id = {t["id"]: t for t in _teacher_rows if t.get("id")}
+    for ta in _overloaded_ta:
+        teacher_user = _users_by_id.get(ta["_id"]) or _teachers_by_id.get(ta["_id"])
+        t_name = (teacher_user.get("name_ar") or teacher_user.get("full_name") or teacher_user.get("name") or str(ta["_id"])[:8]) if teacher_user else str(ta["_id"])[:8]
+        overloaded_teachers.append({"id": str(ta["_id"]), "name": t_name, "load": ta["total"], "max": max_load})
 
     if overloaded_teachers:
         for idx, t in enumerate(overloaded_teachers[:3]):

@@ -8,7 +8,8 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 from enum import Enum
 
-from sqlalchemy import select, and_, func, desc as sa_desc
+from sqlalchemy import select, and_, or_, func, desc as sa_desc
+from sqlalchemy.orm import aliased
 
 from pg_models import Notification, Student, Teacher, Parent, User
 from engines.sql_utils import (
@@ -239,7 +240,66 @@ class SchoolNotificationEngine:
             return {u.email: {"user_id": u.id, "id": u.id, "type": u.role, "name": u.full_name} for u in result.scalars().all()}
 
         if recipient_type == RecipientType.all_teachers:
-            recipients = await _users_for_role(["teacher", "school_teacher", "independent_teacher"])
+            # "جميع المعلمين" = the school's ACTIVE teacher records resolved to
+            # their active user accounts — the same cohort every admin surface
+            # counts (master grid, teacher management, dashboards all count
+            # ``teachers`` rows with ``is_active``). Matching on ``users.role``
+            # alone over-counted: an active user account with a teacher-type
+            # role but NO ``teachers`` row (orphaned/test account) is not a
+            # teacher of the school, so it must be neither notified nor counted
+            # (the publish toast used to say "109 معلماً" for a school with 108
+            # teachers). Teacher rows without a linked active user account have
+            # no inbox to deliver to, so they are correctly absent and the
+            # returned count reflects real recipients only. The final
+            # user_id dedup below collapses multiple teacher rows that point
+            # at the same user account.
+            #
+            # The tenant proof is the school-pinned ``teachers`` row, NOT the
+            # nullable ``users.tenant_id``: legacy teacher accounts were
+            # provisioned without a tenant, and requiring equality silently
+            # dropped them from the fan-out — a school with 9 teachers both
+            # notified and reported only 8. A user row that carries a
+            # DIFFERENT tenant is still rejected (fail closed).
+            #
+            # ``teachers.user_id`` carries no uniqueness constraint, so an
+            # UNPINNED (NULL-tenant) account could in principle hold active
+            # teacher rows in two schools. Such an account has no trustworthy
+            # owner, so it is excluded from BOTH schools' broadcasts rather
+            # than leaking one school's announcement into the other. Accounts
+            # pinned by ``users.tenant_id`` are unaffected by this guard.
+            _OtherTeacher = aliased(Teacher)
+            other_school_claim = (
+                select(_OtherTeacher.id)
+                .where(
+                    and_(
+                        _OtherTeacher.user_id == User.id,
+                        _OtherTeacher.is_active.is_(True),
+                        _OtherTeacher.school_id.isnot(None),
+                        _OtherTeacher.school_id != tenant_id,
+                    )
+                )
+                .exists()
+            )
+            stmt = (
+                select(User)
+                .join(Teacher, Teacher.user_id == User.id)
+                .where(
+                    and_(
+                        Teacher.school_id == tenant_id,
+                        Teacher.is_active.is_(True),
+                        or_(
+                            User.tenant_id == tenant_id,
+                            and_(User.tenant_id.is_(None), ~other_school_claim),
+                        ),
+                        User.is_active.is_(True),
+                    )
+                )
+            )
+            result = await self.session.execute(stmt)
+            recipients = [
+                {"user_id": u.id, "id": u.id, "type": u.role, "name": u.full_name, "email": u.email}
+                for u in result.scalars().all()
+            ]
 
         elif recipient_type == RecipientType.all_students:
             recipients = await _users_for_role(["student"])

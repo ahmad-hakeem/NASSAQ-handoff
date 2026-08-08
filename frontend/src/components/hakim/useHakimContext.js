@@ -9,6 +9,7 @@ const AI_ENABLED_PAGES = [
   '/teacher/assessments', '/teacher/attendance', '/teacher/behavior',
   '/teacher/session/start', '/teacher/session/teach',
   '/school/dashboard', '/school/schedule', '/school/ai-insights',
+  '/principal/schedule',
   '/student', '/parent', '/notifications',
 ];
 

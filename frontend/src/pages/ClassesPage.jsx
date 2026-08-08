@@ -876,7 +876,7 @@ export const ClassesPage = () => {
                                 variant="outline"
                                 onClick={() => handleRestoreClass(cls)}
                                 disabled={restoringId === cls.id}
-                                className="rounded-xl border-brand-turquoise text-brand-turquoise hover:bg-brand-turquoise/10"
+                                className="rounded-xl border-brand-turquoise text-brand-turquoise hover:bg-brand-turquoise/10 hover:text-brand-turquoise"
                                 data-testid={`restore-class-${cls.id}`}
                               >
                                 {restoringId === cls.id ? (

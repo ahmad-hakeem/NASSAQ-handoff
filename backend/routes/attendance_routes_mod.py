@@ -310,6 +310,15 @@ async def create_bulk_attendance(
     from auth_scope import independent_workspace_id as _itw_id
     t_id = current_user.get('tenant_id') or _itw_id(current_user)
 
+    # Security: mirror the single-record writer — a teacher/IT caller may only
+    # bulk-record attendance for a class they are actually linked to. The
+    # engine tenant-scopes the class and students, but tenant membership alone
+    # must not let one workspace member write to every class in the workspace.
+    if current_user['role'] in ('teacher', 'independent_teacher'):
+        from utils.tenant_scope import can_view_class
+        if not await can_view_class(db.session, current_user, bulk_data.class_id):
+            raise HTTPException(status_code=403, detail="لا يمكنك تسجيل الحضور لفصل غير مرتبط بك")
+
     result = await _attendance_engine.create_bulk_class_attendance(
         tenant_id=t_id,
         class_id=bulk_data.class_id,
@@ -859,7 +868,7 @@ async def get_students_for_attendance(
             "student_code": student.get('student_code'),
             "full_name": student.get('full_name'),
             "full_name_en": student.get('full_name_en'),
-            "avatar_url": student.get('avatar_url'),
+            "avatar_url": student.get('avatar_url'),  # students table has no avatar_url column — always None
             "gender": student.get('gender'),
             "attendance_status": attendance_record.get('status') if attendance_record else None,
             "attendance_notes": attendance_record.get('notes') if attendance_record else None,

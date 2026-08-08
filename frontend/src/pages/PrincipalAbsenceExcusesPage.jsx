@@ -302,7 +302,7 @@ export const AbsenceExcusesPanel = ({ embedded = false } = {}) => {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="rounded-xl border-red-300 text-red-700 hover:bg-red-50"
+                            className="rounded-xl border-red-300 text-red-700 hover:bg-red-50 hover:text-red-700"
                             onClick={() => { setRejectingId(excuse.id); setRejectReason(''); }}
                             disabled={isBusy}
                             data-testid={`excuse-reject-open-${excuse.id}`}

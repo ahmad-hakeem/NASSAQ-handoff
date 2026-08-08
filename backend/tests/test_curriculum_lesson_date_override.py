@@ -192,7 +192,10 @@ async def test_add_lesson_out_of_range_no_override_returns_409(client):
         headers=h,
     )
     assert resp.status_code == 409, resp.text
-    detail = resp.json().get("detail", {})
+    # The global HTTPException handler wraps dict details into the standard
+    # envelope: {"success": false, "error": {code, message, detail: {...}}}.
+    body = resp.json()
+    detail = (body.get("error") or {}).get("detail") or body.get("detail") or {}
     assert detail.get("code") == "curriculum_date_conflict"
     assert "curriculum_start" in detail.get("details", {})
 

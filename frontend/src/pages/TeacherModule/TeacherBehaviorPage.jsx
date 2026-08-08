@@ -75,15 +75,21 @@ export default function TeacherBehaviorPage() {
       const classesRes = await api.get(`/teacher/classes/${teacherId}`).catch(() => ({ data: [] }));
       setClasses(classesRes.data || []);
       
-      if (classesRes.data?.length > 0 && !selectedClass) {
-        setSelectedClass(classesRes.data[0].id);
-      }
+      // Reconcile the selection against the fresh list. Functional update so
+      // this callback doesn't depend on selectedClass — that identity change
+      // used to re-run the mount effect and fetch /teacher/classes twice per
+      // page load. Keep a selection that still exists, else first class,
+      // else clear it.
+      const classList = classesRes.data || [];
+      setSelectedClass(prev =>
+        (prev && classList.some(c => c.id === prev)) ? prev : (classList[0]?.id || '')
+      );
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
-  }, [api, teacherId, selectedClass]);
+  }, [api, teacherId]);
 
   const fetchStudents = useCallback(async () => {
     if (!selectedClass) return;
@@ -108,6 +114,11 @@ export default function TeacherBehaviorPage() {
   useEffect(() => {
     if (selectedClass) {
       fetchStudents();
+    } else {
+      // Selection cleared (e.g. teacher no longer has classes): don't leave
+      // the previous class's students/records on screen.
+      setStudents([]);
+      setRecords([]);
     }
   }, [selectedClass, fetchStudents]);
 

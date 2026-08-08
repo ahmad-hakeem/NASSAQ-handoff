@@ -31,7 +31,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
@@ -47,14 +47,17 @@ from dependencies import (
 )
 from engines.audit_engine import AuditLogEngine
 from engines.email_service import send_mfa_email_otp
+from services.email_client import send_email_off_loop
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_update_one
-from middleware.rate_limiter import rate_store
+from middleware.rate_limiter import rate_store, rate_limit_headers
 from repositories import Repos
 from services import mfa_crypto, mfa_policy, mfa_webauthn
 from shared_models import TokenResponse, UserResponse, UserRole
 from utils.trusted_proxy import extract_client_ip
 
 logger = logging.getLogger("nassaq.mfa")
+
+from utils.avatar_serving import signed_image_url, attach_image_access_cookie
 
 router = APIRouter()
 _security = HTTPBearer(auto_error=True)
@@ -145,6 +148,7 @@ async def _complete_mfa_login(
     factor_kind: str,
     request: Optional[Request],
     stepup_only: bool = False,
+    http_response: Optional[Response] = None,
 ):
     """Mint tokens, record the session, mark the challenge consumed, mark
     the factor as last-used, and write the success audit row. Shared by
@@ -229,6 +233,8 @@ async def _complete_mfa_login(
         }
 
     from engines.name_validation import is_generic_name
+    if http_response is not None:
+        attach_image_access_cookie(http_response, user)
     user_response = UserResponse(
         id=user_id,
         email=user["email"],
@@ -237,13 +243,15 @@ async def _complete_mfa_login(
         role=UserRole(user["role"]),
         tenant_id=user.get("tenant_id"),
         phone=user.get("phone"),
-        avatar_url=user.get("avatar_url"),
+        avatar_url=signed_image_url("avatar", user_id, user.get("avatar_url")),
         is_active=user.get("is_active") if user.get("is_active") is not None else True,
         must_change_password=bool(user.get("must_change_password")),
         has_generic_name=is_generic_name(user.get("full_name")),
         preferred_language=user.get("preferred_language") or "ar",
         preferred_theme=user.get("preferred_theme") or "light",
         created_at=user.get("created_at") or "",
+        updated_at=user.get("updated_at"),
+        time_format=user.get("time_format") or "12h",
         teacher_id=user.get("teacher_id"),
         student_id=user.get("student_id"),
         parent_id=user.get("parent_id"),
@@ -572,6 +580,7 @@ class MfaVerifyRequest(BaseModel):
 async def verify_mfa(
     body: MfaVerifyRequest,
     request: Request,
+    response: Response,
     credentials: HTTPAuthorizationCredentials = Depends(_security),
 ):
     """Consume an MFA pending challenge by presenting a valid factor proof.
@@ -646,7 +655,7 @@ async def verify_mfa(
         except Exception as exc:
             logger.debug(f"verify_mfa(totp): last_used_at update failed: {exc}")
 
-        return await _complete_mfa_login(user, challenge, "totp", request)
+        return await _complete_mfa_login(user, challenge, "totp", request, http_response=response)
 
     if body.factor_kind == "webauthn":
         if not body.webauthn_response:
@@ -658,6 +667,7 @@ async def verify_mfa(
             credential=body.webauthn_response,
             webauthn_challenge_id=body.webauthn_challenge_id,
             request=request,
+            http_response=response,
         )
 
     if body.factor_kind == "email_otp":
@@ -666,6 +676,7 @@ async def verify_mfa(
             raise HTTPException(status_code=400, detail="رمز التحقق مطلوب")
         return await _verify_email_otp_and_complete(
             user=user, challenge=challenge, code=body.code, request=request,
+            http_response=response,
         )
 
     if body.factor_kind == "recovery_code":
@@ -674,6 +685,7 @@ async def verify_mfa(
             raise HTTPException(status_code=400, detail="رمز الاسترداد مطلوب")
         return await _verify_recovery_code_and_complete(
             user=user, challenge=challenge, code=body.code, request=request,
+            http_response=response,
         )
 
     raise HTTPException(
@@ -1032,19 +1044,29 @@ async def email_otp_send(
         f"mfa_email_otp:user:{user['id']}", *EMAIL_OTP_USER_RATE,
     )
     if limited_user:
+        logger.warning(
+            "rate_limit_denied scope=mfa_otp_user path=/api/auth/mfa/email-otp/send "
+            "ip=%s sub=%s limit=%s window=%ss retry_after=%ss",
+            client_ip, user["id"], EMAIL_OTP_USER_RATE[0], EMAIL_OTP_USER_RATE[1], retry_user,
+        )
         raise HTTPException(
             status_code=429,
             detail="عدد طلبات الرمز تجاوز الحد. حاول بعد قليل",
-            headers={"Retry-After": str(retry_user)},
+            headers=rate_limit_headers(EMAIL_OTP_USER_RATE[0], 0, retry_user),
         )
     limited_ip, _, retry_ip = await rate_store.is_rate_limited(
         f"mfa_email_otp:ip:{client_ip}", *EMAIL_OTP_IP_RATE,
     )
     if limited_ip:
+        logger.warning(
+            "rate_limit_denied scope=mfa_otp_ip path=/api/auth/mfa/email-otp/send "
+            "ip=%s limit=%s window=%ss retry_after=%ss",
+            client_ip, EMAIL_OTP_IP_RATE[0], EMAIL_OTP_IP_RATE[1], retry_ip,
+        )
         raise HTTPException(
             status_code=429,
             detail="عدد طلبات الرمز تجاوز الحد. حاول بعد قليل",
-            headers={"Retry-After": str(retry_ip)},
+            headers=rate_limit_headers(EMAIL_OTP_IP_RATE[0], 0, retry_ip),
         )
 
     # Mint, hash, persist.
@@ -1078,7 +1100,8 @@ async def email_otp_send(
     # masked_email response makes the failure obvious to the UI.
     user_name = user.get("full_name") or user.get("name") or email
     try:
-        send_mfa_email_otp(
+        await send_email_off_loop(
+            send_mfa_email_otp,
             to_email=email,
             user_name=user_name,
             code=code,
@@ -1110,7 +1133,7 @@ async def email_otp_send(
 
 async def _verify_email_otp_and_complete(
     *, user: dict, challenge: dict, code: str, request: Optional[Request],
-    stepup_only: bool = False,
+    stepup_only: bool = False, http_response: Optional[Response] = None,
 ):
     """Match a user-supplied 6-digit OTP against the latest unconsumed
     unexpired row for this challenge. On success: stamp consumed_at,
@@ -1209,7 +1232,7 @@ async def _verify_email_otp_and_complete(
     except Exception as exc:
         logger.debug(f"verify_mfa(email_otp): consumed_at update failed: {exc}")
 
-    return await _complete_mfa_login(user, challenge, "email_otp", request, stepup_only=stepup_only)
+    return await _complete_mfa_login(user, challenge, "email_otp", request, stepup_only=stepup_only, http_response=http_response)
 
 
 # ---------------------------------------------------------------------------
@@ -1662,6 +1685,7 @@ async def _verify_webauthn_and_complete(
     request: Optional[Request],
     webauthn_challenge_id: Optional[str] = None,
     stepup_only: bool = False,
+    http_response: Optional[Response] = None,
 ):
     """Shared helper: verify a WebAuthn assertion against a stored
     credential, bump the sign count, delete the verify challenge, and
@@ -1744,7 +1768,7 @@ async def _verify_webauthn_and_complete(
         logger.debug(f"webauthn verify: factor update failed: {exc}")
 
     await _delete_webauthn_challenge(chal_row["id"])
-    return await _complete_mfa_login(user, challenge, "webauthn", request, stepup_only=stepup_only)
+    return await _complete_mfa_login(user, challenge, "webauthn", request, stepup_only=stepup_only, http_response=http_response)
 
 
 @router.post(
@@ -1754,6 +1778,7 @@ async def _verify_webauthn_and_complete(
 async def webauthn_verify_finish(
     body: WebauthnVerifyFinishRequest,
     request: Request,
+    response: Response,
     credentials: HTTPAuthorizationCredentials = Depends(_security),
 ):
     """Verify the assertion produced by ``navigator.credentials.get`` and,
@@ -1765,6 +1790,7 @@ async def webauthn_verify_finish(
         challenge=challenge,
         credential=body.credential,
         webauthn_challenge_id=body.challenge_id,
+        http_response=response,
         request=request,
     )
 
@@ -2006,7 +2032,7 @@ async def recovery_codes_status(
 
 async def _verify_recovery_code_and_complete(
     *, user: dict, challenge: dict, code: str, request: Optional[Request],
-    stepup_only: bool = False,
+    stepup_only: bool = False, http_response: Optional[Response] = None,
 ):
     """Verify a single-use recovery code, mark it consumed, and
     complete the login. Bcrypt verifies are slow (~250 ms each) so we
@@ -2085,7 +2111,7 @@ async def _verify_recovery_code_and_complete(
     except Exception as exc:
         logger.warning(f"verify_mfa(recovery): mfa_must_restore_factor stamp failed: {exc}")
 
-    response = await _complete_mfa_login(user, challenge, "recovery_code", request, stepup_only=stepup_only)
+    response = await _complete_mfa_login(user, challenge, "recovery_code", request, stepup_only=stepup_only, http_response=http_response)
 
     # If the user is now low on codes, force the post-login nudge regardless
     # of the acknowledgement flag — they must regenerate before they get

@@ -9,6 +9,7 @@ from sqlalchemy import select, and_, or_, func, delete as sa_delete
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.types import DateTime, Date
+from sqlalchemy.orm import lazyload
 from sqlalchemy.orm.attributes import flag_modified
 
 _sql_logger = logging.getLogger("nassaq.sql_utils")
@@ -22,6 +23,32 @@ _SENSITIVE_FILTER_KEYS = frozenset({
 })
 
 _MAX_REGEX_LENGTH = 200
+
+
+def _env_int(name: str, default: int, low: int, high: int) -> int:
+    """Read a positive integer knob from the environment, clamped to a sane range."""
+    import os
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return max(low, min(high, int(raw)))
+    except (TypeError, ValueError):
+        return default
+
+
+# Safety ceiling for reads that forgot to say how much they want. A ``gd_find``
+# without a ``limit`` used to emit a LIMIT-less SELECT, i.e. "materialise the
+# whole collection"; measured cost on this deployment is ~4 KB of process RSS
+# per row, so an unattended read of a large collection can cost hundreds of MB.
+# The ceiling applies ONLY when the caller passed no limit - an explicit limit
+# is always honoured, so reports that deliberately ask for a lot still work.
+GD_FIND_MAX_ROWS = _env_int("GD_FIND_MAX_ROWS", 5000, 100, 200_000)
+
+# Default page size for streaming helpers (``gd_iter_batches``) and for the
+# batched write helpers. Small enough that one page is cheap, large enough
+# that round-trips stay amortised.
+GD_BATCH_SIZE = _env_int("GD_BATCH_SIZE", 500, 50, 10_000)
 
 
 def _sanitize_regex(pattern: str) -> str:
@@ -529,6 +556,34 @@ def _build_filter_conditions(model_cls, filters: dict):
 async def gd_find(session, collection: str, filters: dict = None,
                   order_by: str = None, desc_order: bool = True,
                   limit: int = None, offset: int = None) -> List[dict]:
+    """Read documents from ``collection``.
+
+    A caller that passes no ``limit`` gets at most :data:`GD_FIND_MAX_ROWS`
+    rows and a WARNING when that ceiling actually truncates the result, so an
+    accidental whole-table read is bounded and visible instead of silently
+    eating hundreds of MB. An explicit ``limit`` is always honoured. Code that
+    genuinely needs every row must stream it with :func:`gd_iter_batches`.
+    """
+    capped = not limit or limit <= 0
+    max_rows = GD_FIND_MAX_ROWS
+    fetch_limit = (max_rows + 1) if capped else limit
+
+    rows = await _gd_find_raw(session, collection, filters, order_by,
+                              desc_order, fetch_limit, offset)
+
+    if capped and len(rows) > max_rows:
+        _sql_logger.warning(
+            "gd_find(%s) hit the %d-row safety ceiling and was truncated "
+            "(filters=%s) - pass an explicit limit or stream with gd_iter_batches",
+            collection, max_rows, sorted((filters or {}).keys()),
+        )
+        return rows[:max_rows]
+    return rows
+
+
+async def _gd_find_raw(session, collection: str, filters: dict = None,
+                       order_by: str = None, desc_order: bool = True,
+                       limit: int = None, offset: int = None) -> List[dict]:
     orm_model = _get_orm_model(collection)
     if orm_model is not None:
         return await _orm_find(session, orm_model, filters, order_by, desc_order, limit, offset)
@@ -554,7 +609,13 @@ async def gd_find(session, collection: str, filters: dict = None,
 
 
 async def _orm_find(session, model_cls, filters, order_by, desc_order, limit, offset):
-    stmt = select(model_cls)
+    # gd_find returns plain column dicts (model_to_dict never touches
+    # relationships), yet several core models declare lazy="selectin"
+    # relationships that would otherwise fan out into a recursive cascade of
+    # extra SELECTs (teacher -> school -> school_settings, assignment ->
+    # class/subject/teacher, ...) for data the caller can never see. Suppress
+    # all relationship loading for these dict-producing reads.
+    stmt = select(model_cls).options(lazyload("*"))
     conds = _build_orm_filter_conditions(model_cls, filters)
     if conds:
         stmt = stmt.where(and_(*conds))
@@ -579,6 +640,118 @@ async def _orm_find(session, model_cls, filters, order_by, desc_order, limit, of
     return models_to_dicts(result.scalars().all())
 
 
+def _iter_base_query(collection: str, filters: dict):
+    """Build the keyset-paging base query for ``collection``.
+
+    Returns ``(base_select, id_column, model_cls)``.
+    """
+    orm_model = _get_orm_model(collection)
+    if orm_model is not None:
+        stmt = select(orm_model)
+        conds = _build_orm_filter_conditions(orm_model, filters)
+        model_cls = orm_model
+    else:
+        from pg_models import GenericDocument
+        model_cls = GenericDocument
+        stmt = select(GenericDocument).where(GenericDocument._collection == collection)
+        conds = _build_filter_conditions(GenericDocument, filters)
+    if conds:
+        stmt = stmt.where(and_(*conds))
+    key_col, key_attr = _keyset_column(model_cls)
+    return stmt.order_by(key_col.asc()), key_col, key_attr
+
+
+def _keyset_column(model_cls):
+    """Return ``(column, attribute_name)`` to page on.
+
+    Prefers ``id``, but several tables are keyed on something else entirely
+    (``workspace_quota`` has only ``workspace_school_id``), so fall back to the
+    model's primary key.
+    """
+    if hasattr(model_cls, "id"):
+        return model_cls.id, "id"
+    mapper = sa_inspect(model_cls)
+    pk_cols = list(mapper.primary_key)
+    if not pk_cols:
+        raise ValueError(f"{model_cls.__name__} has no primary key to page on")
+    attr = mapper.get_property_by_column(pk_cols[0]).class_attribute
+    return attr, attr.key
+
+
+async def _iter_orm_batches(session, collection: str, filters: dict = None,
+                            batch_size: int = None, max_rows: int = None,
+                            for_update: bool = False):
+    """Yield ORM objects in bounded, keyset-paged batches.
+
+    Keyset paging (``id > cursor``) rather than OFFSET: OFFSET re-scans the
+    skipped prefix on every page and can skip or repeat rows when the set is
+    written to while we walk it.
+    """
+    size = batch_size or GD_BATCH_SIZE
+    base, id_col, key_attr = _iter_base_query(collection, filters)
+    cursor = None
+    yielded = 0
+    while True:
+        take = size
+        if max_rows is not None:
+            remaining = max_rows - yielded
+            if remaining <= 0:
+                return
+            take = min(size, remaining)
+        stmt = base
+        if cursor is not None:
+            stmt = stmt.where(id_col > cursor)
+        stmt = stmt.limit(take)
+        if for_update:
+            stmt = stmt.with_for_update()
+        result = await session.execute(stmt)
+        objs = result.scalars().all()
+        if not objs:
+            return
+        cursor = getattr(objs[-1], key_attr)
+        yielded += len(objs)
+        yield objs
+        if len(objs) < take:
+            return
+
+
+async def gd_iter_batches(session, collection: str, filters: dict = None,
+                          batch_size: int = None, max_rows: int = None):
+    """Stream a whole collection in bounded batches of plain dicts.
+
+    Use this instead of an unbounded ``gd_find`` whenever the operation
+    legitimately has to touch every matching row (exports, sweeps, bulk
+    writes). Each batch is detached from the session after conversion, so the
+    identity map does not grow into a second copy of the table.
+
+    Rows are ordered by ``id``; callers that need a different order must sort
+    the accumulated result themselves (which only makes sense for bounded
+    sets - if you need a sorted top-N, pass an explicit ``limit`` to
+    ``gd_find``).
+    """
+    async for objs in _iter_orm_batches(session, collection, filters, batch_size, max_rows):
+        docs = models_to_dicts(objs)
+        for obj in objs:
+            try:
+                session.expunge(obj)
+            except Exception:
+                pass
+        yield docs
+
+
+async def gd_iter_rows(session, collection: str, filters: dict = None,
+                       batch_size: int = None, max_rows: int = None):
+    """Stream matching documents one row at a time (pages under the hood).
+
+    Drop-in replacement for ``for row in await gd_find(...)`` in aggregation
+    loops: the loop body is unchanged, but only one page of rows is resident
+    at a time instead of the entire result set.
+    """
+    async for batch in gd_iter_batches(session, collection, filters, batch_size, max_rows):
+        for row in batch:
+            yield row
+
+
 async def gd_find_one(session, collection: str, filters: dict = None, sort=None) -> Optional[dict]:
     order_by = None
     desc_order = True
@@ -590,7 +763,28 @@ async def gd_find_one(session, collection: str, filters: dict = None, sort=None)
     return results[0] if results else None
 
 
+def _guard_bounded_image_fields(collection: str, mapping: dict) -> None:
+    """Refuse to persist an unnormalised inline image on a guarded column.
+
+    ``users.avatar_url`` and ``schools.logo_url`` are shipped inline by every
+    serializer that returns those rows, so every write path must normalise
+    ``data:`` URIs (utils.avatar_image.normalize_image_field_or_400) before
+    storing them. This chokepoint makes a forgotten guard fail loudly instead
+    of silently reintroducing oversized photos.
+    """
+    if collection not in ("users", "schools") or not isinstance(mapping, dict):
+        return
+    from utils.avatar_image import assert_stored_image_bounded
+
+    for sub in (mapping, mapping.get("$set") or {}):
+        if isinstance(sub, dict):
+            for key in ("avatar_url", "logo_url"):
+                if key in sub:
+                    assert_stored_image_bounded(collection, key, sub[key])
+
+
 async def gd_insert(session, collection: str, doc: dict) -> str:
+    _guard_bounded_image_fields(collection, doc)
     orm_model = _get_orm_model(collection)
     if orm_model is not None:
         doc_id = doc.get("id") or str(uuid.uuid4())
@@ -659,6 +853,7 @@ def _set_nested(data: dict, key: str, value) -> None:
         data[key] = value
 
 async def gd_update_one(session, collection: str, filters: dict, updates: dict) -> int:
+    _guard_bounded_image_fields(collection, updates)
     orm_model = _get_orm_model(collection)
     if orm_model is not None:
         return await _orm_update_one(session, orm_model, filters, updates)
@@ -681,7 +876,8 @@ async def gd_update_one(session, collection: str, filters: dict, updates: dict) 
 
 
 async def _orm_update_one(session, model_cls, filters, updates):
-    stmt = select(model_cls)
+    # Column-only update: relationship loading is pure overhead (see _orm_find).
+    stmt = select(model_cls).options(lazyload("*"))
     conds = _build_orm_filter_conditions(model_cls, filters)
     if conds:
         stmt = stmt.where(and_(*conds))
@@ -716,9 +912,10 @@ def _flatten_update_operators(updates: dict) -> dict:
 
 
 async def gd_upsert(session, collection: str, filters: dict, updates: dict) -> int:
+    _guard_bounded_image_fields(collection, updates)
     orm_model = _get_orm_model(collection)
     if orm_model is not None:
-        stmt = select(orm_model)
+        stmt = select(orm_model).options(lazyload("*"))
         conds = _build_orm_filter_conditions(orm_model, filters)
         if conds:
             stmt = stmt.where(and_(*conds))
@@ -756,39 +953,34 @@ async def gd_upsert(session, collection: str, filters: dict, updates: dict) -> i
 
 
 async def gd_update_many(session, collection: str, filters: dict, updates: dict) -> int:
+    """Apply ``updates`` to every row matching ``filters``.
+
+    Rows are walked in keyset-paged batches and flushed per batch, so a bulk
+    update over a large table costs one page of ORM objects at a time instead
+    of the whole matching set.
+    """
+    _guard_bounded_image_fields(collection, updates)
     orm_model = _get_orm_model(collection)
-    if orm_model is not None:
-        stmt = select(orm_model)
-        conds = _build_orm_filter_conditions(orm_model, filters)
-        if conds:
-            stmt = stmt.where(and_(*conds))
-        result = await session.execute(stmt)
-        objs = result.scalars().all()
-        flat_updates = _flatten_update_operators(updates)
-        count = 0
-        for obj in objs:
-            apply_updates(obj, flat_updates, orm_model)
-            count += 1
-        if count:
-            await session.flush()
-        return count
-    from pg_models import GenericDocument
-    stmt = select(GenericDocument).where(GenericDocument._collection == collection)
-    conds = _build_filter_conditions(GenericDocument, filters)
-    if conds:
-        stmt = stmt.where(and_(*conds))
-    stmt = stmt.with_for_update()
-    result = await session.execute(stmt)
-    objs = result.scalars().all()
+    generic = orm_model is None
+    flat_updates = _flatten_update_operators(updates) if not generic else None
     count = 0
-    for obj in objs:
-        current_data = dict(obj.data) if obj.data else {}
-        _apply_dict_updates(current_data, updates)
-        obj.data = current_data
-        flag_modified(obj, "data")
-        count += 1
-    if count:
+    async for objs in _iter_orm_batches(session, collection, filters,
+                                        for_update=generic):
+        for obj in objs:
+            if generic:
+                current_data = dict(obj.data) if obj.data else {}
+                _apply_dict_updates(current_data, updates)
+                obj.data = current_data
+                flag_modified(obj, "data")
+            else:
+                apply_updates(obj, flat_updates, orm_model)
+            count += 1
         await session.flush()
+        for obj in objs:
+            try:
+                session.expunge(obj)
+            except Exception:
+                pass
     return count
 
 
@@ -819,6 +1011,13 @@ async def gd_count(session, collection: str, filters: dict = None) -> int:
 async def gd_delete_one(session, collection: str, filters: dict) -> int:
     orm_model = _get_orm_model(collection)
     if orm_model is not None:
+        # NOTE: deliberately NO lazyload("*") here (unlike the read paths).
+        # Deleting an ORM row runs relationship cascade processing at flush,
+        # and several parents declare child collections lazy="noload" (e.g.
+        # School.classes) precisely so a parent delete does NOT load children
+        # and try to NULL their NOT NULL FKs. Overriding the mapped strategy
+        # with lazyload("*") turns those into real loads and breaks deletes
+        # (NotNullViolation on classes.school_id).
         stmt = select(orm_model)
         conds = _build_orm_filter_conditions(orm_model, filters)
         if conds:

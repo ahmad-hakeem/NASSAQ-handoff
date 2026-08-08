@@ -153,6 +153,13 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
   // (#192 spec §5.6). Read-only, mirrors the chip pattern from
   // TeacherClassesPage. Authoritative cap is enforced server-side via
   // the 409 from `enforce_student_quota`.
+  // The two IT pool selections render the workspace pool itself, so
+  // `fetchStudents` below already issues GET /students for them and
+  // republishes the rows to the workspace chip/wizard state. Asking for the
+  // count separately in that case fetched /students twice on page load.
+  const isPoolView = isIndependentTeacher
+    && (selectedClass === 'all' || selectedClass === 'unassigned');
+
   const fetchWorkspaceStudentCount = useCallback(async () => {
     if (!isIndependentTeacher) return;
     try {
@@ -211,11 +218,13 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
   }, [api, isIndependentTeacher]);
 
   useEffect(() => {
-    if (isIndependentTeacher) {
-      fetchWorkspaceStudentCount();
-      fetchWorkspaceWizardOptions();
-    }
-  }, [isIndependentTeacher, fetchWorkspaceStudentCount, fetchWorkspaceWizardOptions]);
+    if (isIndependentTeacher) fetchWorkspaceWizardOptions();
+  }, [isIndependentTeacher, fetchWorkspaceWizardOptions]);
+
+  useEffect(() => {
+    // Pool views get the same data from `fetchStudents` — see `isPoolView`.
+    if (isIndependentTeacher && !isPoolView) fetchWorkspaceStudentCount();
+  }, [isIndependentTeacher, isPoolView, fetchWorkspaceStudentCount]);
 
   const handleOpenAddStudent = useCallback(() => {
     if (workspaceStudentCount != null && workspaceStudentCount >= WORKSPACE_STUDENTS_MAX) {
@@ -307,10 +316,14 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
 
       if (isPool) {
         const studentsRes = await api.get('/students');
-        rawStudents = Array.isArray(studentsRes.data) ? studentsRes.data : [];
-        if (selectedClass === 'unassigned') {
-          rawStudents = rawStudents.filter((s) => !s.class_id);
-        }
+        const pool = Array.isArray(studentsRes.data) ? studentsRes.data : [];
+        // Publish the pool from THIS response so the quota chip and the
+        // inline-create wizard don't need their own GET /students.
+        setWorkspaceStudents(pool);
+        setWorkspaceStudentCount(pool.length);
+        rawStudents = selectedClass === 'unassigned'
+          ? pool.filter((s) => !s.class_id)
+          : pool;
       } else {
         const [studentsRes, statsRes] = await Promise.all([
           api.get(`/classes/${selectedClass}/students`),

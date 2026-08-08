@@ -568,12 +568,30 @@ export default function SessionsManageTab() {
                         <StickyNote className="w-4 h-4" />
                         {t('notesCount').replace('{count}', sessionReport.notes.length)}
                       </h4>
-                      {sessionReport.notes.slice(0, 5).map((note, i) => (
-                        <div key={i} className="py-1 border-b border-blue-100 dark:border-blue-800 last:border-0">
-                          <p className="text-xs text-gray-700 dark:text-gray-300">{note.text}</p>
-                          <span className="text-[10px] text-blue-500">{note.note_type}</span>
-                        </div>
-                      ))}
+                      {sessionReport.notes.map((note, i) => {
+                        const typeLabel = note.note_type === 'closing' ? t('closingNoteLabel')
+                          : note.note_type === 'parent' ? t('quickNoteToParent')
+                          : note.note_type === 'recitation' ? t('recitation')
+                          : note.note_type === 'behaviour' ? t('behaviour')
+                          : note.note_type === 'skill' ? t('skill')
+                          : note.note_type === 'evaluation' ? t('evaluation')
+                          : note.note_type === 'student' ? t('studentNoteShort')
+                          : t('general');
+                        return (
+                          <div key={note.id || i} className="py-1.5 border-b border-blue-100 dark:border-blue-800 last:border-0">
+                            <p className="text-xs text-gray-700 dark:text-gray-300">{note.text}</p>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <span className="text-[10px] text-blue-500">{typeLabel}</span>
+                              {note.student_name && (
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400">{note.student_name}</span>
+                              )}
+                              {note.context && (
+                                <span className="text-[10px] text-gray-400 dark:text-gray-500">{note.context}</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </>

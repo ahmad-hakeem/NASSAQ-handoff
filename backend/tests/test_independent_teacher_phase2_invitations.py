@@ -145,7 +145,7 @@ async def test_create_invitation_requires_identifier(client):
 
 
 @pytest.mark.asyncio
-async def test_create_invitation_missing_mfa_emits_stepup_envelope(client):
+async def test_create_invitation_missing_mfa_emits_stepup_envelope(client, enforce_mfa):
     ctx = await mk_it_workspace(with_student=False, with_parent=False, with_passkey=True)
     sid = await _mk_pending_student(ctx["wsid"])
     h = _it_headers(ctx, with_mfa=False)
@@ -358,8 +358,18 @@ async def test_accept_invitation_dedupes_each_path(client, path):
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["matched_by"] == path
-    assert body["parent_id"] == parent_id
+    if path == "national_id":
+        # Security contract: the accept flow deliberately does NOT feed the
+        # caller-supplied national_id into dedupe — honoring it would let an
+        # attacker rebind a new account onto another family's parents row
+        # (threat model 2026-05-20). With no phone/email match available the
+        # result is a NEW parents row; the payload national_id is only
+        # stored on that new row.
+        assert body["matched_by"] == "new"
+        assert body["parent_id"] != parent_id
+    else:
+        assert body["matched_by"] == path
+        assert body["parent_id"] == parent_id
 
 
 @pytest.mark.asyncio

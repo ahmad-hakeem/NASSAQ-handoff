@@ -42,9 +42,13 @@ jest.mock('../../../utils/hijriDate', () => ({
   formatHijriDate: () => 'hijri',
 }));
 
+// Stable module-level objects: `t` is a useCallback dep in the page
+// (fetchClassData), so a fresh object per render loops the fetch effect.
+const mockStableTheme = { isRTL: true };
+const mockStableTranslation = { t: (k) => k, isRTL: true };
 jest.mock('../../../contexts/ThemeContext', () => ({
-  useTheme: () => ({ isRTL: true }),
-  useTranslation: () => ({ t: (k) => k, isRTL: true }),
+  useTheme: () => mockStableTheme,
+  useTranslation: () => mockStableTranslation,
 }));
 
 jest.mock('../../../components/hakim/HakimAssistant', () => ({
@@ -157,7 +161,7 @@ describe('Add Lesson dialog — date pickers and curriculum range', () => {
       expect(screen.getByText('lessonEndDate')).toBeTruthy();
     });
 
-    expect(screen.getByText('curriculumRange')).toBeTruthy();
+    expect(screen.getByText(/curriculumRange/)).toBeTruthy();
     expect(screen.getByText(/2025-09-01/)).toBeTruthy();
   });
 
@@ -175,7 +179,7 @@ describe('Add Lesson dialog — date pickers and curriculum range', () => {
     await act(async () => { fireEvent.click(addBtn); });
 
     await waitFor(() => expect(screen.getByText('lessonStartDate')).toBeTruthy());
-    expect(screen.queryByText('curriculumRange')).toBeNull();
+    expect(screen.queryByText(/curriculumRange/)).toBeNull();
   });
 });
 

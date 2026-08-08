@@ -47,6 +47,11 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_update_one
 from middleware.rate_limiter import rate_store
 from quotas.independent_teacher import MAX_LESSON_PLANS_PER_DAY
 from routes.ai_routes_mod import AI_NOT_CONFIGURED_RESPONSE, get_openai_client
+from services.ai_client import (
+    PURPOSE_BACKGROUND,
+    AIProviderTimeout,
+    ai_chat_completion,
+)
 
 
 logger = logging.getLogger("nassaq.it_lesson_plans")
@@ -62,6 +67,7 @@ router = APIRouter(
 _MSG_NOT_FOUND = "خطة الدرس غير موجودة"
 _MSG_TOPIC_REQUIRED = "موضوع الدرس مطلوب"
 _MSG_INTERNAL = "تعذّر توليد خطة الدرس — حاول لاحقًا"
+_MSG_AI_TIMEOUT = "خدمة الذكاء الاصطناعي بطيئة حالياً. يرجى المحاولة بعد قليل."
 _MSG_QUOTA_DAILY = "بلغت الحد اليومي لتوليد خطط الدروس. حاول مرة أخرى غدًا."
 _MSG_RATE_LIMITED = "طلبات متكررة بسرعة كبيرة لتوليد خطط الدروس. يرجى الانتظار قليلًا قبل المحاولة مجددًا."
 
@@ -421,7 +427,9 @@ async def generate_lesson_plan(
     user_prompt = _build_prompt(payload)
     raw_text = ""
     try:
-        completion = client.chat.completions.create(
+        completion = await ai_chat_completion(
+            client,
+            purpose=PURPOSE_BACKGROUND,
             model=_MODEL,
             messages=[
                 {
@@ -440,6 +448,11 @@ async def generate_lesson_plan(
             (completion.choices[0].message.content if completion and completion.choices else "")
             or ""
         )
+    except AIProviderTimeout as exc:
+        # Provider is slow / stuck: fail fast with a message the teacher can
+        # act on instead of leaving the request spinning.
+        logger.warning("lesson plan generation timed out: %s", exc)
+        raise HTTPException(status_code=503, detail=_MSG_AI_TIMEOUT)
     except Exception as exc:  # noqa: BLE001
         logger.exception("lesson plan generation failed: %s", exc)
         raise HTTPException(status_code=502, detail=_MSG_INTERNAL)

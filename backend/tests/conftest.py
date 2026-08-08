@@ -37,14 +37,25 @@ async def _db_session():
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limiter():
-    """The in-memory rate-limit store is a process-global singleton. Clear it
-    around every test so create/auth-heavy suites don't bleed their request
-    counts into unrelated tests (and so rate-limit tests start from a clean
-    window)."""
+    """The rate-limit store is a process-global singleton. Reset it around
+    every test so create/auth-heavy suites don't bleed their request counts
+    into unrelated tests (and so rate-limit tests start from a clean window).
+
+    The shared (Postgres-backed) store also survives *between* tests, so give
+    each test its own key namespace instead of deleting rows: isolation
+    without a DELETE per test, and the real shared code path still runs."""
     from middleware.rate_limiter import rate_store
-    rate_store._store.clear()
+
+    def _clear():
+        rate_store._store.clear()
+        if hasattr(rate_store, "_deny_until"):
+            rate_store._deny_until.clear()
+        if hasattr(rate_store, "set_namespace"):
+            rate_store.set_namespace(f"t{uuid.uuid4().hex[:12]}")
+
+    _clear()
     yield
-    rate_store._store.clear()
+    _clear()
 
 
 async def _mk_user(role: UserRole, tenant_id: str) -> dict:
@@ -347,3 +358,50 @@ async def seed_school_b_constraint(school_b_id):
         "constraint_type": "no_first_period",
     })
     return cid
+
+
+# ---------------------------------------------------------------------------
+# Live-server legacy scripts (docs/ci/quarantine.md, "Environment-gated")
+#
+# Dozens of legacy test modules are HTTP integration scripts: they define a
+# module-level ``BASE_URL`` from ``REACT_APP_BACKEND_URL`` and drive a
+# RUNNING, seeded backend via ``requests``/``websockets``. In the merge gate
+# there is no live server, so every such module is skipped wholesale unless
+# an absolute base URL was explicitly provided. New tests must NOT follow
+# this pattern — use the in-process ``client`` fixture above instead.
+# ---------------------------------------------------------------------------
+_LIVE_SERVER_SKIP = pytest.mark.skip(
+    reason="live-server integration script: requires REACT_APP_BACKEND_URL "
+           "pointing at a running, seeded backend (docs/ci/quarantine.md)",
+)
+
+
+def pytest_collection_modifyitems(config, items):
+    # Opt-in is keyed on the ENV VAR, not the module's BASE_URL value: some
+    # legacy scripts hardcode an absolute fallback URL (e.g.
+    # test_iteration_73.py points at a long-dead preview host), so their
+    # BASE_URL always "looks live" even when no server was provided.
+    live_env = os.environ.get("REACT_APP_BACKEND_URL", "")
+    live_opt_in = live_env.startswith(("http://", "https://"))
+    for item in items:
+        module = getattr(item, "module", None)
+        base_url = getattr(module, "BASE_URL", None)
+        if isinstance(base_url, str):
+            if not live_opt_in or not base_url.startswith(("http://", "https://")):
+                item.add_marker(_LIVE_SERVER_SKIP)
+
+
+# ---------------------------------------------------------------------------
+# MFA enforcement opt-in (docs/ci/quarantine.md)
+#
+# The backend gate (scripts/ci/backend_tests.sh) pins
+# MFA_ENFORCEMENT_DISABLED=true for the whole suite — most tests mint users
+# without MFA enrollment and would otherwise be rejected by the Task #443
+# enrollment gate. Tests that assert the ENFORCED contracts (step-up 403
+# envelopes, enrollment gate, bootstrap MFA) request this fixture.
+# services/mfa_policy.py reads the env fresh on every call, so a monkeypatch
+# takes effect immediately without any reload.
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def enforce_mfa(monkeypatch):
+    monkeypatch.setenv("MFA_ENFORCEMENT_DISABLED", "false")

@@ -125,6 +125,9 @@ async def parent_headers(school_a):
 
 @pytest_asyncio.fixture
 async def student_user_headers(school_a):
+    # NOTE: student bearers are rejected 401 platform-wide while student
+    # login is disabled (STUDENT_LOGIN_DISABLED) — the *_student_403 tests
+    # therefore accept 401 OR 403; both prove the denial contract.
     """Student-role user in school A."""
     return _tok(await _mk_user(UserRole.STUDENT, school_a))
 
@@ -152,7 +155,7 @@ async def test_section_attendance_student_403(client, student_user_headers, clas
         params={"attendance_date": "2025-01-01"},
         headers=student_user_headers,
     )
-    assert r.status_code == 403, r.text
+    assert r.status_code in (401, 403), r.text
 
 
 @pytest.mark.asyncio
@@ -197,7 +200,7 @@ async def test_daily_report_student_403(client, student_user_headers):
         params={"attendance_date": "2025-01-01"},
         headers=student_user_headers,
     )
-    assert r.status_code == 403, r.text
+    assert r.status_code in (401, 403), r.text
 
 
 @pytest.mark.asyncio
@@ -255,7 +258,7 @@ async def test_section_summary_student_403(client, student_user_headers, class_a
         params={"start_date": "2025-01-01", "end_date": "2025-01-31"},
         headers=student_user_headers,
     )
-    assert r.status_code == 403, r.text
+    assert r.status_code in (401, 403), r.text
 
 
 @pytest.mark.asyncio
@@ -332,7 +335,7 @@ async def test_excuse_student_user_403(client, student_user_headers, student_a):
         },
         headers=student_user_headers,
     )
-    assert r.status_code == 403, r.text
+    assert r.status_code in (401, 403), r.text
 
 
 @pytest.mark.asyncio
@@ -380,7 +383,7 @@ async def test_school_report_parent_403(client, parent_headers, path):
 @pytest.mark.parametrize("path", SCHOOL_REPORT_ENDPOINTS)
 async def test_school_report_student_403(client, student_user_headers, path):
     r = await client.get(path, headers=student_user_headers)
-    assert r.status_code == 403, f"{path} -> {r.status_code} {r.text}"
+    assert r.status_code in (401, 403), f"{path} -> {r.status_code} {r.text}"
 
 
 @pytest.mark.asyncio
@@ -407,7 +410,7 @@ async def test_class_report_parent_403(client, parent_headers, class_a):
 @pytest.mark.asyncio
 async def test_class_report_student_403(client, student_user_headers, class_a):
     r = await client.get(f"/reports/class/{class_a}", headers=student_user_headers)
-    assert r.status_code == 403, r.text
+    assert r.status_code in (401, 403), r.text
 
 
 @pytest.mark.asyncio
@@ -474,7 +477,7 @@ async def test_school_attendance_report_parent_403(client, parent_headers):
 @pytest.mark.asyncio
 async def test_school_attendance_report_student_403(client, student_user_headers):
     r = await client.get("/reports/school/attendance", headers=student_user_headers)
-    assert r.status_code == 403, r.text
+    assert r.status_code in (401, 403), r.text
 
 
 @pytest.mark.asyncio
@@ -518,7 +521,7 @@ async def test_students_list_parent_403(client, parent_headers):
 @pytest.mark.asyncio
 async def test_students_list_student_403(client, student_user_headers):
     r = await client.get("/students", headers=student_user_headers)
-    assert r.status_code == 403, r.text
+    assert r.status_code in (401, 403), r.text
 
 
 @pytest.mark.asyncio
@@ -530,7 +533,7 @@ async def test_class_students_parent_403(client, parent_headers, class_a):
 @pytest.mark.asyncio
 async def test_class_students_student_403(client, student_user_headers, class_a):
     r = await client.get(f"/classes/{class_a}/students", headers=student_user_headers)
-    assert r.status_code == 403, r.text
+    assert r.status_code in (401, 403), r.text
 
 
 @pytest.mark.asyncio
@@ -585,7 +588,7 @@ async def test_parents_list_teacher_403(client, unrelated_teacher_headers):
 @pytest.mark.asyncio
 async def test_parents_list_student_403(client, student_user_headers):
     r = await client.get("/parents", headers=student_user_headers)
-    assert r.status_code == 403, r.text
+    assert r.status_code in (401, 403), r.text
 
 
 @pytest.mark.asyncio

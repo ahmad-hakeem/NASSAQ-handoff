@@ -14,7 +14,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
@@ -37,6 +39,11 @@ import {
 } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
 import { getApiErrorMessage } from '../../utils/apiError';
+import {
+  EVIDENCE_TYPE_GROUPS,
+  V2_SUBSECTIONS,
+  labelForType,
+} from './portfolioEvidenceTypes';
 
 const SECTION_CONFIG = [
   { key: 'teaching_plans', icon: BookOpen, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/30', types: ['lesson_plan', 'weekly_plan', 'unit_plan'] },
@@ -61,36 +68,6 @@ const SECTION_TITLE_KEYS = {
   participation_activities: 'portfolioParticipationActivities',
   administrative: 'portfolioAdministrative',
 };
-
-const TYPE_LABEL_KEYS = {
-  lesson_plan: 'portfolioLessonPlan',
-  weekly_plan: 'portfolioWeeklyPlan',
-  unit_plan: 'portfolioUnitPlan',
-  applied_lesson_report: 'portfolioAppliedLessonReport',
-  collaborative_lesson: 'portfolioCollaborativeLesson',
-  exam_results: 'portfolioExamResults',
-  quiz_results: 'portfolioQuizResults',
-  performance_task: 'portfolioPerformanceTask',
-  exam_results_analysis: 'portfolioExamResultsAnalysis',
-  grade_analysis_tables: 'portfolioGradeAnalysisTables',
-  attendance_record: 'portfolioAttendanceRecord',
-  late_tracking: 'portfolioLateTracking',
-  behaviour_tracking: 'portfolioBehaviourTracking',
-  struggling_student_plan: 'portfolioStrugglingStudentPlan',
-  observation_notes: 'portfolioObservationNotes',
-  parent_communication_log: 'portfolioParentCommunicationLog',
-  parent_meeting_minutes: 'portfolioParentMeetingMinutes',
-  training_certificate: 'portfolioTrainingCertificate',
-  workshop_attendance: 'portfolioWorkshopAttendance',
-  peer_observation: 'portfolioPeerObservation',
-  participation_tracking: 'portfolioParticipationTracking',
-  extracurricular_activity: 'portfolioExtracurricularActivity',
-  annual_goals: 'portfolioAnnualGoals',
-  self_evaluation: 'portfolioSelfEvaluation',
-  professional_growth_plan: 'portfolioProfessionalGrowthPlan',
-};
-
-const ALL_EVIDENCE_TYPES = Object.keys(TYPE_LABEL_KEYS);
 
 // =====================================================================
 // Portfolio v2 — static national content (Arabic only) + sub-section config
@@ -118,91 +95,31 @@ const ETHICS_CHARTER_AR = [
   'التحلي بالصبر والحكمة',
 ];
 
-// New (v2) evidence type labels — Arabic only since spec is Arabic-native
-const TYPE_LABEL_AR_V2 = {
-  // planning
-  curriculum_distribution_plan: 'خطة توزيع المنهج',
-  weekly_plan: 'الخطة الأسبوعية',
-  lesson_plan: 'خطة الدرس',
-  preparation_record: 'سجل التحضير',
-  unit_plan: 'خطة وحدة دراسية',
-  classroom_activity_plan: 'خطة النشاط الصفي',
-  struggling_student_plan: 'خطة دعم المتعثرين',
-  gifted_student_plan: 'خطة رعاية المتفوقين',
-  learning_loss_plan: 'خطة معالجة الفاقد التعليمي',
-  // execution
-  classroom_activity_photos: 'صور أنشطة صفية',
-  student_worksheets: 'أوراق عمل الطلاب',
-  applied_lesson_report: 'تقرير درس تطبيقي',
-  lesson_video_recording: 'تسجيل فيديو لدرس',
-  collaborative_lesson: 'أنشطة تعاونية',
-  teaching_strategies: 'استراتيجيات تدريس',
-  // assessment
-  exam_results: 'الاختبارات',
-  quiz_results: 'الاختبارات القصيرة',
-  assessment_worksheet: 'أوراق العمل التقويمية',
-  performance_task: 'المهام الأدائية',
-  student_portfolio_files: 'ملفات إنجاز الطلاب',
-  student_project: 'مشاريع الطلاب',
-  oral_assessment: 'التقويم الشفهي',
-  classroom_observation: 'الملاحظة الصفية',
-  // results
-  exam_results_analysis: 'تحليل نتائج الاختبارات',
-  class_results_analysis: 'تحليل نتائج الفصل',
-  student_progress_report: 'تقارير تقدم الطلاب',
-  grade_analysis_tables: 'جداول تحليل الدرجات',
-  before_after_comparison: 'مقارنة النتائج قبل وبعد',
-  results_improvement_plan: 'خطة تحسين النتائج',
-  // community
-  parent_communication_log: 'سجل التواصل مع أولياء الأمور',
-  parent_meeting_minutes: 'تقرير اجتماع مع أولياء الأمور',
-  school_activity_participation: 'مشاركة في نشاط مدرسي',
-  school_event_participation: 'مشاركة في الفعاليات المدرسية',
-  // professional development v2
-  training_attendance_report: 'تقرير حضور دورة',
-  professional_growth_plan: 'خطة تطوير مهني',
-  plc_participation: 'مجتمعات التعلم المهنية',
-  peer_observation: 'تبادل الزيارات',
-  workshop_attendance: 'حضور ورش عمل',
-  workshop_delivery: 'تقديم ورش',
-  volunteer_activity_report: 'تقرير نشاط تطوعي',
+// Presentation only — the type vocabulary itself lives in
+// ./portfolioEvidenceTypes so the filter, the dialogs and the cards can never
+// drift apart (or away from the backend).
+const SUBSECTION_ICONS = {
+  planning: { icon: ClipboardList, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/30' },
+  execution: { icon: PlayCircle, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
+  assessment: { icon: FileCheck, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/30' },
+  results: { icon: BarChart3, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30' },
+  community: { icon: Megaphone, color: 'text-pink-600 dark:text-pink-400', bg: 'bg-pink-50 dark:bg-pink-900/30' },
+  professional_development: { icon: Briefcase, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-900/30' },
 };
 
-const SUBSECTION_CONFIG_V2 = [
-  {
-    key: 'planning', title: 'شواهد التخطيط', icon: ClipboardList,
-    color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/30',
-    types: ['curriculum_distribution_plan', 'weekly_plan', 'lesson_plan', 'preparation_record', 'unit_plan', 'classroom_activity_plan', 'struggling_student_plan', 'gifted_student_plan', 'learning_loss_plan'],
-  },
-  {
-    key: 'execution', title: 'شواهد التنفيذ', icon: PlayCircle,
-    color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30',
-    types: ['classroom_activity_photos', 'student_worksheets', 'applied_lesson_report', 'lesson_video_recording', 'collaborative_lesson', 'teaching_strategies'],
-  },
-  {
-    key: 'assessment', title: 'شواهد التقويم', icon: FileCheck,
-    color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/30',
-    types: ['exam_results', 'quiz_results', 'assessment_worksheet', 'performance_task', 'student_portfolio_files', 'student_project', 'oral_assessment', 'classroom_observation'],
-  },
-  {
-    key: 'results', title: 'شواهد النتائج', icon: BarChart3,
-    color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30',
-    types: ['exam_results_analysis', 'class_results_analysis', 'student_progress_report', 'grade_analysis_tables', 'before_after_comparison', 'results_improvement_plan'],
-  },
-  {
-    key: 'community', title: 'شواهد التواصل والمجتمع', icon: Megaphone,
-    color: 'text-pink-600 dark:text-pink-400', bg: 'bg-pink-50 dark:bg-pink-900/30',
-    types: ['parent_communication_log', 'parent_meeting_minutes', 'school_activity_participation', 'school_event_participation'],
-  },
-  {
-    key: 'professional_development', title: 'شواهد التطوير المهني', icon: Briefcase,
-    color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-900/30',
-    types: ['training_attendance_report', 'professional_growth_plan', 'plc_participation', 'peer_observation', 'workshop_attendance', 'workshop_delivery', 'volunteer_activity_report'],
-  },
-];
+const SUBSECTION_CONFIG_V2 = V2_SUBSECTIONS.map(sub => ({ ...sub, ...SUBSECTION_ICONS[sub.key] }));
 
-const labelForType = (typeKey) =>
-  TYPE_LABEL_AR_V2[typeKey] || 'مستند تعليمي';
+/** Every stored evidence type, grouped, for the library filter and the dialogs. */
+function EvidenceTypeOptions({ t }) {
+  return EVIDENCE_TYPE_GROUPS.map(group => (
+    <SelectGroup key={group.key}>
+      <SelectLabel className="text-[11px] text-gray-400">{group.title}</SelectLabel>
+      {group.types.map(type => (
+        <SelectItem key={type} value={type}>{labelForType(type, t)}</SelectItem>
+      ))}
+    </SelectGroup>
+  ));
+}
 
 const FILE_KIND_OPTIONS = [
   { value: 'pdf',   label: 'ملف PDF' },
@@ -242,7 +159,7 @@ export default function TeacherAchievementsPage() {
   const [activeTab, setActiveTab] = useState('portfolio');
   const [expandedSections, setExpandedSections] = useState({});
   const [evidenceDialog, setEvidenceDialog] = useState({ open: false, mode: 'add', data: null });
-  const [evidenceForm, setEvidenceForm] = useState({ evidence_type: '', title_ar: '', title_en: '', description_ar: '', description_en: '', date: '', class_id: '', subject_id: '', file_url: '', file_name: '', file_kind: 'pdf' });
+  const [evidenceForm, setEvidenceForm] = useState({ evidence_type: '', title_ar: '', title_en: '', description_ar: '', description_en: '', date: '', class_id: '', subject_id: '', file_url: '', file_id: '', file_name: '', file_kind: 'pdf' });
   const [editFileUploading, setEditFileUploading] = useState(false);
   const editFileInputRef = useRef(null);
   const editUploadTokenRef = useRef(0);
@@ -345,7 +262,7 @@ export default function TeacherAchievementsPage() {
       const res = await api.post('/teacher/portfolio/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       if (token !== editUploadTokenRef.current) return;
       if (res?.data?.success) {
-        setEvidenceForm(prev => ({ ...prev, file_url: res.data.file_url, file_name: res.data.file_name }));
+        setEvidenceForm(prev => ({ ...prev, file_url: '', file_id: res.data.file_id, file_name: res.data.file_name }));
         toast.success('تم رفع الملف');
       }
     } catch (err) {
@@ -371,7 +288,7 @@ export default function TeacherAchievementsPage() {
   const [expandedV2, setExpandedV2] = useState({ intro: true });
   const [expandedSubsec, setExpandedSubsec] = useState({});
   const [cvDialog, setCvDialog] = useState({ open: false, kind: 'training_attended' });
-  const [cvForm, setCvForm] = useState({ title: '', organization: '', date: '', hours: '', description: '', file_url: '', file_name: '' });
+  const [cvForm, setCvForm] = useState({ title: '', organization: '', date: '', hours: '', description: '', file_url: '', file_id: '', file_name: '' });
   const [cvFileUploading, setCvFileUploading] = useState(false);
   const cvFileInputRef = useRef(null);
   const cvUploadTokenRef = useRef(0);
@@ -414,12 +331,12 @@ export default function TeacherAchievementsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewEvDialog.item]);
 
-  const openEvidenceFile = (url) => {
-    if (!url) { toast.error('لا يوجد ملف مرفق لهذا الشاهد'); return; }
+  const openEvidenceFile = (url, targetWin = null) => {
+    if (!url) { try { targetWin?.close(); } catch {} toast.error('لا يوجد ملف مرفق لهذا الشاهد'); return; }
     try {
       if (url.startsWith('data:')) {
         const m = url.match(/^data:([^;,]+)(;base64)?,(.*)$/);
-        if (!m) { toast.error('صيغة الملف غير صالحة'); return; }
+        if (!m) { try { targetWin?.close(); } catch {} toast.error('صيغة الملف غير صالحة'); return; }
         const mime = m[1] || 'application/octet-stream';
         const isB64 = !!m[2];
         const payload = m[3] || '';
@@ -433,21 +350,44 @@ export default function TeacherAchievementsPage() {
         }
         const blob = new Blob([bytes], { type: mime });
         const blobUrl = URL.createObjectURL(blob);
-        const w = window.open(blobUrl, '_blank');
+        let w = targetWin;
+        if (w) { w.location.href = blobUrl; }
+        else { w = window.open(blobUrl, '_blank'); }
         if (!w) { toast.error('يرجى السماح بالنوافذ المنبثقة'); URL.revokeObjectURL(blobUrl); return; }
         setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      } else if (targetWin) {
+        targetWin.location.href = url;
       } else {
         const w = window.open(url, '_blank', 'noopener,noreferrer');
         if (!w) toast.error('يرجى السماح بالنوافذ المنبثقة');
       }
     } catch (e) {
+      try { targetWin?.close(); } catch {}
       toast.error('فشل فتح الملف');
+    }
+  };
+
+  // Attachments are no longer shipped inline in list payloads; resolve the
+  // bytes on demand via /teacher/portfolio/file/{file_id} when the user opens one.
+  const openEvidenceItem = async (item) => {
+    if (!item) { toast.error('لا يوجد ملف مرفق لهذا الشاهد'); return; }
+    if (item.file_url) { openEvidenceFile(item.file_url); return; }
+    const handle = item.file_id || item.id;
+    if (!handle || !(item.file_id || item.has_file)) { toast.error('لا يوجد ملف مرفق لهذا الشاهد'); return; }
+    // Open the window synchronously so popup blockers tie it to the user click.
+    const w = window.open('about:blank', '_blank');
+    try {
+      const res = await api.get(`/teacher/portfolio/file/${handle}`);
+      openEvidenceFile(res.data?.file_url, w);
+    } catch (err) {
+      try { w?.close(); } catch {}
+      nassaqError(getApiErrorMessage(err) || 'فشل فتح الملف');
     }
   };
   const [manualEvForm, setManualEvForm] = useState({
     section_key: '', evidence_type: '', title_ar: '', description_ar: '',
     class_id: '', subject_id: '', file_kind: 'pdf',
-    file_url: '', file_name: '',
+    file_url: '', file_id: '', file_name: '',
   });
   const [manualEvSaving, setManualEvSaving] = useState(false);
   const [manualEvUploading, setManualEvUploading] = useState(false);
@@ -541,7 +481,7 @@ export default function TeacherAchievementsPage() {
       evidence_type: defaultType,
       title_ar: '', description_ar: '',
       class_id: '', subject_id: '', file_kind: 'pdf',
-      file_url: '', file_name: '',
+      file_url: '', file_id: '', file_name: '',
     });
     setManualEvDialog({ open: true });
   };
@@ -563,7 +503,7 @@ export default function TeacherAchievementsPage() {
       });
       if (token !== manualEvUploadTokenRef.current) return;
       if (res?.data?.success) {
-        setManualEvForm(p => ({ ...p, file_url: res.data.file_url, file_name: res.data.file_name }));
+        setManualEvForm(p => ({ ...p, file_url: '', file_id: res.data.file_id, file_name: res.data.file_name }));
         toast.success('تم رفع الملف');
       }
     } catch (err) {
@@ -589,6 +529,7 @@ export default function TeacherAchievementsPage() {
         class_id: manualEvForm.class_id || null,
         subject_id: manualEvForm.subject_id || null,
         file_url: manualEvForm.file_url || null,
+        file_id: manualEvForm.file_id || null,
         file_name: manualEvForm.file_name || null,
         metadata: { file_kind: manualEvForm.file_kind, source: 'manual_v2' },
       });
@@ -605,8 +546,12 @@ export default function TeacherAchievementsPage() {
   const fetchPortfolio = useCallback(async () => {
     setLoading(true);
     try {
+      const portfolioReq = api.get('/teacher/portfolio');
+      // Perceived performance: unblock the page as soon as the primary payload
+      // settles; progress/sections hydrate in place afterwards.
+      portfolioReq.then(() => setLoading(false), () => {});
       const [portfolioRes, progressRes, sectionsRes] = await Promise.allSettled([
-        api.get('/teacher/portfolio'),
+        portfolioReq,
         api.get('/teacher/portfolio/progress'),
         api.get('/teacher/portfolio/sections'),
       ]);
@@ -724,7 +669,7 @@ export default function TeacherAchievementsPage() {
   const openCVDialog = (kind) => {
     cvUploadTokenRef.current++;
     setCvFileUploading(false);
-    setCvForm({ title: '', organization: '', date: '', hours: '', description: '', file_url: '', file_name: '' });
+    setCvForm({ title: '', organization: '', date: '', hours: '', description: '', file_url: '', file_id: '', file_name: '' });
     setCvDialog({ open: true, kind });
   };
 
@@ -744,7 +689,7 @@ export default function TeacherAchievementsPage() {
       });
       if (token !== cvUploadTokenRef.current) return;
       if (res?.data?.success) {
-        setCvForm(p => ({ ...p, file_url: res.data.file_url, file_name: res.data.file_name }));
+        setCvForm(p => ({ ...p, file_url: '', file_id: res.data.file_id, file_name: res.data.file_name }));
         toast.success('تم رفع الملف');
       }
     } catch (err) {
@@ -767,6 +712,7 @@ export default function TeacherAchievementsPage() {
         hours: cvForm.hours ? Number(cvForm.hours) : null,
         description: cvForm.description.trim() || null,
         file_url: cvForm.file_url || null,
+        file_id: cvForm.file_id || null,
         file_name: cvForm.file_name || null,
       });
       setCvDialog({ open: false, kind: 'training_attended' });
@@ -823,7 +769,7 @@ export default function TeacherAchievementsPage() {
       description_ar: '', description_en: '',
       date: new Date().toISOString().split('T')[0],
       class_id: '', subject_id: '',
-      file_url: '', file_name: '', file_kind: 'pdf',
+      file_url: '', file_id: '', file_name: '', file_kind: 'pdf',
     });
     setEvidenceDialog({ open: true, mode: 'add', data: null });
   };
@@ -858,6 +804,7 @@ export default function TeacherAchievementsPage() {
       class_id: evidence.class_id || '',
       subject_id: evidence.subject_id || '',
       file_url: url,
+      file_id: evidence.file_id || '',
       file_name: evidence.file_name || '',
       file_kind: fileKind,
     });
@@ -942,6 +889,7 @@ export default function TeacherAchievementsPage() {
           class_id: evidenceForm.class_id || null,
           subject_id: evidenceForm.subject_id || null,
           file_url: evidenceForm.file_url || null,
+          file_id: evidenceForm.file_id || null,
           file_name: evidenceForm.file_name || null,
           metadata: { ...orig, file_kind: evidenceForm.file_kind },
         };
@@ -989,12 +937,15 @@ export default function TeacherAchievementsPage() {
   }, [portfolio]);
 
   const filesOnlyEvidence = useMemo(
-    () => allEvidence.filter(e => !!e.file_url),
+    () => allEvidence.filter(e => !!(e.file_url || e.file_id || e.has_file)),
     [allEvidence]
   );
 
+  // The library lists EVERY evidence record (auto-captured rows carry no file
+  // attachment — an independent teacher's portfolio is typically 100% auto,
+  // and a files-only base list rendered it permanently empty).
   const filteredFileEvidence = useMemo(() => {
-    let items = filesOnlyEvidence;
+    let items = allEvidence;
     if (fileTypeFilter && fileTypeFilter !== 'all') {
       items = items.filter(e => e.evidence_type === fileTypeFilter);
     }
@@ -1008,7 +959,7 @@ export default function TeacherAchievementsPage() {
       );
     }
     return items;
-  }, [filesOnlyEvidence, fileTypeFilter, fileFilter]);
+  }, [allEvidence, fileTypeFilter, fileFilter]);
 
   const sectionStats = useMemo(() => {
     return SUBSECTION_CONFIG_V2.map(sec => ({
@@ -1218,7 +1169,7 @@ export default function TeacherAchievementsPage() {
             handleDeleteCVItem={handleDeleteCVItem}
             openEditDialog={openEditDialog}
             handleDeleteEvidence={handleDeleteEvidence}
-            openEvidenceFile={openEvidenceFile}
+            openEvidenceFile={openEvidenceItem}
           />
         )}
 
@@ -1228,8 +1179,10 @@ export default function TeacherAchievementsPage() {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 font-cairo flex items-center gap-2">
                   <FileArchive className="w-4 h-4 text-violet-600" />
-                  الملفات المرفقة بالشواهد
-                  <span className="text-[11px] font-normal text-gray-500">({filesOnlyEvidence.length})</span>
+                  جميع الشواهد والملفات
+                  <span className="text-[11px] font-normal text-gray-500">
+                    ({allEvidence.length} شاهد{filesOnlyEvidence.length > 0 ? ` · ${filesOnlyEvidence.length} بملف مرفق` : ''})
+                  </span>
                 </h3>
               </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -1248,9 +1201,7 @@ export default function TeacherAchievementsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t('portfolioAllEvidence')}</SelectItem>
-                  {ALL_EVIDENCE_TYPES.map(type => (
-                    <SelectItem key={type} value={type}>{t(TYPE_LABEL_KEYS[type])}</SelectItem>
-                  ))}
+                  <EvidenceTypeOptions t={t} />
                 </SelectContent>
               </Select>
             </div>
@@ -1259,13 +1210,22 @@ export default function TeacherAchievementsPage() {
               <Card className="border-0 shadow-sm bg-white dark:bg-gray-800">
                 <CardContent className="py-12 text-center">
                   <FileArchive className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">{t('portfolioEmptyState')}</p>
+                  {allEvidence.length === 0 ? (
+                    <p data-testid="file-library-empty" className="text-gray-500 dark:text-gray-400 text-sm">
+                      {t('portfolioEmptyState')}
+                    </p>
+                  ) : (
+                    <p data-testid="file-library-no-matches" className="text-gray-500 dark:text-gray-400 text-sm">
+                      {t('portfolioNoFilterMatches')}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredFileEvidence.map(item => {
-                  const sectionCfg = SECTION_CONFIG.find(s => s.types.includes(item.evidence_type));
+                  const sectionCfg = SUBSECTION_CONFIG_V2.find(s => s.types.includes(item.evidence_type))
+                    || SECTION_CONFIG.find(s => s.types.includes(item.evidence_type));
                   const SIcon = sectionCfg?.icon || FileText;
                   return (
                     <Card key={item.id} className="border-0 shadow-sm bg-white dark:bg-gray-800 hover:shadow-md">
@@ -1279,7 +1239,7 @@ export default function TeacherAchievementsPage() {
                               {isRTL ? item.title_ar : (item.title_en || item.title_ar)}
                             </p>
                             <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-                              {labelForType(item.evidence_type)}
+                              {labelForType(item.evidence_type, t)}
                             </p>
                           </div>
                           <Badge variant="outline" className={`text-[10px] shrink-0 ${item.source === 'auto' ? 'border-amber-300 text-amber-600 dark:border-amber-700 dark:text-amber-400' : 'border-blue-300 text-blue-600 dark:border-blue-700 dark:text-blue-400'}`}>
@@ -1296,6 +1256,11 @@ export default function TeacherAchievementsPage() {
                             <Calendar className="w-3 h-3" /> {item.date}
                           </span>
                           <div className="flex gap-1">
+                            {(item.file_url || item.file_id || item.has_file) && (
+                              <Button size="icon" variant="ghost" className="h-6 w-6" title="عرض الملف" onClick={() => openEvidenceItem(item)}>
+                                <FileArchive className="w-3 h-3 text-violet-600" />
+                              </Button>
+                            )}
                             <Button size="icon" variant="ghost" className="h-6 w-6" title="عرض التفاصيل" onClick={() => openViewDialog(item)}>
                               <Eye className="w-3 h-3 text-gray-500" />
                             </Button>
@@ -1358,9 +1323,7 @@ export default function TeacherAchievementsPage() {
                   <SelectValue placeholder={t('portfolioEvidenceType')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {ALL_EVIDENCE_TYPES.map(type => (
-                    <SelectItem key={type} value={type}>{t(TYPE_LABEL_KEYS[type])}</SelectItem>
-                  ))}
+                  <EvidenceTypeOptions t={t} />
                 </SelectContent>
               </Select>
             </div>
@@ -1482,7 +1445,7 @@ export default function TeacherAchievementsPage() {
               <Label className="text-xs font-medium mb-1.5 block">نوع الملف</Label>
               <Select
                 value={evidenceForm.file_kind || 'pdf'}
-                onValueChange={(v) => { editUploadTokenRef.current++; setEditFileUploading(false); _clearEditPreview(); setEvidenceForm(prev => ({ ...prev, file_kind: v, file_url: '', file_name: '' })); }}
+                onValueChange={(v) => { editUploadTokenRef.current++; setEditFileUploading(false); _clearEditPreview(); setEvidenceForm(prev => ({ ...prev, file_kind: v, file_url: '', file_id: '', file_name: '' })); }}
               >
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -1533,7 +1496,7 @@ export default function TeacherAchievementsPage() {
                       <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                         <Loader2 className="w-4 h-4 animate-spin" /> جاري الرفع...
                       </div>
-                    ) : evidenceForm.file_url ? (
+                    ) : (evidenceForm.file_url || evidenceForm.file_id) ? (
                       <div className="text-sm">
                         <CheckCircle2 className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
                         <div className="text-emerald-700 dark:text-emerald-300 font-medium truncate px-2">{evidenceForm.file_name || 'ملف مرفق'}</div>
@@ -1555,7 +1518,7 @@ export default function TeacherAchievementsPage() {
                         <button
                           type="button"
                           aria-label="إزالة الملف والمعاينة"
-                          onClick={() => { editUploadTokenRef.current++; setEditFileUploading(false); _clearEditPreview(); setEvidenceForm(prev => ({ ...prev, file_url: '', file_name: '' })); }}
+                          onClick={() => { editUploadTokenRef.current++; setEditFileUploading(false); _clearEditPreview(); setEvidenceForm(prev => ({ ...prev, file_url: '', file_id: '', file_name: '' })); }}
                           className="text-gray-400 hover:text-red-500 transition-colors p-0.5"
                         >
                           <X className="w-3.5 h-3.5" aria-hidden="true" />
@@ -1600,10 +1563,10 @@ export default function TeacherAchievementsPage() {
                   )}
                 </>
               )}
-              {evidenceForm.file_url && !editPreviewSrc && (
+              {(evidenceForm.file_url || evidenceForm.file_id) && !editPreviewSrc && (
                 <button
                   type="button"
-                  onClick={() => { editUploadTokenRef.current++; setEditFileUploading(false); _clearEditPreview(); setEvidenceForm(prev => ({ ...prev, file_url: '', file_name: '' })); }}
+                  onClick={() => { editUploadTokenRef.current++; setEditFileUploading(false); _clearEditPreview(); setEvidenceForm(prev => ({ ...prev, file_url: '', file_id: '', file_name: '' })); }}
                   className="mt-2 text-[11px] text-red-600 hover:text-red-700 underline"
                 >
                   {evidenceForm.file_kind === 'link' ? 'إزالة الرابط' : 'إزالة الملف'}
@@ -1774,7 +1737,7 @@ export default function TeacherAchievementsPage() {
               <Label className="text-xs font-medium mb-1 block">نوع الدليل</Label>
               <Select
                 value={manualEvForm.file_kind}
-                onValueChange={(v) => { _clearManualEvPreview(); setManualEvForm(p => ({ ...p, file_kind: v, file_url: '', file_name: '' })); }}
+                onValueChange={(v) => { _clearManualEvPreview(); setManualEvForm(p => ({ ...p, file_kind: v, file_url: '', file_id: '', file_name: '' })); }}
               >
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -1806,10 +1769,10 @@ export default function TeacherAchievementsPage() {
                     className="h-9"
                   />
                   <p className="text-[11px] text-gray-500">يدعم: Google Drive، OneDrive، Dropbox، YouTube، أو أي رابط آخر يبدأ بـ https://</p>
-                  {manualEvForm.file_url && (
+                  {(manualEvForm.file_url || manualEvForm.file_id) && (
                     <button
                       type="button"
-                      onClick={() => setManualEvForm(p => ({ ...p, file_url: '', file_name: '' }))}
+                      onClick={() => setManualEvForm(p => ({ ...p, file_url: '', file_id: '', file_name: '' }))}
                       className="text-[11px] text-red-600 hover:text-red-700 underline"
                     >
                       إزالة الرابط
@@ -1835,7 +1798,7 @@ export default function TeacherAchievementsPage() {
                       <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                         <Loader2 className="w-4 h-4 animate-spin" /> جاري الرفع...
                       </div>
-                    ) : manualEvForm.file_url ? (
+                    ) : (manualEvForm.file_url || manualEvForm.file_id) ? (
                       <div className="text-sm">
                         <CheckCircle2 className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
                         <div className="text-emerald-700 dark:text-emerald-300 font-medium truncate px-2">{manualEvForm.file_name}</div>
@@ -1857,7 +1820,7 @@ export default function TeacherAchievementsPage() {
                         <button
                           type="button"
                           aria-label="إزالة الملف والمعاينة"
-                          onClick={() => { _clearManualEvPreview(); setManualEvForm(p => ({ ...p, file_url: '', file_name: '' })); }}
+                          onClick={() => { _clearManualEvPreview(); setManualEvForm(p => ({ ...p, file_url: '', file_id: '', file_name: '' })); }}
                           className="text-gray-400 hover:text-red-500 transition-colors p-0.5"
                         >
                           <X className="w-3.5 h-3.5" aria-hidden="true" />
@@ -1957,7 +1920,7 @@ export default function TeacherAchievementsPage() {
                   </div>
                   <div>
                     <div className="text-[11px] text-gray-500 mb-0.5">التصنيف الفرعي</div>
-                    <div className="text-sm">{labelForType(it.evidence_type)}</div>
+                    <div className="text-sm">{labelForType(it.evidence_type, t)}</div>
                   </div>
                   <div>
                     <div className="text-[11px] text-gray-500 mb-0.5">المادة</div>
@@ -1984,13 +1947,13 @@ export default function TeacherAchievementsPage() {
                 </div>
                 <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                   <div className="text-[11px] text-gray-500 mb-1">الملف المرفق</div>
-                  {it.file_url ? (
+                  {(it.file_url || it.file_id || it.has_file) ? (
                     <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <FileArchive className="w-4 h-4 text-violet-600 shrink-0" />
                         <span className="text-sm truncate">{it.file_name || 'ملف مرفق'}</span>
                       </div>
-                      <Button size="sm" onClick={() => openEvidenceFile(it.file_url)} className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white shrink-0">
+                      <Button size="sm" onClick={() => openEvidenceItem(it)} className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white shrink-0">
                         <Eye className="w-3.5 h-3.5" /> عرض الملف
                       </Button>
                     </div>
@@ -2058,7 +2021,7 @@ export default function TeacherAchievementsPage() {
                 accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
                 onChange={(e) => handleCvFile(e.target.files?.[0])}
               />
-              {cvForm.file_url ? (
+              {(cvForm.file_url || cvForm.file_id) ? (
                 <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-violet-200 dark:border-violet-800/60 bg-violet-50/60 dark:bg-violet-900/20">
                   <div className="flex items-center gap-2 min-w-0">
                     <FileText className="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0" />
@@ -2072,7 +2035,7 @@ export default function TeacherAchievementsPage() {
                     variant="ghost"
                     className="h-7 w-7 shrink-0"
                     title="إزالة الملف"
-                    onClick={() => { cvUploadTokenRef.current++; setCvFileUploading(false); _clearCvPreview(); setCvForm(p => ({ ...p, file_url: '', file_name: '' })); }}
+                    onClick={() => { cvUploadTokenRef.current++; setCvFileUploading(false); _clearCvPreview(); setCvForm(p => ({ ...p, file_url: '', file_id: '', file_name: '' })); }}
                   >
                     <Trash2 className="w-3.5 h-3.5 text-red-500" />
                   </Button>
@@ -2106,7 +2069,7 @@ export default function TeacherAchievementsPage() {
                     <button
                       type="button"
                       aria-label="إزالة الملف والمعاينة"
-                      onClick={() => { cvUploadTokenRef.current++; setCvFileUploading(false); _clearCvPreview(); setCvForm(p => ({ ...p, file_url: '', file_name: '' })); }}
+                      onClick={() => { cvUploadTokenRef.current++; setCvFileUploading(false); _clearCvPreview(); setCvForm(p => ({ ...p, file_url: '', file_id: '', file_name: '' })); }}
                       className="text-gray-400 hover:text-red-500 transition-colors p-0.5"
                     >
                       <X className="w-3.5 h-3.5" aria-hidden="true" />
@@ -2227,7 +2190,7 @@ function EvidenceRow({ item, isRTL, onView, onEdit, onDelete }) {
           {item.date && (
             <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{item.date}</span>
           )}
-          <span>{labelForType(item.evidence_type)}</span>
+          <span>{labelForType(item.evidence_type, t)}</span>
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
@@ -2265,13 +2228,13 @@ function CVItemRow({ item, isRTL, onDelete, onOpenFile }) {
         {item.description && (
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{item.description}</p>
         )}
-        {item.file_url && (
+        {(item.file_url || item.file_id || item.has_file) && (
           <div className="mt-2 flex items-center justify-between gap-2 p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <FileArchive className="w-3.5 h-3.5 text-violet-600 shrink-0" aria-hidden="true" strokeWidth={1.5} />
               <span className="text-xs truncate text-start">{item.file_name || 'ملف مرفق'}</span>
             </div>
-            <Button size="sm" variant="outline" onClick={() => onOpenFile?.(item.file_url)} className="gap-1.5 h-7 text-xs shrink-0">
+            <Button size="sm" variant="outline" onClick={() => onOpenFile?.(item)} className="gap-1.5 h-7 text-xs shrink-0">
               <Eye className="w-3.5 h-3.5" aria-hidden="true" strokeWidth={1.5} /> عرض الملف
             </Button>
           </div>

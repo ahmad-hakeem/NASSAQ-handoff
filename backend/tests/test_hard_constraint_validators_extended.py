@@ -1,9 +1,9 @@
 """Task 4 — tests for the 12 remaining hard-constraint validators."""
 
-from backend.engines.hard_constraints import VALIDATION_REGISTRY
-from backend.engines.hard_constraints.types import ConstraintContext
-from backend.engines.smart_scheduling_engine import ConflictSeverity
-from backend.engines.hard_constraints.validators import (
+from engines.hard_constraints import VALIDATION_REGISTRY
+from engines.hard_constraints.types import ConstraintContext
+from engines.smart_scheduling_engine import ConflictSeverity
+from engines.hard_constraints.validators import (
     academic_structure_match,
     block_publish_on_conflict,
     entity_integrity,

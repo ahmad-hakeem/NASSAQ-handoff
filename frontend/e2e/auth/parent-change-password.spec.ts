@@ -41,11 +41,12 @@ async function newSignedInParentContext(
   browser: Browser,
   email: string,
   password: string,
+  totpSecret: string,
 ): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext();
   const page = await context.newPage();
   await gotoLogin(page);
-  await signInWith(page, email, password);
+  await signInWith(page, email, password, totpSecret);
   await page.waitForURL((u) => u.pathname.startsWith('/parent'), { timeout: 15_000 });
   return { context, page };
 }
@@ -80,17 +81,17 @@ async function submitAndExpectSuccess(page: Page) {
 }
 
 /**
- * Signs the page out via the real Settings → Logout row (mirrors
- * what a real parent would do) and asserts the bounce to /login.
+ * A successful self password change advances `last_password_change`
+ * server-side, which invalidates the current access token AND its
+ * refresh-token family (every subsequent API call 401s with "token
+ * predates password change"). The app therefore hard-logs the user
+ * out — the spec must EXPECT the bounce to /login rather than drive
+ * the Settings → Logout row, which is no longer reachable.
  */
-async function signOutFromSettings(page: Page) {
+async function expectHardLogoutToLogin(page: Page) {
+  // Trigger an authenticated request cycle if the app hasn't already
+  // bounced (any navigation re-runs the /auth/me bootstrap).
   await page.goto(PARENT_SETTINGS_PATH);
-  await expect(page.getByTestId('parent-settings-page')).toBeVisible({ timeout: 15_000 });
-  await page.getByTestId('settings-row-logout').click();
-  const dialog = page.getByTestId('nassaq-alert-dialog');
-  await expect(dialog).toBeVisible({ timeout: 5_000 });
-  // Confirm button is the first <button> in the NassaqAlertDialog footer.
-  await dialog.getByRole('button').first().click();
   await page.waitForURL(/\/login(\?|$|#)/, { timeout: 15_000 });
   await expect(page.getByTestId('login-page')).toBeVisible({ timeout: 5_000 });
 }
@@ -101,27 +102,28 @@ test.describe('parent change-password e2e (Task #474)', () => {
   });
 
   test('valid change: rotates, lets parent sign in with new password, then reverts', async ({ browser }) => {
-    const { email, password } = getParentCredentials();
+    const { email, password, totpSecret } = getParentCredentials();
     // Hard guard: don't accidentally rotate to the same value if a
     // previous run aborted halfway and the operator re-seeded the
     // env to ROTATED_PASSWORD. The spec ALWAYS leaves the account
     // back on the canonical seed password.
     expect(password).not.toBe(ROTATED_PASSWORD);
 
-    const a = await newSignedInParentContext(browser, email, password);
+    const a = await newSignedInParentContext(browser, email, password, totpSecret);
     try {
       // 1. Rotate seed → ROTATED_PASSWORD via the real dialog.
       await openChangePasswordDialog(a.page);
       await fillPasswordForm(a.page, password, ROTATED_PASSWORD);
       await submitAndExpectSuccess(a.page);
 
-      // 2. Sign out via the real Settings → Logout row.
-      await signOutFromSettings(a.page);
+      // 2. The rotation invalidates the current session server-side —
+      //    assert the app hard-logs out to /login.
+      await expectHardLogoutToLogin(a.page);
 
       // 3. Sign back in with the NEW password — proves the rotation
       //    actually landed on the server and the FE login path
       //    accepts it.
-      await signInWith(a.page, email, ROTATED_PASSWORD);
+      await signInWith(a.page, email, ROTATED_PASSWORD, totpSecret);
       await a.page.waitForURL((u) => u.pathname.startsWith('/parent'), { timeout: 15_000 });
 
       // 4. Rotate ROTATED_PASSWORD → seed so the shared test
@@ -137,8 +139,8 @@ test.describe('parent change-password e2e (Task #474)', () => {
   });
 
   test('wrong current password surfaces exactly one NassaqAlertDialog (no double-dialog regression)', async ({ browser }) => {
-    const { email, password } = getParentCredentials();
-    const a = await newSignedInParentContext(browser, email, password);
+    const { email, password, totpSecret } = getParentCredentials();
+    const a = await newSignedInParentContext(browser, email, password, totpSecret);
     try {
       await openChangePasswordDialog(a.page);
       // Deliberately wrong current password; new password is valid

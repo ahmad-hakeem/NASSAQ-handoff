@@ -27,6 +27,7 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 from engines.entity_counts import reconcile_school_counts, reconcile_class_counts, enforce_class_capacity
 from auth_scope import require_request_school_id
 from utils.it_parent_link import link_workspace_parent_to_student
+from config import PublicUrlConfigError
 from engines.email_service import send_parent_invitation_email, _get_app_url
 from utils.canonical_grades import CANONICAL_GRADES, normalize_canonical_grade
 from utils.stage_grade import normalize_stage
@@ -352,19 +353,71 @@ async def get_class_students_options(current_user: dict = Depends(require_roles(
 
     query = {"school_id": school_id, "is_active": {"$ne": False}}
     students = await gd_find(db.session, "students", query, limit=500)
-    
+
+    # Add-flow audit 2026-07-28: this endpoint used to read `grade_id` /
+    # `grade_level` keys that do NOT exist on students rows (the column is
+    # `grade`, and legacy values are messy: '0125', Arabic labels, NULL),
+    # so every student came back with grade_id="" and the class wizard's
+    # grade filter hid the entire roster ("لا يوجد طلاب متاحين").
+    # Resolve each student's grade to a canonical number best-effort
+    # (own `grade` value first, else the student's class's grade), then emit
+    # it in the SAME id space as GET /classes/options/grades — the tenant's
+    # grade_levels row id when one matches, else the canonical number — so
+    # the wizard's `s.grade_id === data.grade_id` comparison holds.
+    # Unknown grades stay "" and the frontend must not hide those students.
+    grade_rows = await gd_find(db.session, "grade_levels", {"school_id": school_id}, limit=200)
+    existing_id_by_grade: Dict[int, str] = {}
+    for r in grade_rows:
+        row_id = r.get("id") or r.get("_id")
+        if not row_id:
+            continue
+        entry = normalize_canonical_grade(r.get("grade")) or normalize_canonical_grade(
+            r.get("name_ar") or r.get("name")
+        )
+        if entry and entry["grade"] not in existing_id_by_grade:
+            existing_id_by_grade[entry["grade"]] = row_id
+
+    def _grade_number(value) -> Optional[int]:
+        entry = normalize_canonical_grade(value)
+        return entry["grade"] if entry else None
+
+    classes = await gd_find(
+        db.session, "classes",
+        {"school_id": school_id, "is_active": {"$ne": False}},
+        limit=1000,
+    )
+    class_grade_by_id: Dict[str, Optional[int]] = {}
+    for c in classes:
+        class_grade_by_id[str(c.get("id"))] = (
+            _grade_number(c.get("grade_id"))
+            or _grade_number(c.get("grade_level"))
+            or _grade_number(c.get("grade_name_ar"))
+        )
+        # Legacy class rows sometimes hold the tenant grade_levels row id in
+        # grade_id; map it back through the same row index.
+        if class_grade_by_id[str(c.get("id"))] is None:
+            raw = str(c.get("grade_id") or "")
+            for num, rid in existing_id_by_grade.items():
+                if str(rid) == raw:
+                    class_grade_by_id[str(c.get("id"))] = num
+                    break
+
     result_students = []
     for s in students:
+        grade_num = _grade_number(s.get("grade"))
+        if grade_num is None:
+            grade_num = class_grade_by_id.get(str(s.get("class_id") or ""))
+        grade_id = str(existing_id_by_grade.get(grade_num, grade_num)) if grade_num else ""
         result_students.append({
             "student_id": s.get("student_id") or s.get("id", ""),
             "full_name_ar": s.get("full_name_ar") or s.get("full_name", ""),
             "full_name_en": s.get("full_name_en", ""),
             "student_number": s.get("student_number", ""),
-            "grade_id": s.get("grade_id") or (f"grade_{s.get('grade_level')}" if s.get("grade_level") else ""),
-            "grade_level": s.get("grade_level", ""),
+            "grade_id": grade_id,
+            "grade_level": grade_id,
             "class_id": s.get("class_id")
         })
-    
+
     return {"students": result_students}
 
 @router.get("/classes/options/class-types")
@@ -1433,10 +1486,22 @@ async def create_student_with_wizard(
         # embed it in the canonical accept deep-link instead.
         _raw_token = invite_result.pop("token", None)
         if _raw_token:
-            invite_link = (
-                f"{_get_app_url()}/parent-invitations/accept?token={_raw_token}"
-            )
-            if _it_parent_email:
+            # Safety belt: never build (or email) an activation link on a
+            # non-public base. The startup gate makes this unreachable in a
+            # correctly configured deployment; if config drifts anyway we
+            # skip the deep-link + email instead of 500-ing the student
+            # creation (the invitation stays valid — a new link can be
+            # issued once the configuration is fixed).
+            try:
+                invite_link = (
+                    f"{_get_app_url()}/parent-invitations/accept?token={_raw_token}"
+                )
+            except PublicUrlConfigError as _url_err:
+                invite_link = None
+                logger.critical(
+                    f"PARENT INVITE LINK BLOCKED: public app URL misconfigured — {_url_err}"
+                )
+            if invite_link and _it_parent_email:
                 # True post-commit delivery: FastAPI background tasks run only
                 # after the response is sent — i.e. AFTER pg_session_middleware
                 # has committed this request's transaction — and do NOT run if

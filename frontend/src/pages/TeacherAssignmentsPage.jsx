@@ -152,16 +152,19 @@ export const TeacherAssignmentsPage = () => {
       setClasses(classesRes.data);
       setSubjects(subjectsRes.data);
       
-      // Fetch workloads for each teacher
-      const workloads = {};
-      for (const teacher of teachersRes.data.slice(0, 20)) { // Limit to first 20 for performance
-        try {
-          const workloadRes = await api.get(`/teachers/${teacher.id}/workload`);
-          workloads[teacher.id] = workloadRes.data;
-        } catch (e) {
-          // Ignore individual errors
-        }
-      }
+      // Fetch workloads for each teacher. These are independent of each other,
+      // so they go out in parallel — the previous sequential `await` inside a
+      // for-loop turned 20 independent calls into a 20-deep request waterfall
+      // (each one paying a full round-trip before the next was even issued).
+      const shown = teachersRes.data.slice(0, 20); // Limit to first 20 for performance
+      const workloadResults = await Promise.all(
+        shown.map(teacher =>
+          api.get(`/teachers/${teacher.id}/workload`)
+            .then(res => [teacher.id, res.data])
+            .catch(() => null) // Ignore individual errors
+        )
+      );
+      const workloads = Object.fromEntries(workloadResults.filter(Boolean));
       setTeacherWorkloads(workloads);
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -292,7 +295,7 @@ export const TeacherAssignmentsPage = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button variant="ghost" size="icon" asChild className="rounded-xl">
-                <Link to="/admin/schedule">
+                <Link to="/principal/schedule">
                   <ArrowLeft className="h-5 w-5" />
                 </Link>
               </Button>

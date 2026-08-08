@@ -18,6 +18,12 @@ logger = logging.getLogger("nassaq")
 
 
 def register_routes(app, api_router: APIRouter):
+    # Infrastructure probes: root-mounted and unauthenticated by design, so
+    # load balancers / orchestrators / uptime monitors can reach them without
+    # a token. Never mirrored under /api — infra tools use the bare paths.
+    from routes.health_routes import router as health_router
+    app.include_router(health_router)
+
     from routes.monitoring_routes import router as monitoring_router
     app.include_router(monitoring_router)
     api_router.include_router(monitoring_router)
@@ -64,6 +70,11 @@ def register_routes(app, api_router: APIRouter):
     from routes.portfolio_routes_mod import router as portfolio_mod_router
     from routes.calendar_routes_mod import router as calendar_mod_router
     from routes.hakeem_plan_routes_mod import router as hakeem_plan_mod_router
+
+    # Task #1139 — signature-authorised image bytes (user avatars / school
+    # logos). No bearer dependency by design; see the module docstring.
+    from routes.image_serving_routes import router as image_serving_router
+    api_router.include_router(image_serving_router)
 
     api_router.include_router(auth_mod_router)
     api_router.include_router(mfa_router)

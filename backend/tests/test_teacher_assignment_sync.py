@@ -24,7 +24,12 @@ from dependencies import db
 from engines.sql_utils import gd_insert, gd_find
 import routes.role_dashboards_mod as rd
 from utils.teacher_assignment_sync import (
+    normalize_subject_name,
+    build_subject_name_index,
+    match_subject_by_name,
+    teacher_subject_ids_from_doc,
     resolve_subject,
+    resolve_class_subject,
     resolve_teacher_single_subject,
     is_tombstoned,
     add_tombstone,
@@ -73,6 +78,72 @@ def test_resolve_subject_no_curriculum_single_fallback():
         {}, grade_subject_ids=set(), teacher_subject_ids={"s7"})
     assert sid == "s7"
     assert reason == "no_curriculum_single"
+
+
+def test_resolve_subject_no_curriculum_multiple_is_ambiguous():
+    """Several teachable subjects and no curriculum to narrow them: this is a
+    CHOICE, not a missing assignment — the caller must offer a picker instead
+    of telling the principal to assign a subject they already assigned."""
+    sid, reason = resolve_subject(
+        {}, grade_subject_ids=set(), teacher_subject_ids={"s1", "s2"})
+    assert sid is None
+    assert reason == "ambiguous"
+
+
+# ----------------------------------------------------------------------
+# Arabic-aware subject name matching
+# ----------------------------------------------------------------------
+def test_normalize_subject_name_strips_article_and_orthography():
+    assert normalize_subject_name("الرياضيات") == normalize_subject_name("رياضيات")
+    assert normalize_subject_name(" الأحياء ") == normalize_subject_name("احياء")
+    assert normalize_subject_name("اللغة العربية") == normalize_subject_name("اللغه العربيه")
+    assert normalize_subject_name(None) == ""
+
+
+def test_match_subject_by_name_definite_article():
+    """The production bug: teacher specialization "رياضيات" vs subject
+    "الرياضيات" — exact matching missed it and the pairing 409'd."""
+    index = build_subject_name_index([
+        {"id": "s-math", "name_ar": "الرياضيات"},
+        {"id": "s-mathtest", "name_ar": "رياضيات اختبار"},
+    ])
+    assert match_subject_by_name("رياضيات", index) == "s-math"
+    assert match_subject_by_name("الرياضيات", index) == "s-math"
+    # Near-miss names must NOT collide (normalized-exact, never fuzzy).
+    assert match_subject_by_name("رياضيات اختبار", index) == "s-mathtest"
+    assert match_subject_by_name("تاريخ", index) is None
+
+
+def test_match_subject_by_name_drops_colliding_normalized_key():
+    """Both "الرياضيات" and "رياضيات" exist as separate subjects: the normalized
+    key is genuinely ambiguous, so matching declines (the principal picks) and
+    each exact name still resolves to its own subject."""
+    index = build_subject_name_index([
+        {"id": "s-a", "name_ar": "الرياضيات"},
+        {"id": "s-b", "name_ar": "رياضيات"},
+    ])
+    # Exact names always win over the normalized key…
+    assert index["الرياضيات"] == "s-a"
+    assert index["رياضيات"] == "s-b"
+    assert match_subject_by_name("رياضيات", index) == "s-b"
+    # …and when the ambiguous key matches no exact name, matching declines.
+    index2 = build_subject_name_index([
+        {"id": "s-a", "name_ar": "الرياضيات"},
+        {"id": "s-b", "name_ar": "الرياضيّات"},
+    ])
+    assert match_subject_by_name("رياضيات", index2) is None
+
+
+def test_match_subject_by_name_english_legacy_key():
+    index = build_subject_name_index([{"id": "s-math", "name_ar": "الرياضيات"}])
+    assert match_subject_by_name("math", index) == "s-math"
+    assert match_subject_by_name("Mathematics", index) == "s-math"
+
+
+def test_teacher_subject_ids_from_doc_uses_normalized_specialization():
+    index = build_subject_name_index([{"id": "s-sci", "name_ar": "العلوم"}])
+    ids = teacher_subject_ids_from_doc({"specialization": "علوم"}, index, None)
+    assert ids == {"s-sci"}
 
 
 # ----------------------------------------------------------------------
@@ -322,6 +393,72 @@ async def test_legacy_tca_backfill_is_idempotent(monkeypatch):
     assert await materialize_class_assignments_from_legacy_tca(school_id) == 1
     assert await materialize_class_assignments_from_legacy_tca(school_id) == 0
     assert len(await _active_assignments(teacher_id, school_id)) == 1
+
+
+# ----------------------------------------------------------------------
+# resolve_class_subject — reassign lifecycle + polluted-pool regression
+# ----------------------------------------------------------------------
+async def _mk_ta_row(school_id, teacher_id, class_id, subject_id, is_active=True):
+    await gd_insert(db.session, "teacher_assignments", {
+        "id": str(uuid.uuid4()), "school_id": school_id,
+        "teacher_id": teacher_id, "class_id": class_id,
+        "subject_id": subject_id, "is_active": is_active,
+    })
+
+
+@pytest.mark.asyncio
+async def test_resolve_class_subject_reuses_prior_pair_subject():
+    """Unassign → reassign the SAME (teacher, class): the subject from the
+    deactivated canonical row must be reused instead of failing resolution."""
+    school_id = await _mk_school()
+    s1 = await _mk_named_subject(school_id, "التاريخ")
+    teacher_id = await _mk_teacher(school_id)  # no specialization at all
+    c1 = await _mk_class(school_id)
+    await _mk_ta_row(school_id, teacher_id, c1, s1, is_active=False)
+
+    teacher = (await gd_find(db.session, "teachers", {"id": teacher_id}, limit=1))[0]
+    class_doc = (await gd_find(db.session, "classes", {"id": c1}, limit=1))[0]
+    sid, reason = await resolve_class_subject(db.session, school_id, teacher, class_doc)
+    assert sid == s1
+    assert reason == "previous"
+
+
+@pytest.mark.asyncio
+async def test_resolve_class_subject_own_subject_beats_polluted_pool():
+    """A teacher whose own subject resolves by name must not be blocked just
+    because OTHER active class rows carry many unrelated subjects (the
+    production reassign bug: empty curriculum + polluted extra pool)."""
+    school_id = await _mk_school()
+    s_hist = await _mk_named_subject(school_id, "التاريخ")
+    s_math = await _mk_named_subject(school_id, "الرياضيات")
+    s_sci = await _mk_named_subject(school_id, "العلوم")
+    teacher_id = await _mk_teacher_specialized(school_id, "التاريخ")
+    c_target = await _mk_class(school_id)
+    c_other1, c_other2 = await _mk_class(school_id), await _mk_class(school_id)
+    # Polluting active rows on other classes with unrelated subjects.
+    await _mk_ta_row(school_id, teacher_id, c_other1, s_math)
+    await _mk_ta_row(school_id, teacher_id, c_other2, s_sci)
+
+    teacher = (await gd_find(db.session, "teachers", {"id": teacher_id}, limit=1))[0]
+    class_doc = (await gd_find(db.session, "classes", {"id": c_target}, limit=1))[0]
+    sid, _reason = await resolve_class_subject(db.session, school_id, teacher, class_doc)
+    assert sid == s_hist
+
+
+@pytest.mark.asyncio
+async def test_resolve_class_subject_extra_pool_still_used_as_fallback():
+    """A teacher with NO doc-level subject but exactly one subject across
+    active assignment rows must still resolve (pre-fix behavior preserved)."""
+    school_id = await _mk_school()
+    s1 = await _mk_named_subject(school_id, "الجغرافيا")
+    teacher_id = await _mk_teacher(school_id)  # no specialization
+    c_target, c_other = await _mk_class(school_id), await _mk_class(school_id)
+    await _mk_ta_row(school_id, teacher_id, c_other, s1)
+
+    teacher = (await gd_find(db.session, "teachers", {"id": teacher_id}, limit=1))[0]
+    class_doc = (await gd_find(db.session, "classes", {"id": c_target}, limit=1))[0]
+    sid, _reason = await resolve_class_subject(db.session, school_id, teacher, class_doc)
+    assert sid == s1
 
 
 @pytest.mark.asyncio

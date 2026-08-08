@@ -307,7 +307,10 @@ describe('AccountSettingsPage — Task #297 sub-card smoke renders', () => {
   const itSections = [
     ['workspace', 'it-workspace-section'],
     ['communication', 'it-communication-section'],
-    ['inbox_prefs', 'it-inbox-prefs-section'],
+    // 2026-05-18: inbox_prefs was merged into the notifications section;
+    // the deep link now redirects there (see AccountSettingsPage hash
+    // normalization) — assert the redirect target mounts.
+    ['inbox_prefs', 'account-section-notifications'],
     ['export', 'it-export-section'],
   ];
 

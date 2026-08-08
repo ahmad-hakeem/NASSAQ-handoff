@@ -15,7 +15,7 @@ import {
   TARGET_WIDTHS,
   setViewport,
   fingerprintContainer,
-} from '../../__tests__/mobileViewportFingerprint';
+} from '../../testUtils/mobileViewportFingerprint';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({

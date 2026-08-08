@@ -401,3 +401,49 @@ async def test_analytics_behavior_split_and_lesson_plans_saves(client):
     lp = body["lesson_plans"][0]
     assert lp["generated"] == 2
     assert lp["saved"] == 1
+
+
+# ----------------------------------------------------------------------
+# (g) Render back-pressure must reach the caller.
+#
+#     The PDF/XLSX handlers wrap their render in a broad `except Exception
+#     -> 500`. CpuOffloadBusy/CpuOffloadTimeout are plain Exceptions, so
+#     without an explicit re-raise that catch swallows them and the client
+#     gets an opaque 500 with no retry signal instead of the central
+#     503 RENDER_BUSY / 504 RENDER_TIMEOUT envelope.
+# ----------------------------------------------------------------------
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", [
+    "/independent-teacher/analytics/export.pdf",
+    "/independent-teacher/analytics/export.xlsx",
+])
+@pytest.mark.parametrize("exc_name,status,code", [
+    ("CpuOffloadBusy", 503, "RENDER_BUSY"),
+    ("CpuOffloadTimeout", 504, "RENDER_TIMEOUT"),
+])
+async def test_analytics_export_surfaces_render_backpressure(
+    client, monkeypatch, path, exc_name, status, code,
+):
+    import services.cpu_offload as cpu_offload
+    from routes import independent_teacher_analytics_routes as mod
+
+    exc_cls = getattr(cpu_offload, exc_name)
+
+    async def _boom(*_a, **_kw):
+        raise exc_cls()
+
+    monkeypatch.setattr(mod, "run_cpu_bound", _boom)
+
+    a = await _mk_it_workspace()
+    h = _headers(a["id"], a["role"], a["tenant_id"])
+    r = await client.get(path, headers=h)
+
+    assert r.status_code == status, (path, exc_name, r.status_code, r.text)
+    body = r.json()
+    assert body["success"] is False, body
+    assert body["error"]["code"] == code, body
+    # Arabic message for the user, English for the operator.
+    assert body["error"]["message"], body
+    assert body["error"]["message_en"], body
+    if status == 503:
+        assert r.headers.get("Retry-After") == "30", dict(r.headers)

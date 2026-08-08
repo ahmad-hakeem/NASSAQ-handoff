@@ -224,6 +224,11 @@ const wireDefaultGetResponses = () => {
 };
 
 beforeEach(() => {
+  // jsdom does not implement URL.createObjectURL — the export handlers
+  // build a Blob download anchor with it, and an unstubbed call throws,
+  // rerouting success flows into nassaqError.
+  window.URL.createObjectURL = jest.fn(() => 'blob:mock');
+  window.URL.revokeObjectURL = jest.fn();
   mockNavigate.mockReset();
   mockToastSuccess.mockReset();
   mockToastError.mockReset();

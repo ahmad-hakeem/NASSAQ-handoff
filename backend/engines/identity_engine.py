@@ -54,6 +54,24 @@ class IdentityEngine:
         tenant_id: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
+        # Bound any inline avatar before it reaches the User row: this engine
+        # bypasses the gd_* helpers, so it must normalise for itself (the ORM
+        # validator on User.avatar_url would otherwise reject an oversized
+        # value with a programming-error exception).
+        avatar_url = kwargs.get("avatar_url")
+        if isinstance(avatar_url, str) and avatar_url.startswith("data:image/"):
+            from utils.avatar_image import (
+                MAX_IMAGE_FIELD_CHARS,
+                AvatarImageError,
+                normalize_avatar_data_url_async,
+            )
+            if len(avatar_url) > MAX_IMAGE_FIELD_CHARS:
+                raise ValueError("حجم الصورة كبير جداً (الحد الأقصى 2MB)")
+            try:
+                avatar_url = await normalize_avatar_data_url_async(avatar_url)
+            except AvatarImageError:
+                raise ValueError("بيانات الصورة غير صالحة")
+
         user_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
 
@@ -105,7 +123,7 @@ class IdentityEngine:
             linked_roles=linked_roles,
             preferred_language=kwargs.get("preferred_language", "ar"),
             preferred_theme=kwargs.get("preferred_theme", "light"),
-            avatar_url=kwargs.get("avatar_url"),
+            avatar_url=avatar_url,
             email_verified=False,
             failed_login_attempts=0,
         )

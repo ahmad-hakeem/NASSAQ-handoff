@@ -214,7 +214,8 @@ class TestClassesAPI:
                 "name": f"الأول الابتدائي - أ {unique}",
                 "name_en": f"Grade 1 - A {unique}",
                 "school_id": tenant_a,
-                "grade_level": "الأول الابتدائي",
+                "grade_level": "الصف الأول الابتدائي",
+                "grade_id": "1",  # canonical digit grade id (unified stage/grade validation)
                 "section": "أ",
                 "capacity": 30,
             },
@@ -238,7 +239,8 @@ class TestClassesAPI:
             json={
                 "name": f"الثاني الابتدائي - ب {unique}",
                 "school_id": tenant_a,
-                "grade_level": "الثاني الابتدائي",
+                "grade_level": "الصف الثاني الابتدائي",
+                "grade_id": "2",  # canonical digit grade id
                 "section": "ب",
                 "capacity": 25,
             },
@@ -261,7 +263,8 @@ class TestClassesAPI:
             json={
                 "name": f"فصل للحذف {unique}",
                 "school_id": tenant_a,
-                "grade_level": "الثالث الابتدائي",
+                "grade_level": "الصف الثالث الابتدائي",
+                "grade_id": "3",  # canonical digit grade id
                 "section": "ج",
             },
         )

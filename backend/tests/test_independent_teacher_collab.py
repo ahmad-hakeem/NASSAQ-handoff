@@ -207,7 +207,7 @@ async def test_create_collab_self_invite_refused(client):
 
 
 @pytest.mark.asyncio
-async def test_create_collab_missing_mfa_emits_stepup_envelope(client):
+async def test_create_collab_missing_mfa_emits_stepup_envelope(client, enforce_mfa):
     host = await mk_it_workspace(with_passkey=True)
     h = _h(host, with_mfa=False)
     resp = await client.post(

@@ -5,17 +5,19 @@ import { REQUEST_STATUSES } from './constants';
 export const APPROVAL_TYPE_CONFIG = {
   teacher: {
     tabValue: 'requests',
-    tabLabel: 'طلبات المعلمين المستقلين',
+    // A queued `teacher` request is a SCHOOL teacher joining an existing school.
+    // Independent Teachers are auto-approved at signup and never reach this queue.
+    tabLabel: 'طلبات معلمي المدارس',
     tabIcon: FileText,
-    cardTitle: 'طلبات المعلمين المستقلين',
+    cardTitle: 'طلبات تسجيل معلمي المدارس',
     emptyTitle: 'لا توجد طلبات',
-    emptyMessage: 'لا توجد طلبات معلمين مستقلين حالياً',
+    emptyMessage: 'لا توجد طلبات تسجيل معلمي مدارس حالياً',
     avatarBg: 'bg-cyan-500',
     avatarContent: (r) => r.full_name?.charAt(0),
     nameField: 'full_name',
     approveTitle: 'تأكيد الموافقة على طلب إنشاء حساب',
     approveDesc: 'هل أنت متأكد من الموافقة على طلب إنشاء حساب لهذا المعلم؟',
-    approveNote: 'سيتم إنشاء حساب للمعلم وتوليد بيانات الدخول و QR Code',
+    approveNote: 'سيتم إنشاء حساب للمعلم وربطه بالمدرسة المختارة وتوليد بيانات الدخول و QR Code',
     successTitle: 'تم إنشاء الحساب بنجاح!',
     successSubtitle: 'بيانات الحساب الجديد:',
     rejectTitle: (r) => `رفض طلب ${r?.full_name || ''}`,
@@ -29,6 +31,7 @@ export const APPROVAL_TYPE_CONFIG = {
       r.subject && { label: 'المادة', value: r.subject },
       r.educational_level && { label: 'المرحلة', value: r.educational_level },
       r.school_mentioned && { label: 'المدرسة', value: r.school_mentioned },
+      r.school_code && { label: 'رمز المدرسة المُدخل', value: r.school_code, dir: 'ltr' },
     ].filter(Boolean),
     cardFields: (r) => [
       { label: 'رقم الهوية', value: r.national_id, dir: 'ltr' },
@@ -37,6 +40,7 @@ export const APPROVAL_TYPE_CONFIG = {
       { label: 'المرحلة', value: r.education_level || r.educational_level },
       { label: 'البريد', value: r.email, dir: 'ltr', colSpan: 2 },
       r.school_mentioned && { label: 'المدرسة المذكورة', value: r.school_mentioned, colSpan: 2 },
+      r.school_code && { label: 'رمز المدرسة المُدخل', value: r.school_code, dir: 'ltr' },
       { label: 'تاريخ الطلب', value: '__date__', dateKey: 'created_at' },
       r.rejection_reason && { label: 'سبب الرفض', value: r.rejection_reason, colSpan: 2, className: 'text-red-600' },
     ].filter(Boolean),

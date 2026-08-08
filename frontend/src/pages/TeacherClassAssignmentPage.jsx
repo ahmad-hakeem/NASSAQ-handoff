@@ -322,7 +322,7 @@ const TeacherClassAssignmentPage = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate('/school/settings')}
+                onClick={() => navigate('/principal/settings')}
                 className="mb-2"
               >
                 <ArrowLeft className="h-4 w-4 ml-2" />

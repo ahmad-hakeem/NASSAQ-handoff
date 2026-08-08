@@ -63,9 +63,13 @@ export const Navbar = ({ variant = 'default' }) => {
     switch (user.role) {
       case 'platform_admin':
         return '/admin';
+      // Principal route audit 2026-07-28: every school-leadership role homes
+      // on the canonical /principal dashboard, matching the login redirects
+      // (/school is now a redirect alias of it).
       case 'school_principal':
+      case 'school_admin':
       case 'school_sub_admin':
-        return '/school';
+        return '/principal';
       case 'teacher':
         return '/teacher';
       case 'student':

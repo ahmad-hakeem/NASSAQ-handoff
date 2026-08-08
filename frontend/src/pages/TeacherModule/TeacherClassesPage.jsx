@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '../../components/ui/NassaqAlertDialog';
 import {
   Users, BookOpen, Search, RefreshCw, Loader2,
-  GraduationCap, ClipboardCheck, BarChart3, Calendar, Hourglass, Sparkles,
+  GraduationCap, ClipboardCheck, Calendar, Hourglass, Sparkles,
   TrendingUp, LayoutGrid, List, Clock, Play,
   ChevronLeft, Star, AlertTriangle, CheckCircle2,
   ArrowUpDown, Settings, Plus, FileSpreadsheet,
@@ -179,10 +179,14 @@ export default function TeacherClassesPage() {
   // 2026-05-18: the "حصص الانتظار" (standby) tab is hidden for
   // Independent-Teacher accounts because the feature relies on
   // school-admin assignment which doesn't exist in workspace mode.
+  // 2026-07-28: also hidden for School Teacher accounts — the tab
+  // and all underlying data/logic are intentionally KEPT; only the
+  // UI entry point is suppressed per product decision.
   // The components and API surface are intentionally KEPT so the
   // feature can be re-enabled later — we only suppress the entry
   // point + URL deep-link here.
   const _isITUser = user?.role === 'independent_teacher';
+  const _isSchoolTeacher = user?.role === 'teacher';
   // 2026-05-18 — `lesson-planner` is an IT-only tab. The activeTab
   // resolver mirrors the standby-tab IT guard: if a non-IT user
   // somehow lands on ?tab=lesson-planner we silently fall back to
@@ -193,7 +197,9 @@ export default function TeacherClassesPage() {
   // below rewrites them in-place so existing bookmarks land on the
   // new hub instead of falling through to the classes default.
   const activeTab = _rawTab === 'sessions' ? 'sessions'
-    : (_rawTab === 'standby' && !_isITUser) ? 'standby'
+    // 2026-07-28: standby tab is hidden from both IT users AND school
+    // teachers; only a third teacher type (if ever added) would reach this.
+    : (_rawTab === 'standby' && !_isITUser && !_isSchoolTeacher) ? 'standby'
     : (_rawTab === 'lesson-planner' && canUseLessonPlanner) ? 'lesson-planner'
     // 2026-05-18 — IT-only "المواد" tab. Backend /subjects CRUD is
     // pinned to school_id == itw_{user_id}; non-IT users have no
@@ -313,7 +319,8 @@ export default function TeacherClassesPage() {
     // Guard: even if a stale link tries to navigate an IT user to the
     // standby tab, fall through to the default "classes" view rather
     // than surfacing the "ميزة غير متاحة" modal.
-    const safeTab = (tab === 'standby' && _isITUser) ? 'classes'
+    // 2026-07-28: standby is also hidden from school teachers.
+    const safeTab = (tab === 'standby' && (_isITUser || _isSchoolTeacher)) ? 'classes'
       : (tab === 'lesson-planner' && !canUseLessonPlanner) ? 'classes'
       : (tab === 'subjects' && !_isITUser) ? 'classes'
       : (tab === 'import' && (!_isITUser || !canBulkImport)) ? 'classes'
@@ -332,14 +339,14 @@ export default function TeacherClassesPage() {
     );
   };
 
-  // Route guard for IT users who land on ?tab=standby via a stale
-  // bookmark or external deep-link: silently rewrite the URL to the
-  // default classes view so they don't sit on a blank/error state.
+  // Route guard for IT users AND school teachers who land on
+  // ?tab=standby via a stale bookmark or external deep-link: silently
+  // rewrite the URL to the default classes view.
   useEffect(() => {
-    if (_isITUser && _rawTab === 'standby') {
+    if ((_isITUser || _isSchoolTeacher) && _rawTab === 'standby') {
       setSearchParams({}, { replace: true });
     }
-  }, [_isITUser, _rawTab, setSearchParams]);
+  }, [_isITUser, _isSchoolTeacher, _rawTab, setSearchParams]);
 
   // 2026-05-19 — Back-compat redirect: the three time-management
   // tabs (schedule / calendar / settings) were extracted into the
@@ -1046,34 +1053,45 @@ export default function TeacherClassesPage() {
             </div>
           )}
 
-          <div className="flex gap-1.5 pt-2 border-t border-border/50">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1 h-8 text-xs"
-              onClick={(e) => { e.stopPropagation(); navigate(`/teacher/class/${cls.id}`); }}
-            >
-              <Users className="h-3 w-3 me-1" />
-              {t('students')}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1 h-8 text-xs"
-              onClick={(e) => { e.stopPropagation(); navigate(`/teacher/attendance?class=${cls.id}`); }}
-            >
-              <ClipboardCheck className="h-3 w-3 me-1" />
-              {t('attendance2')}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1 h-8 text-xs"
-              onClick={(e) => { e.stopPropagation(); navigate(`/ai-insights`); }}
-            >
-              <BarChart3 className="h-3 w-3 me-1" />
-              {t('reports2')}
-            </Button>
+          {/* Card actions mirror the three tabs of the class page itself
+              (خطة المنهج / سجل الطلاب / الحضور والغياب), so the card is a
+              launcher that always keeps THIS class's context:
+                طلاب       → /teacher/class/{id}?tab=records
+                الحضور     → /teacher/class/{id}?tab=attendance  (in-class
+                             tab, not the standalone /teacher/attendance page)
+                خطة المنهج → /teacher/class/{id}?tab=curriculum
+              (the third slot used to be a "تقارير" button that jumped to the
+              school-wide /ai-insights page with no class context at all).
+              Layout: an equal-width 3-up grid that echoes the stat tiles
+              above. The label sits under its icon so the longest Arabic
+              label ("خطة المنهج") fits the narrow card column without being
+              clipped — a single inline row overflowed the card. `grid`
+              columns follow the document direction, so the order stays
+              correct in RTL. */}
+          <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-border/50">
+            {[
+              { key: 'students', testid: 'students', icon: Users, label: t('students'), tab: 'records' },
+              { key: 'attendance', testid: 'attendance', icon: ClipboardCheck, label: t('attendance2'), tab: 'attendance' },
+              { key: 'curriculum', testid: 'curriculum', icon: BookOpen, label: t('curriculumPlan'), tab: 'curriculum' },
+            ].map(({ key, testid, icon: ActionIcon, label, tab }) => (
+              <Button
+                key={key}
+                variant="outline"
+                size="sm"
+                title={label}
+                aria-label={label}
+                className="h-auto min-w-0 flex-col gap-1 whitespace-normal px-0.5 py-1.5 text-[11px] leading-tight [&_svg]:size-3.5 hover:border-brand-turquoise/60 hover:text-brand-turquoise"
+                onClick={(e) => { e.stopPropagation(); navigate(`/teacher/class/${cls.id}?tab=${tab}`); }}
+                data-testid={`class-card-${testid}-${cls.id}`}
+              >
+                <ActionIcon />
+                {/* Wraps rather than truncates: on narrow card columns
+                    (3-4 per row) "خطة المنهج" is wider than its cell, and an
+                    ellipsised action label is unreadable. Grid rows stretch,
+                    so all three keep an identical height when one wraps. */}
+                <span className="w-full text-center">{label}</span>
+              </Button>
+            ))}
           </div>
           {isIndependentTeacher && !cls._collab && (
             <div className="flex gap-1.5 pt-1.5">
@@ -1187,11 +1205,14 @@ export default function TeacherClassesPage() {
       mobileFullWidth: true,
       render: (cls) => (
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); navigate(`/teacher/class/${cls.id}`); }}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" title={t('students')} aria-label={t('students')} onClick={(e) => { e.stopPropagation(); navigate(`/teacher/class/${cls.id}?tab=records`); }}>
             <Users className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); navigate(`/teacher/attendance?class=${cls.id}`); }}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" title={t('attendance2')} aria-label={t('attendance2')} onClick={(e) => { e.stopPropagation(); navigate(`/teacher/class/${cls.id}?tab=attendance`); }}>
             <ClipboardCheck className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-7 w-7" title={t('curriculumPlan')} aria-label={t('curriculumPlan')} onClick={(e) => { e.stopPropagation(); navigate(`/teacher/class/${cls.id}?tab=curriculum`); }}>
+            <BookOpen className="h-3.5 w-3.5" />
           </Button>
         </div>
       ),
@@ -1662,8 +1683,10 @@ export default function TeacherClassesPage() {
               )}
             </button>
             {/* 2026-05-18: standby tab is hidden for Independent-Teacher
-                accounts (feature kept in the codebase for future re-enable). */}
-            {!_isITUser && (
+                accounts (feature kept in the codebase for future re-enable).
+                2026-07-28: also hidden for School Teacher accounts per
+                product decision — data and backend logic remain intact. */}
+            {!_isITUser && !_isSchoolTeacher && (
               <button
                 onClick={() => handleTabChange('standby')}
                 className={`px-5 py-2.5 text-sm font-medium font-cairo transition-colors relative ${

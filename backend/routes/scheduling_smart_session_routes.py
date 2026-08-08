@@ -815,6 +815,11 @@ async def save_session_settings(
 # ============== CURRICULUM PLAN ==============
 
 ALLOWED_COLUMN_TYPES = {"coursework", "exams"}
+# Input mode of a follow-up column: numeric grade (درجة), binary check
+# (تحقق) or free text (نص). Stored on the column so the sheet renders the
+# matching control; non-"grade" columns are excluded from numeric totals and
+# from the student-record grade sync.
+ALLOWED_INPUT_TYPES = {"grade", "check", "text"}
 
 class LessonCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
@@ -1298,10 +1303,13 @@ async def add_lesson(
                     "code": "curriculum_date_conflict",
                     "message": "الدرس خارج نطاق المنهج",
                     "details": {
-                        "curriculum_start": curriculum_start,
-                        "curriculum_end": curriculum_end,
-                        "provided_start": lesson.start_date,
-                        "provided_end": lesson.end_date,
+                        # str() everything: date objects are not JSON
+                        # serializable and would turn this 409 into a 500
+                        # inside the HTTPException JSON handler.
+                        "curriculum_start": str(curriculum_start) if curriculum_start else None,
+                        "curriculum_end": str(curriculum_end) if curriculum_end else None,
+                        "provided_start": str(lesson.start_date) if lesson.start_date else None,
+                        "provided_end": str(lesson.end_date) if lesson.end_date else None,
                     },
                 },
             )
@@ -1527,6 +1535,7 @@ async def delete_lesson(
 class GradeColumnCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     column_type: str = Field(default="coursework")
+    input_type: str = Field(default="grade")
     max_grade: float = Field(default=10, ge=1, le=100)
     order: int = Field(default=0, ge=0, le=50)
     visible: bool = True
@@ -1535,13 +1544,29 @@ class GradeColumnCreate(BaseModel):
     def validate_column_type(self):
         if self.column_type not in ALLOWED_COLUMN_TYPES:
             raise ValueError(f"column_type must be one of {ALLOWED_COLUMN_TYPES}")
+        if self.input_type not in ALLOWED_INPUT_TYPES:
+            raise ValueError(f"input_type must be one of {ALLOWED_INPUT_TYPES}")
         return self
 
 class GradeColumnUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    # Category (أعمال السنة/الاختبارات). Editable so the أنماط التقييم
+    # pattern editor can re-classify a column — before this field existed
+    # the key was silently dropped and a column's category was frozen at
+    # creation time.
+    column_type: Optional[str] = None
+    input_type: Optional[str] = None
     max_grade: Optional[float] = Field(default=None, ge=1, le=100)
     order: Optional[int] = Field(default=None, ge=0, le=50)
     visible: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def validate_input_type(self):
+        if self.column_type is not None and self.column_type not in ALLOWED_COLUMN_TYPES:
+            raise ValueError(f"column_type must be one of {ALLOWED_COLUMN_TYPES}")
+        if self.input_type is not None and self.input_type not in ALLOWED_INPUT_TYPES:
+            raise ValueError(f"input_type must be one of {ALLOWED_INPUT_TYPES}")
+        return self
 
 
 @class_teaching_router.get("/class/{class_id}/grade-columns")
@@ -1563,6 +1588,7 @@ async def get_grade_columns(
             d["id"] = str(uuid.uuid4())
             d["class_id"] = class_id
             d["visible"] = True
+            d["input_type"] = "grade"
             d["created_at"] = datetime.now(timezone.utc).isoformat()
         await gd_insert_many(db.session, "grade_columns", defaults)
         columns = defaults
@@ -1582,6 +1608,7 @@ async def add_grade_column(
         "class_id": class_id,
         "name": col.name,
         "column_type": col.column_type,
+        "input_type": col.input_type,
         "max_grade": col.max_grade,
         "order": col.order,
         "visible": col.visible,
@@ -1898,7 +1925,67 @@ async def get_class_student_grades(
         }
         for row in result.all()
     ]
-    return {"class_id": class_id, "subject_id": subject_id, "grades": grades}
+
+    # check (تحقق) / text (نص) column values are — by design — never
+    # materialized into student_grades (the AVG above casts score::float, so
+    # a text value there would poison the whole aggregation). Their single
+    # source of truth is the followup_records blob keyed (class_id,
+    # subject_id). Surface them alongside the numeric aggregation (raw,
+    # uncoerced) so the class-page sheet can render what the teacher entered
+    # during the lesson; grade-type manual values stay excluded here (they
+    # reach the record via the commit materialization instead).
+    manual_values: List[dict] = []
+    try:
+        columns = await gd_find(db.session, "grade_columns", {"class_id": class_id}, limit=200)
+        nonnumeric_cols = {
+            str(c.get("id"))
+            for c in columns
+            if (c.get("input_type") or "grade") in ("check", "text")
+        }
+        if nonnumeric_cols:
+            lookup: Dict[str, Any] = {"class_id": class_id}
+            if subject_id:
+                lookup["subject_id"] = subject_id
+            # One doc per (class, subject) — the class-wide read is bounded by
+            # the class's subject count, far below the fetch limit.
+            records = await gd_find(db.session, "followup_records", lookup, limit=50)
+            # Defense-in-depth tenant pin: newer docs stamp school_id — reject
+            # any stamped doc from a foreign tenant (malformed/stale data);
+            # legacy docs without the stamp stay readable (class access is
+            # already enforced above).
+            records = [
+                r for r in records
+                if not r.get("school_id") or str(r.get("school_id")) == class_school
+            ]
+            # Without a subject filter a class can have one doc per subject;
+            # merge oldest-first so the most recently updated doc wins a
+            # (student, column) collision deterministically.
+            records.sort(key=lambda r: str((r.get("data") or {}).get("updated_at") or ""))
+            merged: Dict[tuple, Any] = {}
+            for rec in records:
+                blob = rec.get("data") or {}
+                manual = blob.get("data") if isinstance(blob, dict) else None
+                if not isinstance(manual, dict):
+                    continue
+                for sid, cols in manual.items():
+                    if not isinstance(cols, dict):
+                        continue
+                    for cid, val in cols.items():
+                        if str(cid) in nonnumeric_cols and val not in (None, ""):
+                            merged[(str(sid), str(cid))] = val
+            manual_values = [
+                {"student_id": sid, "column_id": cid, "value": val}
+                for (sid, cid), val in merged.items()
+            ]
+    except Exception as e:
+        logger.warning(f"followup manual-values read failed for class {class_id}: {e}")
+
+    return {
+        "class_id": class_id,
+        "subject_id": subject_id,
+        "grades": grades,
+        "manual_values": manual_values,
+    }
 
 
 # ============== LEGACY ROUTES ==============

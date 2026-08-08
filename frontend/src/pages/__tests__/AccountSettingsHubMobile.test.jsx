@@ -28,36 +28,45 @@ const mockApiPut = jest.fn();
 const mockApiPost = jest.fn();
 const mockApiDelete = jest.fn();
 
+// useAuth / useTranslation mocks MUST return module-level stable objects:
+// fresh objects per call loop useCallback/useEffect dependency chains
+// ("Maximum update depth exceeded").
+const mockStableUser = {
+  id: 'u-it-1',
+  role: 'independent_teacher',
+  full_name: 'Test IT',
+  email: 'it@example.com',
+  phone: '0500000000',
+  avatar_url: '',
+  title: '',
+};
+const mockStableApi = {
+  get: (...a) => mockApiGet(...a),
+  put: (...a) => mockApiPut(...a),
+  post: (...a) => mockApiPost(...a),
+  delete: (...a) => mockApiDelete(...a),
+};
+const mockNoop = () => {};
+const mockStableAuth = {
+  user: mockStableUser,
+  api: mockStableApi,
+  logout: mockNoop,
+  refreshUser: mockNoop,
+  updateToken: mockNoop,
+};
 jest.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: {
-      id: 'u-it-1',
-      role: 'independent_teacher',
-      full_name: 'Test IT',
-      email: 'it@example.com',
-      phone: '0500000000',
-      avatar_url: '',
-      title: '',
-    },
-    api: {
-      get: (...a) => mockApiGet(...a),
-      put: (...a) => mockApiPut(...a),
-      post: (...a) => mockApiPost(...a),
-      delete: (...a) => mockApiDelete(...a),
-    },
-    logout: jest.fn(),
-    refreshUser: jest.fn(),
-    updateToken: jest.fn(),
-  }),
+  useAuth: () => mockStableAuth,
 }));
 
+const mockStableTheme = {
+  isRTL: true, toggleTheme: mockNoop, toggleLanguage: mockNoop,
+  isDark: false, language: 'ar', setLanguage: mockNoop,
+  theme: 'light', setTheme: mockNoop,
+};
+const mockStableTranslation = { t: (k) => k };
 jest.mock('../../contexts/ThemeContext', () => ({
-  useTheme: () => ({
-    isRTL: true, toggleTheme: () => {}, toggleLanguage: () => {},
-    isDark: false, language: 'ar', setLanguage: () => {},
-    theme: 'light', setTheme: () => {},
-  }),
-  useTranslation: () => ({ t: (k) => k }),
+  useTheme: () => mockStableTheme,
+  useTranslation: () => mockStableTranslation,
 }));
 
 jest.mock('../../components/ui/NassaqAlertDialog', () => ({
@@ -80,6 +89,76 @@ jest.mock('../../components/ui/button', () => ({
   Button: ({ children, asChild: _asChild, ...rest }) => (
     <button {...rest}>{children}</button>
   ),
+}));
+// Radix primitives' compose-refs logic loops setState under jsdom —
+// replace them with plain elements (mirrors the workspaceHub suite).
+jest.mock('../../components/ui/switch', () => ({
+  Switch: ({ onCheckedChange, ...rest }) => (
+    <input type="checkbox" onChange={(e) => onCheckedChange?.(e.target.checked)} {...rest} />
+  ),
+}));
+jest.mock('../../components/ui/label', () => ({
+  Label: ({ children, ...rest }) => <label {...rest}>{children}</label>,
+}));
+jest.mock('../../components/ui/card', () => ({
+  Card: ({ children, ...rest }) => <div {...rest}>{children}</div>,
+  CardContent: ({ children, ...rest }) => <div {...rest}>{children}</div>,
+  CardHeader: ({ children, ...rest }) => <div {...rest}>{children}</div>,
+  CardTitle: ({ children, ...rest }) => <div {...rest}>{children}</div>,
+}));
+jest.mock('../../components/ui/badge', () => ({
+  Badge: ({ children, ...rest }) => <span {...rest}>{children}</span>,
+}));
+jest.mock('../../components/ui/avatar', () => ({
+  Avatar: ({ children, ...rest }) => <div {...rest}>{children}</div>,
+  AvatarFallback: ({ children }) => <span>{children}</span>,
+  AvatarImage: () => null,
+}));
+jest.mock('../../components/ui/select', () => {
+  const R = require('react');
+  const Select = ({ value, onValueChange, children }) => {
+    const items = [];
+    R.Children.forEach(children, (child) => {
+      if (!child) return;
+      R.Children.forEach(child.props?.children, (grand) => {
+        if (grand?.props?.value !== undefined) {
+          items.push({ value: grand.props.value, label: grand.props.children });
+        }
+      });
+    });
+    return (
+      <select value={value || ''} onChange={(e) => onValueChange?.(e.target.value)}>
+        {items.map(i => (
+          <option key={i.value} value={i.value}>{typeof i.label === 'string' ? i.label : i.value}</option>
+        ))}
+      </select>
+    );
+  };
+  return {
+    Select,
+    SelectContent: ({ children }) => <>{children}</>,
+    SelectItem: () => null,
+    SelectTrigger: ({ children }) => <>{children}</>,
+    SelectValue: () => null,
+  };
+});
+jest.mock('../../components/ui/dialog', () => ({
+  Dialog: ({ children }) => <div>{children}</div>,
+  DialogContent: ({ children }) => <div>{children}</div>,
+  DialogHeader: ({ children }) => <div>{children}</div>,
+  DialogTitle: ({ children }) => <div>{children}</div>,
+  DialogDescription: ({ children }) => <div>{children}</div>,
+  DialogFooter: ({ children }) => <div>{children}</div>,
+}));
+jest.mock('../../components/ui/alert-dialog', () => ({
+  AlertDialog: ({ children }) => <div>{children}</div>,
+  AlertDialogContent: ({ children }) => <div>{children}</div>,
+  AlertDialogHeader: ({ children }) => <div>{children}</div>,
+  AlertDialogTitle: ({ children }) => <div>{children}</div>,
+  AlertDialogDescription: ({ children }) => <div>{children}</div>,
+  AlertDialogFooter: ({ children }) => <div>{children}</div>,
+  AlertDialogAction: ({ children, ...rest }) => <button {...rest}>{children}</button>,
+  AlertDialogCancel: ({ children, ...rest }) => <button {...rest}>{children}</button>,
 }));
 jest.mock('../../components/ui/input', () => {
   const R = require('react');

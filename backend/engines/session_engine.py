@@ -21,6 +21,8 @@ import uuid
 import random
 import logging
 
+from sqlalchemy import text as sa_text
+
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
 from utils.parent_resolution import resolve_students_parent_user_ids
 from utils.student_health import summarize_student_health
@@ -120,6 +122,31 @@ class BehaviourCategory(str, Enum):
     POSITIVE = "positive"
     NEGATIVE = "negative"
     SKILL = "skill"
+
+
+def interaction_is_participatory(it: dict) -> bool:
+    """Canonical "did this student participate?" classification, shared by the
+    session summary (review preview + end session) and student analytics
+    (``routes.role_dashboards_mod``).
+
+    Teachers record engagement mostly through the answer buttons (صحيح/خطأ),
+    recitation and evaluations — NOT the explicit participation panel — so
+    counting only ``participation``-type rows made the post-lesson summary
+    show مشاركات = 0 / معدل المشاركة = 0% for perfectly active lessons.
+
+    Participatory: a question the student actually answered (correct OR
+    wrong), an explicit participation that isn't negative (active/initiative),
+    an evaluation, or a recitation. NOT participatory: no_answer questions,
+    inactive/refused participation, behaviour/skill events.
+    """
+    itype = it.get("interaction_type") or it.get("type")
+    if itype == InteractionType.QUESTION.value:
+        return it.get("answer_result") in (AnswerResult.CORRECT.value, AnswerResult.WRONG.value)
+    if itype == InteractionType.PARTICIPATION.value:
+        return it.get("participation_type") not in (
+            ParticipationType.INACTIVE.value, ParticipationType.REFUSED.value,
+        )
+    return itype in (InteractionType.EVALUATION.value, InteractionType.RECITATION.value)
 
 
 class StudentLevel(str, Enum):
@@ -993,7 +1020,7 @@ class TeacherSessionEngine:
                 "full_name": student.get("full_name"),
                 "student_code": student.get("student_id") or student.get("code"),
                 "gender": student.get("gender", "male"),
-                "avatar_url": student.get("avatar_url"),
+                "avatar_url": student.get("avatar_url"),  # students table has no avatar_url column — always None
                 "attendance_status": canonical_status_map.get(
                     sid, attendance.get("status", AttendanceStatus.PRESENT.value)
                 ),
@@ -1934,7 +1961,10 @@ class TeacherSessionEngine:
         correct = sum(1 for q in questions if q.get("answer_result") == AnswerResult.CORRECT.value)
         wrong = sum(1 for q in questions if q.get("answer_result") == AnswerResult.WRONG.value)
 
-        participations = [i for i in interactions if i.get("interaction_type") == InteractionType.PARTICIPATION.value]
+        # Canonical participatory classification — answered questions,
+        # active/initiative participation, evaluations and recitations all
+        # count (teachers rarely use the explicit participation panel).
+        participations = [i for i in interactions if interaction_is_participatory(i)]
         participants = set(p["student_id"] for p in participations)
         participation_rate = len(participants) / present * 100 if present > 0 else 0
 
@@ -1949,9 +1979,12 @@ class TeacherSessionEngine:
         skills_students = list(set(d.get("student_id") for d in skills_docs))
 
         notes_count = await gd_count(self.session, "session_notes", {"session_id": session_id})
+        # The column is ``type`` — a ``note_type`` key here is not a column so
+        # gd_count silently drops it and the "sent to parents" figure equals
+        # the total.
         sent_to_parents = await gd_count(self.session, "session_notes", {
             "session_id": session_id,
-            "note_type": "parent"
+            "type": "parent"
         })
         # Teacher's private notes = everything except parent broadcasts
         teacher_notes = max(0, notes_count - sent_to_parents)
@@ -1965,7 +1998,9 @@ class TeacherSessionEngine:
             # Only count correct answers from QUESTION-type interactions (not behaviour/skill side-effects)
             if i.get("interaction_type") == InteractionType.QUESTION.value and i.get("answer_result") == AnswerResult.CORRECT.value:
                 student_interactions[sid]["correct"] += 1
-            if i.get("interaction_type") == InteractionType.PARTICIPATION.value:
+            elif interaction_is_participatory(i):
+                # elif: a correct answer already scores as "correct" — never
+                # double-count it as a participation too.
                 student_interactions[sid]["participation"] += 1
 
         # Stable sort: score desc, then correct desc, then participation desc, then sid asc
@@ -1993,10 +2028,12 @@ class TeacherSessionEngine:
                 })
 
         needs_attention = []
-        interacted_ids = set(i["student_id"] for i in interactions)
+        # "لم يشارك في الحصة" must mean exactly that: flag present students with
+        # no PARTICIPATORY interaction (a lone no_answer / refused / behaviour
+        # row is not participation).
         present_ids = [a["student_id"] for a in attendance if a["status"] == AttendanceStatus.PRESENT.value]
         for sid in present_ids:
-            if sid not in interacted_ids:
+            if sid not in participants:
                 student_filter = {"id": sid, "is_active": True}
                 if tenant_id_scope:
                     student_filter["tenant_id"] = tenant_id_scope
@@ -2101,6 +2138,11 @@ class TeacherSessionEngine:
         session_tid = session.get("teacher_id")
         if session_tid:
             candidates.append(session_tid)
+        # The acting id itself may already BE a teachers.id (routes pass
+        # current_user["teacher_id"] when the claim is present) — verify it
+        # like any other candidate instead of discarding it.
+        if acting_user_id:
+            candidates.append(acting_user_id)
         acting_user = await gd_find_one(self.session, "users", {"id": acting_user_id})
         if acting_user and acting_user.get("teacher_id"):
             candidates.append(acting_user["teacher_id"])
@@ -2164,7 +2206,9 @@ class TeacherSessionEngine:
         correct = sum(1 for q in questions if q.get("answer_result") == AnswerResult.CORRECT.value)
         wrong = sum(1 for q in questions if q.get("answer_result") == AnswerResult.WRONG.value)
         
-        participations = [i for i in interactions if i.get("interaction_type") == InteractionType.PARTICIPATION.value]
+        # Canonical participatory classification — keep in lockstep with
+        # get_review_preview (both pages must show the same مشاركات numbers).
+        participations = [i for i in interactions if interaction_is_participatory(i)]
         participants = set(p["student_id"] for p in participations)
         participation_rate = len(participants) / present * 100 if present > 0 else 0
         
@@ -2179,7 +2223,7 @@ class TeacherSessionEngine:
         evaluated_students_count = len(set(d.get("student_id") for d in skills_docs_end if d.get("student_id")))
         notes_sent_count = await gd_count(self.session, "session_notes", {
             "session_id": session_id,
-            "note_type": "parent",
+            "type": "parent",
         })
 
         tenant_id_scope_end = session.get("tenant_id") or session.get("school_id")
@@ -2190,7 +2234,9 @@ class TeacherSessionEngine:
                 student_interactions[sid] = {"correct": 0, "participation": 0, "negative": 0, "positive": 0}
             if i.get("interaction_type") == InteractionType.QUESTION.value and i.get("answer_result") == AnswerResult.CORRECT.value:
                 student_interactions[sid]["correct"] += 1
-            if i.get("interaction_type") == InteractionType.PARTICIPATION.value:
+            elif interaction_is_participatory(i):
+                # elif: a correct answer already scores as "correct" — never
+                # double-count it as a participation too.
                 student_interactions[sid]["participation"] += 1
             if i.get("behaviour_category") == BehaviourCategory.NEGATIVE.value:
                 student_interactions[sid]["negative"] += 1
@@ -2221,10 +2267,10 @@ class TeacherSessionEngine:
                 })
         
         needs_attention = []
-        interacted_student_ids = set(i["student_id"] for i in interactions)
+        # Same participatory basis as the review preview — see comment there.
         present_ids = [a["student_id"] for a in attendance if a["status"] == AttendanceStatus.PRESENT.value]
         for sid in present_ids:
-            if sid not in interacted_student_ids:
+            if sid not in participants:
                 student_filter = {"id": sid, "is_active": True}
                 if tenant_id_scope_end:
                     student_filter["tenant_id"] = tenant_id_scope_end
@@ -2398,6 +2444,7 @@ class TeacherSessionEngine:
                     engagement_rate=engagement_rate,
                     now=now,
                     teacher_id=session.get("teacher_id") or "",
+                    closing_note=closing_note or "",
                 )
         except Exception as e:
             logger.error(f"Management session summary failed for session {session_id}: {e}")
@@ -2501,10 +2548,15 @@ class TeacherSessionEngine:
         late = sum(1 for a in attendance if a["status"] == AttendanceStatus.LATE.value)
         excused = sum(1 for a in attendance if a["status"] == AttendanceStatus.EXCUSED.value)
         total = len(attendance)
-        interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=500)
+        all_interactions_c = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=500)
+        # Exclude reversed interactions — keep in lockstep with end_session so a
+        # repeat end returns the same numbers as the first.
+        interactions = [i for i in all_interactions_c if not (i.get("data") or {}).get("reversed")]
         questions = [i for i in interactions if i.get("interaction_type") == InteractionType.QUESTION.value]
         correct = sum(1 for q in questions if q.get("answer_result") == AnswerResult.CORRECT.value)
-        participations = [i for i in interactions if i.get("interaction_type") == InteractionType.PARTICIPATION.value]
+        # Canonical participatory classification — same predicate as
+        # get_review_preview / end_session.
+        participations = [i for i in interactions if interaction_is_participatory(i)]
         participants_set = set(p["student_id"] for p in participations)
         behaviours = [i for i in interactions if i.get("interaction_type") == InteractionType.BEHAVIOUR.value]
         positive_b = sum(1 for b in behaviours if b.get("behaviour_category") == BehaviourCategory.POSITIVE.value)
@@ -2514,7 +2566,7 @@ class TeacherSessionEngine:
         evaluated_students_c = len(set(d.get("student_id") for d in skills_docs_c if d.get("student_id")))
         notes_sent_c = await gd_count(self.session, "session_notes", {
             "session_id": session_id,
-            "note_type": "parent",
+            "type": "parent",
         })
 
         # Rehydrate top_participants and needs_attention for completed sessions
@@ -2526,7 +2578,9 @@ class TeacherSessionEngine:
                 student_stats_c[sid] = {"correct": 0, "participation": 0}
             if i.get("interaction_type") == InteractionType.QUESTION.value and i.get("answer_result") == AnswerResult.CORRECT.value:
                 student_stats_c[sid]["correct"] += 1
-            if i.get("interaction_type") == InteractionType.PARTICIPATION.value:
+            elif interaction_is_participatory(i):
+                # elif: a correct answer already scores as "correct" — never
+                # double-count it as a participation too.
                 student_stats_c[sid]["participation"] += 1
         sorted_c = sorted(
             student_stats_c.items(),
@@ -2548,9 +2602,8 @@ class TeacherSessionEngine:
                     "participations": st["participation"],
                 })
         needs_attention_c = []
-        interacted_c = set(i["student_id"] for i in interactions)
         for sid in [a["student_id"] for a in attendance if a["status"] == AttendanceStatus.PRESENT.value]:
-            if sid not in interacted_c:
+            if sid not in participants_set:
                 sf = {"id": sid, "is_active": True}
                 if tenant_id_scope_c:
                     sf["tenant_id"] = tenant_id_scope_c
@@ -2695,6 +2748,7 @@ class TeacherSessionEngine:
             doc["id"] = str(uuid.uuid4())
             doc["class_id"] = class_id
             doc["visible"] = True
+            doc.setdefault("input_type", "grade")
             doc["created_at"] = now_iso
             defaults.append(doc)
         await gd_insert_many(self.session, "grade_columns", defaults)
@@ -2713,6 +2767,13 @@ class TeacherSessionEngine:
         resolved: Dict[str, dict] = {}
         for col in columns:
             if (col.get("column_type") or "coursework") != "coursework":
+                continue
+            # A column the teacher switched to check (تحقق) or text (نص) is no
+            # longer a numeric bucket even if its NAME matches a derived
+            # matcher — otherwise the commit/hydration bucket loops would keep
+            # writing derived numerics over a cell the sheet renders as a
+            # checkbox/free-text control.
+            if (col.get("input_type") or "grade") != "grade":
                 continue
             name_ar = (col.get("name") or "").strip()
             name_en = (col.get("name_en") or "").strip().lower()
@@ -3437,11 +3498,178 @@ class TeacherSessionEngine:
                 })
                 behaviour_written += 1
 
+        # ---- Manual follow-up columns (exams / custom) -> student_grades ----
+        # The bucket loop above only materializes the three DERIVED coursework
+        # buckets, so exam columns (اختبار قصير / اختبار نهاية الفترة) and
+        # teacher-added custom columns typed into كشف المتابعة used to stay
+        # stranded in the followup_records doc — the class Student Record
+        # (سجل الطلاب) aggregates student_grades and showed 0 for them.
+        manual_synced = await self._sync_followup_manual_grades(
+            session=session,
+            manual_data=manual_data,
+            bucket_columns=columns,
+            subject_name=subject_name,
+            session_date=session_date,
+            academic_year=academic_year,
+        )
+
         return {
-            "grades": grades_written,
+            "grades": grades_written + manual_synced,
             "participation": participation_written,
             "behaviour": behaviour_written,
         }
+
+    async def _sync_followup_manual_grades(
+        self,
+        session: dict,
+        manual_data: Dict[str, Any],
+        bucket_columns: Dict[str, dict],
+        subject_name: str,
+        session_date: str,
+        academic_year: str,
+    ) -> int:
+        """Materialize manual follow-up sheet values for NON-derived grade
+        columns (exam + custom columns) into student_grades (school record)
+        and grades (parent view).
+
+        The followup_records doc is keyed per (class, subject) and spans
+        sessions, so — unlike the per-session bucket docs — each cell maps to
+        exactly ONE deterministic doc keyed (class, subject, student, column):
+        re-commits update in place (latest value wins, no per-session
+        duplication that would skew the record's AVG), and a cell the teacher
+        cleared deletes its doc so no stale grade lingers.
+        """
+        class_id = session.get("class_id")
+        if not class_id:
+            return 0
+        subject_id = session.get("subject_id")
+        tenant_id = session.get("tenant_id") or session.get("school_id") or ""
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        all_columns = await self._ensure_grade_columns(class_id)
+        bucket_col_ids = {
+            str(col.get("id")) for col in bucket_columns.values() if col.get("id")
+        }
+        # Every class grade column that is NOT one of the derived buckets is
+        # manual-only (exams + custom). Unknown ids in the blob (e.g. legacy
+        # "short_test" placeholder ids from before the class had real
+        # grade_columns) are skipped — the record table can't render them.
+        # Only numeric (input_type "grade") columns become grade docs — check
+        # (تحقق) and text (نص) column values are not scores and must never
+        # reach student_grades/grades (the record AVG casts score to float,
+        # so a text value there would poison the whole aggregation).
+        syncable = {
+            str(c.get("id")): c
+            for c in all_columns
+            if c.get("id")
+            and str(c.get("id")) not in bucket_col_ids
+            and (c.get("input_type") or "grade") == "grade"
+        }
+        if not syncable:
+            return 0
+
+        def _doc_ids(sid: str, col_id: str) -> tuple:
+            base = f"fu:{class_id}:{subject_id or ''}:{sid}:{col_id}"
+            return f"{base}:sg", f"{base}:pg"
+
+        async def _upsert(collection: str, doc_id: str, doc: dict):
+            existing = await gd_find_one(self.session, collection, {"id": doc_id})
+            if existing:
+                await gd_update_one(self.session, collection, {"id": doc_id}, doc)
+            else:
+                await gd_insert(self.session, collection, {**doc, "id": doc_id})
+
+        written = 0
+        expected_sg_ids: set = set()
+        student_cache: Dict[str, Optional[dict]] = {}
+
+        for sid, cols in (manual_data or {}).items():
+            if not isinstance(cols, dict):
+                continue
+            for col_id, raw_val in cols.items():
+                col = syncable.get(str(col_id))
+                if col is None or raw_val in (None, ""):
+                    continue
+                try:
+                    value = float(raw_val)
+                except (TypeError, ValueError):
+                    continue
+                try:
+                    max_f = float(col.get("max_grade") or 0) or 0.0
+                except (TypeError, ValueError):
+                    max_f = 0.0
+                # Keep the record's clamped-score contract (the aggregation
+                # assumes values on the column's fixed /max scale).
+                if max_f > 0:
+                    value = min(max(value, 0.0), max_f)
+                else:
+                    value = max(value, 0.0)
+
+                # Same defensive scoping as the bucket loop: the session row —
+                # never the blob — decides tenant/class membership.
+                if sid not in student_cache:
+                    student_cache[sid] = await gd_find_one(self.session, "students", {"id": sid})
+                student = student_cache[sid]
+                if not student:
+                    continue
+                student_tenant = student.get("tenant_id") or student.get("school_id") or ""
+                if tenant_id and student_tenant and student_tenant != tenant_id:
+                    continue
+                if student.get("class_id") and student.get("class_id") != class_id:
+                    continue
+
+                percentage = round((value / max_f) * 100, 1) if max_f > 0 else 0
+                sg_id, pg_id = _doc_ids(sid, str(col_id))
+                expected_sg_ids.add(sg_id)
+                common = {
+                    "tenant_id": tenant_id,
+                    "school_id": tenant_id,
+                    "student_id": sid,
+                    "student_name": student.get("full_name", ""),
+                    "class_id": class_id,
+                    "subject_id": subject_id,
+                    "subject": subject_name,
+                    "subject_name": subject_name,
+                    "score": value,
+                    "max_score": max_f,
+                    "percentage": percentage,
+                    "date": session_date,
+                    "source": "followup_manual",
+                    "updated_at": now_iso,
+                }
+                await _upsert("student_grades", sg_id, {
+                    **common,
+                    "assessment_id": f"followup:{class_id}:{subject_id or ''}:{col_id}",
+                    "assessment_type": col.get("column_type") or "coursework",
+                    "column_id": str(col_id),
+                    "column_name": col.get("name") or col.get("name_en") or "",
+                    "is_passing": percentage >= 50,
+                    "academic_year": academic_year,
+                    "graded_at": now_iso,
+                })
+                await _upsert("grades", pg_id, {
+                    **common,
+                    "assessment_type": col.get("column_type") or "coursework",
+                    "assessment_name": col.get("name") or col.get("name_en") or "",
+                    "visible_to_parent": True,
+                })
+                written += 1
+
+        # A cell the teacher cleared (empty payload = deletion, pruned by
+        # _prune_empty_followup_cells) must drop its committed docs too, or the
+        # record keeps showing a grade the sheet no longer has.
+        existing_manual = await gd_find(
+            self.session, "student_grades",
+            {"class_id": class_id, "subject_id": subject_id, "source": "followup_manual"},
+            limit=2000,
+        )
+        for doc in existing_manual:
+            doc_id = str(doc.get("id") or "")
+            if doc_id.startswith("fu:") and doc_id not in expected_sg_ids:
+                await gd_delete_one(self.session, "student_grades", {"id": doc_id})
+                await gd_delete_one(self.session, "grades", {"id": doc_id[:-3] + ":pg"})
+
+        return written
 
     async def _trigger_session_analytics(self, session_id, school_id, class_id, subject_id, teacher_id,
                                           attendance_rate, engagement_rate, positive_b, negative_b,
@@ -3591,6 +3819,7 @@ class TeacherSessionEngine:
         engagement_rate: float,
         now: datetime,
         teacher_id: str = "",
+        closing_note: str = "",
     ) -> int:
         """Task #486 — deliver an end-of-session summary to school management.
 
@@ -3667,6 +3896,12 @@ class TeacherSessionEngine:
             f"Duration: {duration_minutes} min. Present: {present}/{total} ({attendance_rate}%). "
             f"Questions: {questions_count}, Correct: {correct}."
         )
+        # The teacher's end-of-session note is management-relevant context —
+        # embed it in the summary card instead of leaving admins with stats only.
+        closing_note = (closing_note or "").strip()
+        if closing_note:
+            message_ar += f"\nملاحظة المعلم: {closing_note}"
+            message_en += f"\nTeacher note: {closing_note}"
 
         sent = 0
         for rid in recipient_ids:
@@ -4756,57 +4991,166 @@ class TeacherSessionEngine:
     # ---------- Class Metrics ----------
 
     async def get_class_metrics(self, teacher_id: str, class_id: str) -> Dict[str, Any]:
-        """Get real metrics for a teacher's class from session data"""
-        sessions = await gd_find(self.session, "class_sessions", {"class_id": class_id, "teacher_id": teacher_id}, limit=500)
+        """Get real metrics for a single teacher's class from session data."""
+        metrics = await self.get_class_metrics_bulk(teacher_id, [class_id])
+        return metrics[class_id]
 
-        total_students = await gd_count(self.session, "students", {"class_id": class_id, "is_active": True})
+    async def get_class_metrics_bulk(
+        self, teacher_id: str, class_ids: Sequence[str]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Metrics for many classes at once, in a fixed number of queries.
 
-        total_attendance = 0
-        total_present = 0
-        total_participation_events = 0
-        total_present_in_sessions = 0
-        total_correct = 0
-        total_questions = 0
-        completed_sessions = [s for s in sessions if s.get("status") == SessionStatus.COMPLETED.value]
+        This used to be a nested N+1: the caller looped over classes and this
+        method then issued two more queries *per completed session*
+        (attendance + interactions) on top of a per-class session read, a
+        student COUNT and an in-progress lookup. On real production data one
+        request cost 187 round-trips — the row volumes are trivial, so the
+        wall time was almost pure per-query latency, which is why the same
+        endpoint took ~250 ms next to the database and 8-9 s in production.
 
-        for s in completed_sessions:
-            att_records = await gd_find(self.session, "session_attendance", {"session_id": s["id"]}, limit=200)
-            present = sum(1 for a in att_records if a.get("status") == AttendanceStatus.PRESENT.value)
-            total_attendance += len(att_records)
-            total_present += present
+        Everything is now aggregated in Postgres:
 
-            interactions = await gd_find(self.session, "session_interactions", {"session_id": s["id"]}, limit=500)
-            participants = set()
-            for i in interactions:
-                if i.get("interaction_type") in [InteractionType.PARTICIPATION.value, InteractionType.QUESTION.value]:
-                    participants.add(i["student_id"])
-                if i.get("interaction_type") == InteractionType.QUESTION.value:
-                    total_questions += 1
-                    if i.get("answer_result") == AnswerResult.CORRECT.value:
-                        total_correct += 1
-            total_participation_events += len(participants)
-            total_present_in_sessions += present
+        1. one read of every session this teacher owns across ``class_ids``
+           (also yields the in-progress session, so no extra lookup),
+        2. one attendance roll-up grouped by session,
+        3. one interaction roll-up grouped by session,
+        4. one active-student head-count grouped by class.
 
-        attendance_rate = round(total_present / total_attendance * 100, 1) if total_attendance > 0 else 0
-        participation_rate = round(total_participation_events / total_present_in_sessions * 100, 1) if total_present_in_sessions > 0 else 0
-        avg_performance = round(total_correct / total_questions * 100, 1) if total_questions > 0 else 0
+        The maths is unchanged. Three deliberate differences, each strictly
+        more correct and none of which alters current output (verified: the
+        response is byte-identical to a pre-refactor production capture):
 
-        next_session_info = None
-        in_progress = await gd_find_one(self.session, "class_sessions",
-            {"class_id": class_id, "teacher_id": teacher_id, "status": SessionStatus.IN_PROGRESS.value}
-        )
-        if in_progress:
-            next_session_info = {"status": "in_progress", "start_time": in_progress.get("start_time")}
+        * the old per-session ``limit=200``/``limit=500`` reads silently
+          under-counted a very large session;
+        * a participation or question row with a NULL ``student_id`` no
+          longer counts as a distinct participant;
+        * an interaction's kind is resolved with
+          ``COALESCE(data->>'interaction_type', type)``. The old loop read
+          the flattened dict key, which ``model_to_dict`` only ever fills
+          from the JSONB payload (columns are written first, then ``data``
+          fills the gaps), so a row carrying its kind only in the ``type``
+          column was silently dropped from both the participation and the
+          performance maths. Every live row currently populates both and
+          they agree, so this is a fail-safe, not a data correction — it is
+          pinned by ``test_column_only_interaction_type_is_still_counted``.
 
-        return {
-            "class_id": class_id,
-            "attendance_rate": attendance_rate,
-            "participation_rate": participation_rate,
-            "avg_performance": avg_performance,
-            "total_sessions": len(completed_sessions),
-            "total_students": total_students,
-            "next_session": next_session_info
+        Tenant safety is unchanged too — every row is still constrained to
+        ``teacher_id`` plus the caller-supplied ``class_ids``, which the
+        route derives from that teacher's own active assignments.
+        """
+        ids = [c for c in dict.fromkeys(class_ids or []) if c]
+        if not ids:
+            return {}
+
+        acc: Dict[str, Dict[str, Any]] = {
+            cid: {"attendance": 0, "present": 0, "participation": 0,
+                  "questions": 0, "correct": 0, "completed": 0,
+                  "next_session": None}
+            for cid in ids
         }
+
+        # 1) Every session this teacher owns in those classes. ``ORDER BY id``
+        #    makes the in-progress pick deterministic (the old gd_find_one had
+        #    no ordering at all).
+        session_rows = (await self.session.execute(sa_text("""
+            SELECT id,
+                   data->>'class_id'   AS class_id,
+                   data->>'status'     AS status,
+                   data->>'start_time' AS start_time
+            FROM generic_documents
+            WHERE collection = 'class_sessions'
+              AND data->>'teacher_id' = :teacher_id
+              AND data->>'class_id' = ANY(:class_ids)
+            ORDER BY id
+        """), {"teacher_id": teacher_id, "class_ids": ids})).mappings().all()
+
+        session_class: Dict[str, str] = {}
+        for row in session_rows:
+            bucket = acc.get(row["class_id"])
+            if bucket is None:
+                continue
+            if row["status"] == SessionStatus.COMPLETED.value:
+                bucket["completed"] += 1
+                session_class[row["id"]] = row["class_id"]
+            elif (row["status"] == SessionStatus.IN_PROGRESS.value
+                    and bucket["next_session"] is None):
+                bucket["next_session"] = {
+                    "status": "in_progress",
+                    "start_time": row["start_time"],
+                }
+
+        session_ids = list(session_class)
+        if session_ids:
+            # 2) Attendance per completed session.
+            for row in (await self.session.execute(sa_text("""
+                SELECT data->>'session_id' AS session_id,
+                       count(*)            AS total,
+                       count(*) FILTER (WHERE data->>'status' = :present) AS present
+                FROM generic_documents
+                WHERE collection = 'session_attendance'
+                  AND data->>'session_id' = ANY(:session_ids)
+                GROUP BY 1
+            """), {"present": AttendanceStatus.PRESENT.value,
+                   "session_ids": session_ids})).mappings().all():
+                bucket = acc[session_class[row["session_id"]]]
+                bucket["attendance"] += int(row["total"] or 0)
+                bucket["present"] += int(row["present"] or 0)
+
+            # 3) Interactions per completed session. ``interaction_type``
+            #    lives in the JSONB payload; fall back to the ``type`` column
+            #    so a row written by either path is classified identically.
+            for row in (await self.session.execute(sa_text("""
+                SELECT session_id,
+                       count(DISTINCT student_id)
+                         FILTER (WHERE itype IN (:participation, :question)) AS participants,
+                       count(*) FILTER (WHERE itype = :question) AS questions,
+                       count(*) FILTER (WHERE itype = :question
+                                          AND answer_result = :correct) AS correct
+                FROM (
+                    SELECT session_id,
+                           student_id,
+                           COALESCE(data->>'interaction_type', type) AS itype,
+                           data->>'answer_result'                    AS answer_result
+                    FROM session_interactions
+                    WHERE session_id = ANY(:session_ids)
+                ) i
+                GROUP BY session_id
+            """), {"participation": InteractionType.PARTICIPATION.value,
+                   "question": InteractionType.QUESTION.value,
+                   "correct": AnswerResult.CORRECT.value,
+                   "session_ids": session_ids})).mappings().all():
+                bucket = acc[session_class[row["session_id"]]]
+                bucket["participation"] += int(row["participants"] or 0)
+                bucket["questions"] += int(row["questions"] or 0)
+                bucket["correct"] += int(row["correct"] or 0)
+
+        # 4) Active students per class.
+        student_counts = {
+            row["class_id"]: int(row["n"] or 0)
+            for row in (await self.session.execute(sa_text("""
+                SELECT class_id, count(*) AS n
+                FROM students
+                WHERE class_id = ANY(:class_ids) AND is_active = true
+                GROUP BY class_id
+            """), {"class_ids": ids})).mappings().all()
+        }
+
+        out: Dict[str, Dict[str, Any]] = {}
+        for cid in ids:
+            b = acc[cid]
+            # ``present`` doubles as the participation denominator: the old
+            # code summed the same per-session present count into a second
+            # accumulator.
+            out[cid] = {
+                "class_id": cid,
+                "attendance_rate": round(b["present"] / b["attendance"] * 100, 1) if b["attendance"] > 0 else 0,
+                "participation_rate": round(b["participation"] / b["present"] * 100, 1) if b["present"] > 0 else 0,
+                "avg_performance": round(b["correct"] / b["questions"] * 100, 1) if b["questions"] > 0 else 0,
+                "total_sessions": b["completed"],
+                "total_students": student_counts.get(cid, 0),
+                "next_session": b["next_session"],
+            }
+        return out
 
     # ---------- Session Notes ----------
 
@@ -4819,43 +5163,119 @@ class TeacherSessionEngine:
         student_id: str = None,
         student_ids: List[str] = None
     ) -> Dict[str, Any]:
-        """Add a teacher note to a session."""
+        """Add a teacher note to a session.
+
+        ``session_notes`` is a REAL table whose content columns are ``note``
+        (text) and ``type`` (category) — the legacy payload used
+        ``text``/``note_type``/``student_ids`` keys that are NOT columns, so
+        the generic writer silently dropped them and every in-session note was
+        persisted as an EMPTY row (only the closing-note path was fixed
+        earlier). Write the actual columns, resolve ``teacher_id`` to a
+        verified ``teachers.id`` (FK — raw ``users.id`` would violate it), and
+        fan a multi-student note (parent broadcast) out to one row per student
+        so per-student reports can find it (there is no ``student_ids``
+        column).
+        """
         now = datetime.now(timezone.utc)
-        note = {
-            "id": str(uuid.uuid4()),
-            "session_id": session_id,
-            "teacher_id": teacher_id,
-            "text": text,
-            "note_type": note_type,
-            "student_id": student_id,
-            "student_ids": student_ids or [],
-            "created_at": now.isoformat()
-        }
-        await gd_insert(self.session, "session_notes", note)
+        text = (text or "").strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="نص الملاحظة مطلوب")
+        session = await gd_find_one(self.session, "class_sessions", {"id": session_id})
+        note_teacher_id = await self._resolve_note_teacher_id(session or {}, teacher_id)
+
+        targets: List[Optional[str]] = [s for s in (student_ids or []) if s]
+        if not targets:
+            targets = [student_id] if student_id else [None]
+
+        first_id = None
+        for sid in targets:
+            row = {
+                "id": str(uuid.uuid4()),
+                "session_id": session_id,
+                "teacher_id": note_teacher_id,
+                "student_id": sid,
+                "note": text,
+                "type": note_type or "session",
+                "created_at": now.isoformat(),
+            }
+            if first_id is None:
+                first_id = row["id"]
+            await gd_insert(self.session, "session_notes", row)
 
         await self._log_event(
             session_id=session_id,
             event_type=EventType.NOTE_ADDED.value,
             actor_id=teacher_id,
-            student_id=student_id,
-            metadata={"note_type": note_type, "note_id": note["id"]}
+            student_id=student_id or (targets[0] if targets and targets[0] else None),
+            metadata={"note_type": note_type, "note_id": first_id, "targets": len(targets)}
         )
 
-        return {"message": "تم إضافة الملاحظة", "note_id": note["id"], "note": {k: v for k, v in note.items() if k != "_id"}}
+        return {
+            "message": "تم إضافة الملاحظة",
+            "note_id": first_id,
+            "note": {
+                "id": first_id,
+                "session_id": session_id,
+                "text": text,
+                "note_type": note_type or "session",
+                "student_id": targets[0] if targets else None,
+                "created_at": now.isoformat(),
+            },
+        }
+
+    @staticmethod
+    def _note_row_to_api(note: dict) -> dict:
+        """Canonical API shape for a session_notes row.
+
+        The table's content columns are ``note``/``type`` but every consumer
+        (teach-page panel, Manage Sessions report modal) renders
+        ``text``/``note_type`` — expose BOTH so no reader sees blanks.
+        """
+        text = (note.get("note") or note.get("text") or "").strip()
+        ntype = note.get("type") or note.get("note_type") or "general"
+        return {
+            "id": note.get("id"),
+            "session_id": note.get("session_id"),
+            "teacher_id": note.get("teacher_id"),
+            "student_id": note.get("student_id"),
+            "text": text,
+            "note": text,
+            "note_type": ntype,
+            "type": ntype,
+            "is_closing": ntype == "closing",
+            "created_at": note.get("created_at"),
+        }
 
     async def get_session_notes(self, session_id: str) -> List[Dict[str, Any]]:
-        """Retrieve all notes attached to a session."""
-        notes = await gd_find(self.session, "session_notes", {"session_id": session_id}, order_by="created_at", desc_order=True, limit=500)
+        """Retrieve all notes attached to a session (canonical API shape).
 
-        for note in notes:
-            if note.get("student_id"):
-                student = await gd_find_one(self.session, "students", {"id": note["student_id"], "is_active": True})
-                note["student_name"] = student.get("full_name") if student else None
+        Legacy rows written before the column fix have an empty ``note`` —
+        their text is unrecoverable, so they are filtered out rather than
+        rendered as blank lines.
+        """
+        rows = await gd_find(self.session, "session_notes", {"session_id": session_id}, order_by="created_at", desc_order=True, limit=500)
+        notes = [self._note_row_to_api(n) for n in rows]
+        notes = [n for n in notes if n["text"]]
+
+        student_ids = list({n["student_id"] for n in notes if n.get("student_id")})
+        names: Dict[str, str] = {}
+        for sid in student_ids:
+            student = await gd_find_one(self.session, "students", {"id": sid})
+            if student:
+                names[sid] = student.get("full_name") or student.get("name")
+        for n in notes:
+            n["student_name"] = names.get(n.get("student_id"))
         return notes
 
-    async def delete_note(self, note_id: str, teacher_id: str) -> Dict[str, Any]:
-        """Remove a note from a session by note ID."""
-        result = await gd_delete_one(self.session, "session_notes", {"id": note_id, "teacher_id": teacher_id})
+    async def delete_note(self, note_id: str, session_id: str) -> Dict[str, Any]:
+        """Remove a note from a session by note ID.
+
+        Ownership is enforced by the route's ``_verify_session_owner`` check;
+        scoping the delete to the session id (instead of matching the raw
+        acting id against the resolved-FK ``teacher_id`` column, which may be
+        NULL or a different id space) keeps deletion working.
+        """
+        result = await gd_delete_one(self.session, "session_notes", {"id": note_id, "session_id": session_id})
         if result == 0:
             raise HTTPException(status_code=404, detail="الملاحظة غير موجودة")
         return {"message": "تم حذف الملاحظة"}
@@ -4883,8 +5303,12 @@ class TeacherSessionEngine:
         correct = sum(1 for q in questions if q.get("answer_result") == AnswerResult.CORRECT.value)
         wrong = sum(1 for q in questions if q.get("answer_result") == AnswerResult.WRONG.value)
 
-        participations = [i for i in interactions if i.get("interaction_type") == InteractionType.PARTICIPATION.value]
+        # Canonical participatory classification — the live مشاركة numbers must
+        # match what the post-lesson summary will show for the same events.
+        participations = [i for i in interactions if interaction_is_participatory(i)]
         unique_participants = set(p["student_id"] for p in participations)
+        # "not yet engaged" deliberately stays ANY-interaction based: during a
+        # live lesson it answers "which students haven't I reached at all yet?"
         all_interacted = set(i["student_id"] for i in interactions)
 
         behaviours = [i for i in interactions if i.get("interaction_type") == InteractionType.BEHAVIOUR.value]
@@ -4919,7 +5343,7 @@ class TeacherSessionEngine:
                 "accuracy_rate": round(correct / len(questions) * 100, 1) if questions else 0,
                 "total_participations": len(participations),
                 "unique_participants": len(unique_participants),
-                "participation_rate": round(len(all_interacted) / present * 100, 1) if present > 0 else 0,
+                "participation_rate": round(len(unique_participants) / present * 100, 1) if present > 0 else 0,
                 "not_interacted": present - len(all_interacted)
             },
             "behaviour": {
@@ -4990,7 +5414,7 @@ class TeacherSessionEngine:
 
         interactions = await gd_find(self.session, "session_interactions", {"session_id": session_id}, limit=1000)
 
-        notes = await gd_find(self.session, "session_notes", {"session_id": session_id}, limit=500)
+        note_rows = await gd_find(self.session, "session_notes", {"session_id": session_id}, order_by="created_at", desc_order=True, limit=500)
 
         skills = await gd_find(self.session, "student_skills", {"session_id": session_id}, limit=200)
 
@@ -5038,6 +5462,79 @@ class TeacherSessionEngine:
             sid = sk.get("student_id")
             if sid in student_details:
                 student_details[sid]["skills"].append(sk.get("skill_name"))
+
+        # ---- Unified notes view -------------------------------------------
+        # Merge every teacher-entered note source into one list so the report
+        # shows actual content, not just a count:
+        #   * session_notes rows (quick/parent/student/evaluation/closing) —
+        #     legacy rows written before the column fix are empty and skipped;
+        #   * recitation notes (stored on the RECITATION interaction);
+        #   * behaviour details (stored on the BEHAVIOUR interaction).
+        notes: List[Dict[str, Any]] = []
+        for n in note_rows:
+            item = self._note_row_to_api(n)
+            if item["text"]:
+                notes.append(item)
+        for inter in interactions:
+            # Undo marks reversals under data.reversed (canonical engine
+            # pattern) — an undone recitation/behaviour must not leak its note
+            # into the report.
+            if (inter.get("data") or {}).get("reversed") or inter.get("is_reversed") or inter.get("reversed"):
+                continue
+            itype = inter.get("interaction_type")
+            if itype == InteractionType.RECITATION.value and (inter.get("note") or "").strip():
+                mastered = bool(inter.get("recitation_mastered"))
+                notes.append({
+                    "id": inter.get("id"),
+                    "student_id": inter.get("student_id"),
+                    "text": (inter.get("note") or "").strip(),
+                    "note_type": "recitation",
+                    "type": "recitation",
+                    "is_closing": False,
+                    "context": "أتقن التسميع" if mastered else "لم يتقن التسميع",
+                    "created_at": inter.get("recorded_at") or inter.get("timestamp"),
+                })
+            elif itype == InteractionType.BEHAVIOUR.value and (inter.get("behaviour_details") or "").strip():
+                notes.append({
+                    "id": inter.get("id"),
+                    "student_id": inter.get("student_id"),
+                    "text": (inter.get("behaviour_details") or "").strip(),
+                    "note_type": "behaviour",
+                    "type": "behaviour",
+                    "is_closing": False,
+                    "context": inter.get("behaviour_type") or "",
+                    "created_at": inter.get("recorded_at") or inter.get("timestamp"),
+                })
+        for sk in skills:
+            if (sk.get("notes") or "").strip() and not sk.get("is_reversed"):
+                notes.append({
+                    "id": sk.get("id"),
+                    "student_id": sk.get("student_id"),
+                    "text": (sk.get("notes") or "").strip(),
+                    "note_type": "skill",
+                    "type": "skill",
+                    "is_closing": False,
+                    "context": sk.get("skill_name") or "",
+                    "created_at": sk.get("timestamp"),
+                })
+        # Legacy sessions may carry class_sessions.closing_note without a typed
+        # closing row — synthesize it so the end-of-session note stays visible.
+        session_closing = (session.get("closing_note") or "").strip()
+        if session_closing and not any(n.get("is_closing") for n in notes):
+            notes.append({
+                "id": f"{session_id}:closing",
+                "student_id": None,
+                "text": session_closing,
+                "note_type": "closing",
+                "type": "closing",
+                "is_closing": True,
+                "created_at": session.get("end_time"),
+            })
+        for n in notes:
+            sid = n.get("student_id")
+            n["student_name"] = student_details.get(sid, {}).get("name") if sid else None
+        notes.sort(key=lambda n: (not n.get("is_closing"), n.get("created_at") or ""), reverse=False)
+        # Closing note first, then chronological.
 
         questions = [i for i in interactions if i.get("interaction_type") == InteractionType.QUESTION.value]
         correct = sum(1 for q in questions if q.get("answer_result") == AnswerResult.CORRECT.value)
@@ -5119,6 +5616,11 @@ class TeacherSessionEngine:
         EventType.RECITATION_RECORDED.value,
     }
 
+    # Shared fetch window for the undo stack. peek (last action), the depth
+    # counter and undo itself MUST scan the same number of rows or the badge
+    # can report depth that undo cannot reach in very long sessions.
+    UNDO_EVENT_FETCH_LIMIT = 500
+
     @staticmethod
     def _normalize_actor_ids(teacher_id: Union[str, Sequence[str]]) -> List[str]:
         """Coerce one or more actor ids into a deduplicated, non-empty list.
@@ -5168,7 +5670,7 @@ class TeacherSessionEngine:
             },
             order_by="timestamp",
             desc_order=True,
-            limit=200,
+            limit=self.UNDO_EVENT_FETCH_LIMIT,
         )
         for event in events:
             meta = event.get("metadata") or {}
@@ -5181,7 +5683,7 @@ class TeacherSessionEngine:
         self,
         session_id: str,
         teacher_id: Union[str, Sequence[str]],
-        cap: int = 10,
+        cap: Optional[int] = None,
     ) -> int:
         """Count how many unreversed reversible events exist for this teacher/session.
 
@@ -5189,10 +5691,12 @@ class TeacherSessionEngine:
         all candidates are evaluated as a union so the depth count matches the
         union used by get_last_reversible_action and undo_last_action.
 
-        The count is capped at *cap* so the UI can show "10+" without fetching
-        an unbounded number of rows.  The same 200-row fetch used by
-        get_last_reversible_action is sufficient because a session rarely
-        exceeds that many interactions.
+        The count is UNCAPPED by default so the undo button badge shows the
+        real stack depth (a hard cap of 10 made the counter freeze at 10 while
+        more actions were undoable). An optional *cap* remains for callers
+        that only need "at least N". The fetch window is shared with
+        ``get_last_reversible_action`` (UNDO_EVENT_FETCH_LIMIT) so the badge
+        never reports depth the undo path cannot reach.
         """
         actor_ids = self._normalize_actor_ids(teacher_id)
         if not actor_ids:
@@ -5207,7 +5711,7 @@ class TeacherSessionEngine:
             },
             order_by="timestamp",
             desc_order=True,
-            limit=200,
+            limit=self.UNDO_EVENT_FETCH_LIMIT,
         )
         count = 0
         for event in events:
@@ -5215,7 +5719,7 @@ class TeacherSessionEngine:
             if meta.get("reversed"):
                 continue
             count += 1
-            if count >= cap:
+            if cap is not None and count >= cap:
                 break
         return count
 

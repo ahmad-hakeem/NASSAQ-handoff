@@ -110,6 +110,7 @@ from engines.email_service import (
     send_workspace_erasure_final_export_email,
     send_workspace_reactivation_reminder_email,
 )
+from services.email_client import send_email_off_loop
 import os
 
 
@@ -1122,12 +1123,15 @@ async def soft_delete_workspace(
             and "@" in recipient
             and "@invite.nassaq.invalid" not in recipient
         ):
-            send_workspace_archived_email(
+            await send_email_off_loop(
+                send_workspace_archived_email,
                 to_email=recipient,
                 user_name=current_user.get("full_name") or recipient,
                 workspace_name=(school.get("name") or "").strip() or workspace_id,
                 reactivation_deadline=reactivation_deadline.isoformat(),
                 reactivation_window_days=_REACTIVATE_WINDOW.days,
+                download_url=download_url,
+                download_expires_at=fresh_expires_at.isoformat(),
             )
     except Exception as exc:  # noqa: BLE001
         logger.warning("workspace archived email dispatch failed: %s", exc)
@@ -1317,7 +1321,8 @@ async def request_workspace_erasure(
             and "@" in recipient
             and "@invite.nassaq.invalid" not in recipient
         ):
-            send_workspace_erasure_final_export_email(
+            await send_email_off_loop(
+                send_workspace_erasure_final_export_email,
                 to_email=recipient,
                 user_name=current_user.get("full_name") or recipient,
                 workspace_name=(school.get("name") or "").strip() or workspace_id,

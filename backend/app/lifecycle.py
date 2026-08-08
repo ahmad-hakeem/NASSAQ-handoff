@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta as _td
 
 from dependencies import db, hash_password
 from db import async_session_factory, init_pg_tables, close_pg_engine
-from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, gd_iter_rows, _gd_aggregate
 
 logger = logging.getLogger("nassaq")
 
@@ -75,6 +75,14 @@ async def _seed_platform_admins():
 
 async def startup_tasks():
     from config import config
+
+    # Optional error/alert sink — no-op unless SENTRY_DSN is configured.
+    try:
+        from services.observability import init_observability
+
+        init_observability()
+    except Exception as obs_err:  # never block boot on observability
+        logger.warning(f"Observability init skipped: {obs_err}")
 
     issues = config.validate()
     if issues:
@@ -232,6 +240,21 @@ async def startup_tasks():
     except Exception as e:
         logger.warning(f"Could not schedule revoked-token cleanup: {e}")
 
+    # Background task: scheduled sweep of expired rate_limit_counters rows.
+    # The limiter's own opportunistic sweep (~1% of shared-store checks)
+    # cannot be relied on: the deny cache short-circuits repeat hits against
+    # a blocked key without touching the DB, so a credential-stuffing burst
+    # grows the table and then stops generating the very traffic that would
+    # clean it up. This loop guarantees reclamation with zero limiter
+    # traffic. The sweep itself is bounded (batched DELETEs inside
+    # SharedRateLimitStore._sweep) so it can never become a load spike.
+    try:
+        global _rate_limit_sweep_task
+        _rate_limit_sweep_task = _asyncio.create_task(_rate_limit_sweep_loop())
+        logger.info("Rate-limit counter sweep loop scheduled (every 15m)")
+    except Exception as e:
+        logger.warning(f"Could not schedule rate-limit counter sweep: {e}")
+
     # Background task: daily sweep that emails archived IT workspaces a
     # reminder ~3 days before their 30-day reactivation window closes.
     # Idempotent via schools.reactivation_reminder_sent_at — once stamped
@@ -341,6 +364,50 @@ async def startup_tasks():
 
 
 _revoked_token_cleanup_task = None
+_rate_limit_sweep_task = None
+
+
+async def _rate_limit_sweep_loop(initial_delay_s: float = 60.0,
+                                 interval_s: float = 15 * 60.0):
+    """Scheduled sweep of expired ``rate_limit_counters`` rows.
+
+    Module-level (rather than a startup closure) so tests can drive it with
+    short delays. Re-raises ``CancelledError`` so the task ends in the
+    proper CANCELLED state; the awaiter in ``shutdown_tasks`` catches it
+    explicitly.
+    """
+    import asyncio as _a
+    try:
+        await _a.sleep(initial_delay_s)
+        while True:
+            try:
+                from middleware.rate_limiter import rate_store
+                deleted = await rate_store.cleanup(force=True)
+                if deleted:
+                    logger.info(f"Rate-limit counter sweep: purged {deleted} expired row(s)")
+            except Exception as e:
+                logger.warning(f"Rate-limit counter sweep loop: {e}")
+            await _a.sleep(interval_s)
+    except _a.CancelledError:
+        logger.info("Rate-limit counter sweep loop cancelled (shutdown)")
+        raise
+
+
+async def _cancel_background_task(task) -> None:
+    """Cancel a background loop and absorb its termination.
+
+    ``asyncio.CancelledError`` inherits ``BaseException`` (not ``Exception``)
+    on Python 3.8+, so a bare ``except Exception`` around ``await task``
+    would let the cancellation propagate and abort the rest of shutdown.
+    """
+    import asyncio as _a
+    if task is None or task.done():
+        return
+    task.cancel()
+    try:
+        await task
+    except (_a.CancelledError, Exception):  # noqa: BLE001 — shutdown must continue
+        pass
 _reactivation_reminder_task = None
 _auto_export_task = None
 _erasure_purge_task = None
@@ -394,8 +461,9 @@ async def _sweep_auto_exports():
     link-only notification. Status is recorded back on
     ``workspace_quota`` so the FE hub can render last-run + status.
     """
-    from engines.sql_utils import gd_find as _gd_find, gd_find_one as _gd_find_one, gd_update_one as _gd_update_one
+    from engines.sql_utils import gd_iter_rows as _gd_iter_rows, gd_find as _gd_find, gd_find_one as _gd_find_one, gd_update_one as _gd_update_one
     from engines.email_service import send_workspace_auto_export_email
+    from services.email_client import send_email_off_loop
     from utils.tokens import mint_workspace_export_token, WORKSPACE_EXPORT_TOKEN_TTL
     from dependencies import audit_engine
 
@@ -403,11 +471,10 @@ async def _sweep_auto_exports():
     today_dow = (now.weekday() + 1) % 7  # 0=Sunday convention
     current_hour = now.hour
 
-    rows = await _gd_find(db.session, "workspace_quota", {"auto_export_enabled": True})
-    if not rows:
-        return
+    # Streamed: the sweep touches every enabled workspace, so it must not
+    # scale its memory with the number of workspaces.
     swept = 0
-    for row in rows:
+    async for row in _gd_iter_rows(db.session, "workspace_quota", {"auto_export_enabled": True}):
         try:
             dow = row.get("auto_export_dow")
             hour = row.get("auto_export_hour")
@@ -493,7 +560,8 @@ async def _sweep_auto_exports():
             sent = False
             if not is_placeholder:
                 try:
-                    sent = send_workspace_auto_export_email(
+                    sent = await send_email_off_loop(
+                        send_workspace_auto_export_email,
                         to_email=email,
                         user_name=owner.get("full_name") or "",
                         workspace_name=school.get("name") or "",
@@ -547,14 +615,14 @@ async def _sweep_reactivation_reminders():
     """
     from datetime import datetime as _dt, timezone as _tz, timedelta as _td
     from engines.email_service import send_workspace_reactivation_reminder_email
+    from services.email_client import send_email_off_loop
 
     now = _dt.now(_tz.utc)
     window = _td(days=_REACTIVATION_WINDOW_DAYS)
     threshold = _td(days=_REMINDER_THRESHOLD_DAYS)
 
-    candidates = await gd_find(db.session, "schools", {"status": "archived"})
     sent = 0
-    for school in candidates or []:
+    async for school in gd_iter_rows(db.session, "schools", {"status": "archived"}):
         try:
             if school.get("pending_hard_delete"):
                 continue
@@ -634,7 +702,8 @@ async def _sweep_reactivation_reminders():
                     {"reactivation_reminder_sent_at": now.isoformat()},
                 )
                 continue
-            ok = send_workspace_reactivation_reminder_email(
+            ok = await send_email_off_loop(
+                send_workspace_reactivation_reminder_email,
                 to_email=owner_email,
                 user_name=owner_name or owner_email,
                 workspace_name=(school.get("name") or "").strip() or workspace_id,
@@ -683,9 +752,8 @@ async def _sweep_erasure_purges():
 
     now = _dt.now(_tz.utc)
 
-    candidates = await gd_find(db.session, "schools", {"status": "archived"})
     purged = 0
-    for school in candidates or []:
+    async for school in gd_iter_rows(db.session, "schools", {"status": "archived"}):
         try:
             requested_at = school.get("erasure_requested_at")
             if not requested_at:
@@ -1051,6 +1119,17 @@ async def shutdown_tasks():
     except Exception as e:
         logger.debug(f"Cleanup loop cancellation: {e}")
 
+    # Cancel the rate-limit counter sweep loop cleanly. CancelledError is
+    # caught explicitly inside _cancel_background_task — it is a
+    # BaseException, so a bare `except Exception` would let it abort the
+    # rest of shutdown.
+    try:
+        global _rate_limit_sweep_task
+        await _cancel_background_task(_rate_limit_sweep_task)
+        _rate_limit_sweep_task = None
+    except Exception as e:
+        logger.debug(f"Rate-limit sweep loop cancellation: {e}")
+
     # Cancel the reactivation-reminder loop cleanly.
     try:
         global _reactivation_reminder_task
@@ -1127,6 +1206,14 @@ async def shutdown_tasks():
             logger.warning(f"audit_sink: {pending} events still pending at shutdown")
     except Exception as e:
         logger.debug(f"audit_sink drain on shutdown: {e}")
+
+    # Stop the render pool. Threads running ReportLab cannot be interrupted,
+    # so don't wait on them — the process is going away regardless.
+    try:
+        from services.cpu_offload import shutdown as _cpu_offload_shutdown
+        _cpu_offload_shutdown(wait=False)
+    except Exception as e:
+        logger.debug(f"cpu_offload shutdown: {e}")
 
     await close_pg_engine()
     logger.info("NASSAQ shutdown complete")

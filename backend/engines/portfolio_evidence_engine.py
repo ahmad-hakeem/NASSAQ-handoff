@@ -16,6 +16,123 @@ from engines.sql_utils import (
 
 logger = logging.getLogger("nassaq.portfolio")
 
+# Attachment bytes are stored in their own collection so list/summary reads never
+# ship base64 blobs. Evidence/CV items keep only a `file_id` pointer + light metadata.
+PORTFOLIO_FILES_COLLECTION = "portfolio_files"
+
+
+def is_inline_file_url(url: Optional[str]) -> bool:
+    """True when the value is an inline base64 data URL (the heavy case)."""
+    return bool(url) and isinstance(url, str) and url.startswith("data:")
+
+
+def lighten_attachment(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Copy of an evidence/CV item safe for list payloads: inline data URLs are
+    stripped (never shipped in lists), `has_file` tells the client a file exists
+    and can be fetched on demand via /teacher/portfolio/file/{file_id}."""
+    file_url = item.get("file_url")
+    has_file = bool(item.get("file_id") or file_url)
+    out = {**item, "has_file": has_file}
+    # model_to_dict keeps the raw JSONB under "data" alongside the flattened
+    # keys — a full duplicate of the document (including any legacy inline
+    # blob). Never ship it in list payloads.
+    if isinstance(out.get("data"), dict):
+        out.pop("data", None)
+    if is_inline_file_url(file_url):
+        # Legacy row whose blob still lives inline: expose the item id as the
+        # fetch handle (the file endpoint falls back to the source document).
+        out["file_url"] = None
+        out.setdefault("file_id", None)
+        if not out.get("file_id"):
+            out["file_id"] = item.get("id")
+    return out
+
+
+def _data_url_mime(data_url: str) -> str:
+    head = data_url.split(",", 1)[0]
+    if head.startswith("data:"):
+        return head[5:].split(";", 1)[0] or "application/octet-stream"
+    return "application/octet-stream"
+
+
+def _data_url_size(data_url: str) -> int:
+    try:
+        payload = data_url.split(",", 1)[1]
+    except IndexError:
+        return 0
+    if ";base64" in data_url.split(",", 1)[0]:
+        return (len(payload) * 3) // 4
+    return len(payload)
+
+
+async def store_portfolio_file(
+    session,
+    *,
+    teacher_id: str,
+    school_id: Optional[str],
+    data_url: str,
+    file_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Persist an inline data URL as its own portfolio_files document and return
+    light metadata ({file_id, file_name, content_type, size}) — never the blob."""
+    file_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    content_type = _data_url_mime(data_url)
+    size = _data_url_size(data_url)
+    await gd_insert(session, PORTFOLIO_FILES_COLLECTION, {
+        "id": file_id,
+        "teacher_id": teacher_id,
+        "school_id": school_id or "",
+        "file_name": file_name or "",
+        "content_type": content_type,
+        "size_bytes": size,
+        "data_url": data_url,
+        "created_at": now,
+    })
+    return {"file_id": file_id, "file_name": file_name or "", "content_type": content_type, "size": size}
+
+
+async def load_portfolio_file(session, file_id: str, teacher_id: str) -> Optional[Dict[str, Any]]:
+    """Owner-scoped fetch of a stored attachment (returns the full doc incl. blob)."""
+    return await gd_find_one(session, PORTFOLIO_FILES_COLLECTION, {
+        "id": file_id, "teacher_id": teacher_id,
+    })
+
+
+async def delete_portfolio_file(session, file_id: str, teacher_id: str) -> None:
+    """Owner-scoped delete; silently ignores missing rows."""
+    if not file_id:
+        return
+    await gd_delete_one(session, PORTFOLIO_FILES_COLLECTION, {
+        "id": file_id, "teacher_id": teacher_id,
+    })
+
+
+async def release_portfolio_file(session, file_id: str, teacher_id: str) -> bool:
+    """Delete a stored attachment ONLY if nothing else still references it.
+
+    A file_id pointer can legitimately be shared by several items (retry,
+    attaching the same upload twice), so an unconditional delete from one
+    item would orphan the others with a dead pointer. Callers must remove
+    their own reference (update/delete the evidence row or cv_item) BEFORE
+    calling this. Returns True when the blob row was actually deleted."""
+    if not file_id:
+        return False
+    remaining = await gd_find(session, "portfolio_evidence", {
+        "teacher_id": teacher_id, "file_id": file_id,
+    }, limit=1)
+    if remaining:
+        return False
+    meta = await gd_find_one(session, "teacher_portfolio_meta", {"teacher_id": teacher_id})
+    if meta:
+        for item in (meta.get("cv_items") or []):
+            if isinstance(item, dict) and item.get("file_id") == file_id:
+                return False
+    await gd_delete_one(session, PORTFOLIO_FILES_COLLECTION, {
+        "id": file_id, "teacher_id": teacher_id,
+    })
+    return True
+
 EVIDENCE_SECTIONS = {
     "teaching_plans": [
         "lesson_plan", "weekly_plan", "unit_plan",
@@ -340,7 +457,7 @@ class PortfolioEvidenceEngine:
             if section_key not in sections:
                 sections[section_key] = {"count": 0, "items": [], "types_covered": []}
                 bucketed_types[section_key] = set()
-            sections[section_key]["items"].append(ev)
+            sections[section_key]["items"].append(lighten_attachment(ev))
             if etype:
                 bucketed_types[section_key].add(etype)
         for key, bucket in sections.items():
@@ -395,7 +512,8 @@ class PortfolioEvidenceEngine:
         items = await gd_find(self.db.session, "portfolio_evidence", query,
                               order_by="created_at", desc_order=True, offset=skip, limit=limit)
 
-        return {"items": items, "total": total, "skip": skip, "limit": limit}
+        return {"items": [lighten_attachment(e) for e in items],
+                "total": total, "skip": skip, "limit": limit}
 
     async def add_manual_evidence(
         self,
@@ -412,9 +530,25 @@ class PortfolioEvidenceEngine:
         file_url: Optional[str] = None,
         file_name: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        file_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         if evidence_type not in ALL_EVIDENCE_TYPES:
             return {"success": False, "error": "invalid_evidence_type"}
+
+        if file_id:
+            owned = await load_portfolio_file(self.db.session, file_id, teacher_id)
+            if not owned:
+                return {"success": False, "error": "invalid_file"}
+            file_name = file_name or owned.get("file_name")
+            file_url = None
+        elif is_inline_file_url(file_url):
+            # Backward compat: relocate inline blobs so evidence rows stay light.
+            stored = await store_portfolio_file(
+                self.db.session, teacher_id=teacher_id, school_id=school_id,
+                data_url=file_url, file_name=file_name,
+            )
+            file_id = stored["file_id"]
+            file_url = None
 
         evidence_id = str(uuid.uuid4())
         section = SECTION_FOR_TYPE.get(evidence_type, "administrative")
@@ -438,6 +572,7 @@ class PortfolioEvidenceEngine:
             "date": date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "metadata": metadata or {},
             "file_url": file_url,
+            "file_id": file_id,
             "file_name": file_name,
             "created_at": now,
             "updated_at": now,
@@ -468,10 +603,32 @@ class PortfolioEvidenceEngine:
                 return {"success": False, "error": "invalid_evidence_type"}
             clean["section"] = SECTION_FOR_TYPE.get(clean["evidence_type"], "administrative")
 
+        old_file_id = evidence.get("file_id")
+        if clean.get("file_id"):
+            owned = await load_portfolio_file(self.db.session, clean["file_id"], teacher_id)
+            if not owned:
+                return {"success": False, "error": "invalid_file"}
+            clean["file_url"] = None
+        elif is_inline_file_url(clean.get("file_url")):
+            stored = await store_portfolio_file(
+                self.db.session, teacher_id=teacher_id,
+                school_id=evidence.get("school_id"),
+                data_url=clean["file_url"], file_name=clean.get("file_name") or evidence.get("file_name"),
+            )
+            clean["file_id"] = stored["file_id"]
+            clean["file_url"] = None
+        elif "file_url" in clean and "file_id" not in clean:
+            # File cleared or replaced by an external link → drop the pointer too.
+            clean["file_id"] = None
+
         await gd_update_one(self.db.session, "portfolio_evidence",
                             {"id": evidence_id}, clean)
+        if old_file_id and clean.get("file_id", old_file_id) != old_file_id:
+            # Our own reference is gone (row updated above); drop the blob only
+            # if no other item still shares this file_id.
+            await release_portfolio_file(self.db.session, old_file_id, teacher_id)
         updated = await gd_find_one(self.db.session, "portfolio_evidence", {"id": evidence_id})
-        return {"success": True, "evidence": updated}
+        return {"success": True, "evidence": lighten_attachment(updated) if updated else updated}
 
     async def delete_evidence(self, evidence_id: str, teacher_id: str) -> Dict[str, Any]:
         evidence = await gd_find_one(self.db.session, "portfolio_evidence", {
@@ -480,6 +637,9 @@ class PortfolioEvidenceEngine:
         if not evidence:
             return {"success": False, "error": "not_found"}
         await gd_delete_one(self.db.session, "portfolio_evidence", {"id": evidence_id})
+        if evidence.get("file_id"):
+            # Row deleted above; only remove the blob if nothing else references it.
+            await release_portfolio_file(self.db.session, evidence["file_id"], teacher_id)
         return {"success": True}
 
     async def get_portfolio_progress(self, teacher_id: str, school_id: Optional[str] = None) -> Dict[str, Any]:

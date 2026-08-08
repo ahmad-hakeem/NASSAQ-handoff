@@ -188,7 +188,7 @@ async def test_forgot_password_per_email_429_after_budget(client, monkeypatch):
     # Use a fresh, unique email so we don't collide with other tests.
     email = f"rl-{uuid.uuid4().hex[:8]}@example.com"
     bucket = f"forgot_password_email:{email.lower()}"
-    rate_store._store.pop(bucket, None)
+    await rate_store.forget(bucket, 3600)
     # Hit it 7 times — first 5 are "real", remaining must be silently capped.
     statuses = []
     for _ in range(7):
@@ -214,7 +214,7 @@ async def test_reset_password_per_identity_returns_429(client, tenant_a):
         "email": f"{user_id}@t.test", "full_name": "rl-target",
         "is_active": True, "password_hash": "x",
     })
-    rate_store._store.pop(f"reset_password_user:{user_id}", None)
+    await rate_store.forget(f"reset_password_user:{user_id}", 3600)
 
     def _mk_token():
         # Each token has a unique jti so the per-token-prefix bucket

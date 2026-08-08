@@ -29,9 +29,15 @@ from datetime import datetime, timezone, timedelta
 import logging
 import math
 
-from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many, gd_iter_rows
 
 logger = logging.getLogger("nassaq.reporting_engine")
+
+
+async def _empty_rows():
+    """Async-iterable stand-in for "nothing to stream"."""
+    return
+    yield  # pragma: no cover - makes this an async generator
 
 
 REPORT_TYPES = [
@@ -640,10 +646,9 @@ class ReportingEngine:
                                {"start_date": start_date, "end_date": end_date},
                                {"sessions": [], "class_engagement": []})
 
-        all_interactions = await gd_find(self.session, "session_interactions", {"session_id": {"$in": session_ids}}, limit=50000)
-
         sess_agg: Dict[str, dict] = {}
-        for i in all_interactions:
+        async for i in gd_iter_rows(self.session, "session_interactions",
+                                    {"session_id": {"$in": session_ids}}, max_rows=50000):
             ssid = i.get("session_id", "")
             if ssid not in sess_agg:
                 sess_agg[ssid] = {"total_interactions": 0, "unique_students": set(), "correct": 0, "questions": 0}
@@ -879,14 +884,12 @@ class ReportingEngine:
             {"school_id": school_id, "date": {"$gte": start_date, "$lte": end_date}})
         all_sids = [s["id"] for s in session_ids_raw]
 
-        if all_sids:
-            inter_records = await gd_find(self.session, "session_interactions",
-                {"session_id": {"$in": all_sids}, "student_id": student_id}, limit=50000)
-        else:
-            inter_records = []
-
         participation_breakdown: Dict[str, dict] = {}
-        for i in inter_records:
+        async for i in gd_iter_rows(
+            self.session, "session_interactions",
+            {"session_id": {"$in": all_sids}, "student_id": student_id},
+            max_rows=50000,
+        ) if all_sids else _empty_rows():
             itype = i.get("interaction_type", "unknown")
             if itype not in participation_breakdown:
                 participation_breakdown[itype] = {"count": 0, "correct": 0}
@@ -998,10 +1001,8 @@ class ReportingEngine:
         if session_ids:
             inter_query["session_id"] = {"$in": session_ids}
 
-        inter_records = await gd_find(self.session, "session_interactions", inter_query, limit=50000)
-
         type_result_counts: Dict[str, Dict[str, int]] = {}
-        for i in inter_records:
+        async for i in gd_iter_rows(self.session, "session_interactions", inter_query, max_rows=50000):
             itype = i.get("interaction_type", "unknown")
             result = i.get("answer_result", "none")
             key = f"{itype}|{result}"
@@ -1161,19 +1162,23 @@ class ReportingEngine:
         }, limit=500)
         session_ids = [s["id"] for s in sessions]
 
+        # One streaming pass builds the per-student interaction counts that
+        # the summaries below need, instead of holding every interaction and
+        # re-scanning the list once per student.
+        interaction_counts: Dict[str, int] = {}
         if session_ids:
-            inter_records = await gd_find(self.session, "session_interactions",
-                {"session_id": {"$in": session_ids}, "student_id": {"$in": student_ids}}, limit=50000)
-            participating_students = set(r.get("student_id") for r in inter_records)
-        else:
-            inter_records = []
-            participating_students = set()
+            async for r in gd_iter_rows(
+                self.session, "session_interactions",
+                {"session_id": {"$in": session_ids}, "student_id": {"$in": student_ids}},
+                max_rows=50000,
+            ):
+                rid = r.get("student_id")
+                interaction_counts[rid] = interaction_counts.get(rid, 0) + 1
+        participating_students = set(interaction_counts.keys())
         participation_rate = round((len(participating_students) / len(students) * 100) if students else 0, 1)
 
         health_doc = await gd_find_one(self.session, "ai_insights",
             {"type": "class_health", "entity_id": class_id, "school_id": school_id})
-
-        interactions = inter_records
 
         student_summaries = []
         for stu in students:
@@ -1185,7 +1190,7 @@ class ReportingEngine:
             s_total = await gd_count(self.session, "attendance", {
                 "student_id": sid, "school_id": school_id
             })
-            s_interactions = sum(1 for i in interactions if i.get("student_id") == sid)
+            s_interactions = interaction_counts.get(sid, 0)
             student_summaries.append({
                 "student_id": sid,
                 "full_name": name_map.get(sid, ""),
@@ -1219,34 +1224,30 @@ class ReportingEngine:
         if class_id:
             query["class_id"] = class_id
 
-        all_records = await gd_find(self.session, "attendance", query, limit=50000)
-
         status_totals: Dict[str, int] = {}
-        for r in all_records:
+        by_date: Dict[str, Dict] = {}
+        by_class: Dict[str, Dict] = {}
+        total = 0
+        async for r in gd_iter_rows(self.session, "attendance", query, max_rows=50000):
+            total += 1
             st = r.get("status", "absent")
             status_totals[st] = status_totals.get(st, 0) + 1
-        total = len(all_records)
-        present = status_totals.get("present", 0)
-        late = status_totals.get("late", 0)
-        absent = status_totals.get("absent", 0)
 
-        by_date: Dict[str, Dict] = {}
-        for r in all_records:
             d = r.get("date", "unknown")
-            st = r.get("status", "absent")
             if d not in by_date:
                 by_date[d] = {"date": d, "total": 0, "present": 0, "absent": 0, "late": 0}
             by_date[d]["total"] += 1
             by_date[d][st] = by_date[d].get(st, 0) + 1
 
-        by_class: Dict[str, Dict] = {}
-        for r in all_records:
             cid = r.get("class_id") or "unknown"
-            st = r.get("status", "absent")
             if cid not in by_class:
                 by_class[cid] = {"class_id": cid, "total": 0, "present": 0, "absent": 0, "late": 0}
             by_class[cid]["total"] += 1
             by_class[cid][st] = by_class[cid].get(st, 0) + 1
+
+        present = status_totals.get("present", 0)
+        late = status_totals.get("late", 0)
+        absent = status_totals.get("absent", 0)
 
         daily = sorted(by_date.values(), key=lambda x: x["date"])
         class_summary = sorted(by_class.values(), key=lambda x: x["class_id"])
@@ -1288,22 +1289,21 @@ class ReportingEngine:
             inter_count = 0
         avg_interactions = round(inter_count / len(sessions), 1) if sessions else 0
 
+        att_total = 0
+        sa_totals: Dict[str, int] = {}
         if session_ids:
-            sa_records = await gd_find(self.session, "session_attendance",
-                {"session_id": {"$in": session_ids}}, limit=50000)
-            sa_totals: Dict[str, int] = {}
-            for r in sa_records:
+            async for r in gd_iter_rows(self.session, "session_attendance",
+                                        {"session_id": {"$in": session_ids}}, max_rows=50000):
+                att_total += 1
                 st = r.get("status", "absent")
                 sa_totals[st] = sa_totals.get(st, 0) + 1
-            att_total = len(sa_records)
-            att_present = sa_totals.get("present", 0)
-        else:
-            att_total = 0
-            att_present = 0
+        att_present = sa_totals.get("present", 0)
         att_rate = round((att_present / att_total * 100) if att_total else 0, 1)
 
-        interactions = await gd_find(self.session, "session_interactions",
-            {"session_id": {"$in": session_ids}}, limit=50000) if session_ids else []
+        # Only the count is reported - count in the database instead of
+        # dragging every interaction row into the process.
+        total_interactions = await gd_count(self.session, "session_interactions",
+                                            {"session_id": {"$in": session_ids}}) if session_ids else 0
 
         return {
             "report_type": "teacher_report",
@@ -1312,7 +1312,7 @@ class ReportingEngine:
             "email": teacher.get("email"),
             "assignments": len(assignments),
             "total_sessions": len(sessions),
-            "total_interactions": len(interactions),
+            "total_interactions": total_interactions,
             "avg_interactions_per_session": avg_interactions,
             "attendance_rate": att_rate,
             "generated_at": datetime.now(timezone.utc).isoformat(),

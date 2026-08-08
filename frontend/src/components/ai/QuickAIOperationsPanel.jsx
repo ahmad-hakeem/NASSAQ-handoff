@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../ui/button';
@@ -87,14 +87,20 @@ function fmtTime(iso, isRTL) {
   }
 }
 
-export default function QuickAIOperationsPanel({ api: apiProp, isRTL = true }) {
+export default function QuickAIOperationsPanel({ api: apiProp, isRTL = true, initialStats = null }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { api: apiCtx } = useAuth();
   const api = apiProp || apiCtx;
 
   // Live data states
-  const [stats, setStats] = useState(null);
+  // initialStats: caller-provided stats snapshot (avoids a redundant GET when
+  // the parent (AdminDashboard) already fetches /admin/command-center/stats).
+  const [stats, setStats] = useState(initialStats);
+  // Only the FIRST load reuses the caller's snapshot. Every later load —
+  // manual refresh, post-operation refresh — must hit the endpoint, otherwise
+  // the panel would render stats that can never change.
+  const reuseInitialStatsRef = useRef(initialStats != null);
   const [notifStats, setNotifStats] = useState(null);
   const [suggestedActions, setSuggestedActions] = useState([]);
   const [recentOps, setRecentOps] = useState([]);
@@ -111,13 +117,21 @@ export default function QuickAIOperationsPanel({ api: apiProp, isRTL = true }) {
     if (!api) return;
     if (!silent) setLoading(true);
     try {
-      const [statsRes, notifRes, suggRes, histRes] = await Promise.allSettled([
-        api.get('/admin/command-center/stats'),
+      // Skip the stats fetch ONCE when the parent already provided them
+      // (deduplication of the /admin page's duplicate GET). Any subsequent
+      // load — manual refresh, post-operation refresh, poll — re-fetches.
+      const reuseProvidedStats = reuseInitialStatsRef.current;
+      reuseInitialStatsRef.current = false;
+      const requests = [
+        reuseProvidedStats ? Promise.resolve(null) : api.get('/admin/command-center/stats'),
         api.get('/admin/notifications/stats'),
         api.get('/admin/ai-suggested-actions'),
         api.get('/admin/ai-operations/history?limit=5'),
-      ]);
-      if (statsRes.status === 'fulfilled') setStats(statsRes.value.data || statsRes.value);
+      ];
+      const [statsRes, notifRes, suggRes, histRes] = await Promise.allSettled(requests);
+      if (statsRes.status === 'fulfilled' && statsRes.value !== null) {
+        setStats(statsRes.value.data || statsRes.value);
+      }
       if (notifRes.status === 'fulfilled') setNotifStats(notifRes.value.data || notifRes.value);
       if (suggRes.status === 'fulfilled') {
         const data = suggRes.value.data || suggRes.value;
@@ -134,6 +148,7 @@ export default function QuickAIOperationsPanel({ api: apiProp, isRTL = true }) {
     } finally {
       if (!silent) setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
 
   useEffect(() => {
@@ -240,7 +255,14 @@ export default function QuickAIOperationsPanel({ api: apiProp, isRTL = true }) {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={refreshStatus} disabled={loading} className="rounded-lg">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refreshStatus}
+                disabled={loading}
+                className="rounded-lg"
+                data-testid="ai-refresh-status"
+              >
                 <RefreshCw className={`h-4 w-4 me-1 ${loading ? 'animate-spin' : ''}`} />
                 {t('refresh')}
               </Button>

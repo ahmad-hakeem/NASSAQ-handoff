@@ -106,6 +106,19 @@ async def target_school():
         "country": "SA",
         "language": "ar",
     })
+    # Preview eligibility requires an ACTIVE school principal in the target
+    # school (no_active_principal guard) — seed one so /role-switch/switch
+    # to school_principal is permitted.
+    pid = str(uuid.uuid4())
+    await gd_insert(db.session, "users", {
+        "id": pid,
+        "role": UserRole.SCHOOL_PRINCIPAL.value,
+        "tenant_id": sid,
+        "email": f"principal-{pid[:8]}@t.test",
+        "full_name": "Seed Principal",
+        "is_active": True,
+        "password_hash": "x",
+    })
     return sid
 
 

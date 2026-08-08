@@ -19,7 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { CalendarDays, Hourglass, Settings as SettingsIcon } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
 
-// كل التبويبات تبقى ضمن `/school/schedule` ويُعبَّر عنها بمعطى
+// كل التبويبات تبقى ضمن `/principal/schedule` ويُعبَّر عنها بمعطى
 // `?tab=master|standby|settings` ليكون التبويب النشط قابلاً للحفظ والمشاركة
 // عبر الـ URL، ويُسهِّل التنقل البرمجي إليه (مثل بطاقة الجاهزية).
 const TABS = [
@@ -27,19 +27,19 @@ const TABS = [
     id: 'master',
     labelKey: 'masterScheduleTab',
     icon: CalendarDays,
-    path: '/school/schedule?tab=master',
+    path: '/principal/schedule?tab=master',
   },
   {
     id: 'standby',
     labelKey: 'standbyScheduleTab',
     icon: Hourglass,
-    path: '/school/schedule?tab=standby',
+    path: '/principal/schedule?tab=standby',
   },
   {
     id: 'settings',
     labelKey: 'scheduleSettingsTab',
     icon: SettingsIcon,
-    path: '/school/schedule?tab=settings',
+    path: '/principal/schedule?tab=settings',
   },
 ];
 

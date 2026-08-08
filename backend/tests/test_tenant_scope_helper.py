@@ -1,7 +1,7 @@
 import pytest
 from fastapi import HTTPException
-from backend.utils.tenant_scope import assert_school_access, resolve_school_id
-from backend.models.enums import UserRole
+from utils.tenant_scope import assert_school_access, resolve_school_id
+from models.enums import UserRole
 
 PRINCIPAL_A = {"role": UserRole.SCHOOL_PRINCIPAL.value, "tenant_id": "school-A", "school_id": "school-A"}
 PRINCIPAL_B = {"role": UserRole.SCHOOL_PRINCIPAL.value, "tenant_id": "school-B", "school_id": "school-B"}
@@ -99,7 +99,7 @@ class TestResolveSchoolId:
 
 
 def test_tenant_scoped_collections_includes_timetable_tables():
-    from backend.middleware.tenant_isolation import TENANT_SCOPED_COLLECTIONS
+    from middleware.tenant_isolation import TENANT_SCOPED_COLLECTIONS
     required = {
         "timetables",
         "schedule_sessions",
@@ -114,3 +114,54 @@ def test_tenant_scoped_collections_includes_timetable_tables():
     }
     missing = required - TENANT_SCOPED_COLLECTIONS
     assert not missing, f"Missing timetable tables in tripwire: {missing}"
+
+
+class TestCanViewClassIndependentTeacher:
+    """An Independent Teacher owns every class inside `itw_{user_id}`.
+
+    Workspace class creation does not always write a `teacher_assignments`
+    row, so gating IT owners on an assignment made their own class-level
+    reads (attendance, class reports) 403. Ownership must be proven by the
+    class's workspace id — never by tenant membership alone.
+    """
+
+    IT_USER = {
+        "role": UserRole.INDEPENDENT_TEACHER.value,
+        "id": "it-user-1",
+        "tenant_id": None,
+        "school_id": None,
+    }
+
+    @staticmethod
+    def _fake_lookup(owned_class_id, workspace_id):
+        async def _gd_find_one(session, collection, query, *args, **kwargs):
+            if collection == "classes":
+                if query.get("id") == owned_class_id and query.get("school_id") == workspace_id:
+                    return {"id": owned_class_id, "school_id": workspace_id}
+                return None
+            # No assignment / session rows exist in this workspace.
+            return None
+        return _gd_find_one
+
+    @pytest.mark.asyncio
+    async def test_owned_workspace_class_allowed_without_assignment(self, monkeypatch):
+        import engines.sql_utils as sql_utils
+        from utils.tenant_scope import can_view_class
+
+        monkeypatch.setattr(
+            sql_utils, "gd_find_one",
+            self._fake_lookup("class-own", "itw_it-user-1"),
+        )
+        assert await can_view_class(None, self.IT_USER, "class-own") is True
+
+    @pytest.mark.asyncio
+    async def test_foreign_workspace_class_denied(self, monkeypatch):
+        import engines.sql_utils as sql_utils
+        from utils.tenant_scope import can_view_class
+
+        # The class exists, but under ANOTHER independent teacher's workspace.
+        monkeypatch.setattr(
+            sql_utils, "gd_find_one",
+            self._fake_lookup("class-own", "itw_someone-else"),
+        )
+        assert await can_view_class(None, self.IT_USER, "class-own") is False

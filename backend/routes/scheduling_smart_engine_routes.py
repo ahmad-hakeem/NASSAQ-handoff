@@ -1,14 +1,14 @@
 """
 NASSAQ Scheduling Sub-module
 """
-from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request
+from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from starlette.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
-import uuid, os, logging, json, random, re, io, base64
+import uuid, os, logging, json, random, re, io, base64, asyncio
 
 logger = logging.getLogger("nassaq.scheduling")
 
@@ -28,6 +28,7 @@ from engines.school_notification_engine import (
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
 from utils.tenant_scope import assert_school_access, resolve_school_id
+from utils.subject_display import subject_display_name
 from routes._publish_gate import assert_publishable
 from sqlalchemy import text
 
@@ -177,6 +178,437 @@ async def smart_generate_timetable(
     )
     
     return result.model_dump()
+
+
+# --- Generate Timetable as a background job -------------------------------
+#
+# The synchronous endpoint above still exists (scripts and tests use it), but
+# the principal UI goes through this pair. Generation takes 1-27 s of pure CPU
+# depending on school size (scripts/evidence_event_loop_timetable.py), which is
+# long enough that a plain request/response is a bad shape: proxies and
+# browsers time it out, a refresh looks like a failure, and the principal is
+# pinned to the page. Instead we queue a run, hand back its id, and let the UI
+# poll.
+#
+# The job record IS the ``timetable_runs`` row — the engine already creates one
+# and walks it through validating → generating → optimizing → completed with a
+# completion_percentage. Reusing it means job state is in Postgres, so polling
+# works even when the poll lands on a different autoscale instance than the one
+# running the job.
+
+# Non-terminal statuses: a run sitting in any of these is still in flight.
+_ACTIVE_RUN_STATUSES = [
+    TimetableRunStatus.PENDING.value,
+    TimetableRunStatus.VALIDATING.value,
+    TimetableRunStatus.LOADING.value,
+    TimetableRunStatus.GENERATING.value,
+    TimetableRunStatus.OPTIMIZING.value,
+]
+
+
+def _run_started_at(run: Dict[str, Any]) -> Optional[datetime]:
+    raw = run.get("started_at")
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
+    if isinstance(raw, str) and raw:
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def _run_liveness_at(run: Dict[str, Any]) -> Optional[datetime]:
+    """When this run last proved it was alive.
+
+    Staleness is judged on the **heartbeat**, not on ``started_at``. A large
+    school legitimately takes tens of seconds and could take minutes on a
+    loaded instance; reaping on elapsed time alone would kill a healthy worker
+    and then let a second generation start beside it, with both writing the
+    same draft. A live worker refreshes ``heartbeat_at`` every
+    ``_HEARTBEAT_INTERVAL_S`` — silence means the process is genuinely gone.
+    """
+    return _run_started_at({"started_at": run.get("heartbeat_at")}) or _run_started_at(run)
+
+
+async def _reap_if_stale(run: Dict[str, Any]) -> Dict[str, Any]:
+    """Fail a run whose worker vanished (instance restart, deploy, crash).
+
+    Without this a killed instance leaves the row "generating" forever, which
+    both lies to the principal and permanently blocks the one-run-per-school
+    guard below.
+    """
+    from config import config as _cfg
+
+    if run.get("status") not in _ACTIVE_RUN_STATUSES:
+        return run
+    alive_at = _run_liveness_at(run)
+    if not alive_at:
+        return run
+    age_s = (datetime.now(timezone.utc) - alive_at).total_seconds()
+    if age_s <= _cfg.TIMETABLE_JOB_STALE_AFTER_S:
+        return run
+
+    logger.warning(
+        "timetable job reaped as stale run_id=%s school=%s silent_for_s=%.0f status=%s",
+        run.get("id"), run.get("school_id"), age_s, run.get("status"),
+    )
+    patch = {
+        "status": TimetableRunStatus.FAILED.value,
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "notes": "توقّف التوليد بشكل غير متوقع. يرجى إعادة المحاولة.",
+        "error_code": "JOB_STALE",
+    }
+    # Compare-and-set on status: concurrent pollers race here, and a worker
+    # that is merely slow to write must not be overwritten by a second reaper.
+    await gd_update_one(
+        db.session, "timetable_runs",
+        {"id": run.get("id"), "status": {"$in": _ACTIVE_RUN_STATUSES}},
+        patch,
+    )
+    return {**run, **patch}
+
+
+# How often a running job proves it is alive. Cheap (one UPDATE) and only
+# possible at all because the CPU phases no longer hold the event loop.
+_HEARTBEAT_INTERVAL_S = 20
+
+
+async def _heartbeat_loop(run_id: str) -> None:
+    """Refresh ``heartbeat_at`` on its own session until cancelled."""
+    from db import async_session_factory
+
+    while True:
+        await asyncio.sleep(_HEARTBEAT_INTERVAL_S)
+        try:
+            async with async_session_factory() as hb_session:
+                await gd_update_one(
+                    hb_session, "timetable_runs",
+                    {"id": run_id, "status": {"$in": _ACTIVE_RUN_STATUSES}},
+                    {"heartbeat_at": datetime.now(timezone.utc).isoformat()},
+                )
+                await hb_session.commit()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — a missed beat must not kill the job
+            logger.warning("timetable job heartbeat failed run_id=%s", run_id)
+
+
+async def _terminalize_run(run_id: str, error_code: str, message_ar: str) -> None:
+    """Mark a run failed on a brand-new session.
+
+    Used when the job's own session is the thing that broke — otherwise the
+    row would stay non-terminal until some later poll reaped it, and the
+    school would stay blocked in the meantime.
+    """
+    from db import async_session_factory
+
+    try:
+        async with async_session_factory() as rescue:
+            await _fail_run(rescue, run_id, error_code, message_ar)
+    except Exception:  # noqa: BLE001
+        logger.exception("could not terminalize timetable run run_id=%s", run_id)
+
+
+async def _find_active_run(school_id: str) -> Optional[Dict[str, Any]]:
+    """The school's in-flight run, or None. Reaps a dead one on the way past."""
+    existing = await gd_find(
+        db.session, "timetable_runs",
+        {"school_id": school_id, "status": {"$in": _ACTIVE_RUN_STATUSES}},
+        # Order by the real column, not the JSONB-overflow "started_at".
+        order_by="created_at", desc_order=True, limit=1,
+    )
+    if not existing:
+        return None
+    run = await _reap_if_stale(existing[0])
+    return run if run.get("status") in _ACTIVE_RUN_STATUSES else None
+
+
+def _already_running_response(active: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "job_id": active.get("id"),
+        "run_id": active.get("id"),
+        "status": active.get("status"),
+        "already_running": True,
+        "message_ar": "يوجد توليد جارٍ لهذه المدرسة بالفعل.",
+        "message_en": "A generation is already running for this school.",
+    }
+
+
+async def _run_generation_job(
+    run_id: str,
+    school_id: str,
+    academic_year_id: Optional[str],
+    term_id: Optional[str],
+    created_by: str,
+    calling_user: Dict[str, Any],
+    context_payload: Dict[str, Any],
+) -> None:
+    """Execute a queued generation with its OWN database session.
+
+    The request-scoped session bound by ``pg_session_middleware`` is closed by
+    the time a background task runs, so reusing it would corrupt the pooled
+    connection. The CPU phases inside the engine are already offloaded to the
+    timetable pool; this coroutine only supervises them and owns the writes.
+    """
+    from db import async_session_factory
+    from services.cpu_offload import CpuOffloadBusy, CpuOffloadTimeout
+
+    started = datetime.now(timezone.utc)
+    logger.info(
+        "timetable job started run_id=%s school=%s requested_by=%s",
+        run_id, school_id, created_by,
+    )
+    heartbeat = asyncio.create_task(_heartbeat_loop(run_id))
+    # `db.session` is a ContextVar. Background tasks run inside the request's
+    # context, so the request's session must be put back — otherwise anything
+    # scheduled after us inherits a closed background session.
+    previous_session = db.session
+    try:
+        async with async_session_factory() as bg_session:
+            db.set_session(bg_session)
+            try:
+                result = await smart_scheduling_engine.generate_timetable(
+                    school_id=school_id,
+                    academic_year_id=academic_year_id,
+                    term_id=term_id,
+                    created_by=created_by,
+                    calling_user=calling_user,
+                    context_payload=context_payload,
+                    run_id=run_id,
+                )
+                # Persist the parts of GenerationResult the UI needs but that
+                # have no home on the run row (Hakim insight list, the
+                # localized message). Polling is the only channel the caller
+                # has left, so anything the synchronous response used to carry
+                # has to survive here.
+                await gd_update_one(bg_session, "timetable_runs", {"id": run_id}, {
+                    "job_result": {
+                        "success": result.success,
+                        "timetable_id": result.timetable_id,
+                        "status": result.status,
+                        "completion_percentage": result.completion_percentage,
+                        "total_sessions": result.total_sessions,
+                        "scheduled_sessions": result.scheduled_sessions,
+                        "conflicts_count": result.conflicts_count,
+                        "unscheduled_count": result.unscheduled_count,
+                        "optimization_score": result.optimization_score,
+                        "message_ar": result.message_ar,
+                        "message_en": result.message_en,
+                        "unresolved_conflicts": result.unresolved_conflicts or [],
+                        "capacity_issues": result.capacity_issues,
+                    },
+                })
+                await bg_session.commit()
+                logger.info(
+                    "timetable job finished run_id=%s school=%s status=%s "
+                    "elapsed_ms=%d sessions=%s conflicts=%s unscheduled=%s",
+                    run_id, school_id, result.status,
+                    int((datetime.now(timezone.utc) - started).total_seconds() * 1000),
+                    result.scheduled_sessions, result.conflicts_count,
+                    result.unscheduled_count,
+                )
+            except (CpuOffloadBusy, CpuOffloadTimeout) as exc:
+                await bg_session.rollback()
+                await _fail_run(
+                    bg_session, run_id, exc.code,
+                    getattr(exc, "message_ar", "تعذّر إكمال توليد الجدول."),
+                )
+                logger.error(
+                    "timetable job rejected run_id=%s school=%s reason=%s",
+                    run_id, school_id, exc.code,
+                )
+            except Exception as exc:  # noqa: BLE001 — a job must never die silently
+                await bg_session.rollback()
+                await _fail_run(
+                    bg_session, run_id, "GENERATION_ERROR",
+                    "فشل توليد الجدول. يرجى المحاولة مرة أخرى.",
+                )
+                logger.exception(
+                    "timetable job failed run_id=%s school=%s err=%s",
+                    run_id, school_id, exc,
+                )
+    except Exception:  # noqa: BLE001 — the job's own session broke
+        logger.exception("timetable job bookkeeping failed run_id=%s", run_id)
+        # The session we would normally write the failure with is the thing
+        # that failed, so terminalize on a fresh one. Otherwise the run stays
+        # "generating" and blocks the school until the stale reaper fires.
+        await _terminalize_run(
+            run_id, "GENERATION_ERROR",
+            "فشل توليد الجدول. يرجى المحاولة مرة أخرى.",
+        )
+    finally:
+        heartbeat.cancel()
+        try:
+            await heartbeat
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+        db.set_session(previous_session)
+
+
+async def _fail_run(session, run_id: str, error_code: str, message_ar: str) -> None:
+    """Best-effort terminal FAILED write on a fresh transaction."""
+    try:
+        await gd_update_one(session, "timetable_runs", {"id": run_id}, {
+            "status": TimetableRunStatus.FAILED.value,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "completion_percentage": 100,
+            "error_code": error_code,
+            "notes": message_ar,
+        })
+        await session.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("could not mark timetable run failed run_id=%s", run_id)
+
+
+@router.post("/smart-scheduling/generate/{school_id}/job", status_code=202)
+async def smart_generate_timetable_job(
+    school_id: str,
+    background_tasks: BackgroundTasks,
+    request: SmartTimetableGenerateRequest = None,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """بدء توليد الجدول كمهمة خلفية وإرجاع معرّف المهمة فوراً.
+
+    Queue timetable generation and return immediately with a job id. Poll
+    ``GET /smart-scheduling/job/{job_id}`` for status and progress.
+    """
+    assert_school_access(current_user, str(school_id))
+    request = request or SmartTimetableGenerateRequest()
+
+    # One generation per school at a time. Two concurrent runs would race to
+    # write the same draft and burn two of the very few CPU workers on a result
+    # that one of them is going to overwrite anyway.
+    #
+    # Cheap first look, so the common "user double-clicked" case answers
+    # without touching the lock. The authoritative check is under the lock
+    # below — this one can be raced past and that is fine.
+    active = await _find_active_run(school_id)
+    if active:
+        return _already_running_response(active)
+
+    # Fail fast on constraints that make the school unsolvable — cheaper to
+    # answer now than to queue a job that can only fail.
+    context_payload = await _assemble_hakim_context_payload(school_id)
+    report = await smart_scheduling_engine.build_infeasibility_report(school_id)
+    if report.blocks_generation:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "GENERATION_BLOCKED", "report": report.model_dump(mode="json")},
+        )
+
+    # Authoritative claim. The check above and the insert below are separated
+    # by two awaited round-trips, which is more than enough for two principals
+    # (or one impatient double-click) to both pass it and start competing
+    # searches over the same draft. A transaction-scoped advisory lock keyed on
+    # the school makes claim-or-defer atomic without a schema change; it is
+    # released by the commit a few lines down.
+    await db.session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"),
+        {"k": f"timetable_gen:{school_id}"},
+    )
+    active = await _find_active_run(school_id)
+    if active:
+        await db.session.commit()  # release the lock; we are not claiming
+        return _already_running_response(active)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    run_id = str(uuid.uuid4())
+    await gd_insert(db.session, "timetable_runs", {
+        "id": run_id,
+        "school_id": school_id,
+        "academic_year_id": request.academic_year_id,
+        "term_id": request.term_id,
+        "run_type": "full_generation",
+        "target_class_ids": [],
+        "status": TimetableRunStatus.PENDING.value,
+        "started_at": now_iso,
+        # Seed the heartbeat so a job that dies before its first beat is still
+        # reaped on the normal timer instead of looking permanently fresh.
+        "heartbeat_at": now_iso,
+        "created_by": current_user.get("id", "system"),
+        "completion_percentage": 0,
+        "conflicts_count": 0,
+        "unscheduled_count": 0,
+        "notes": "",
+    })
+    # Commit before scheduling: under BaseHTTPMiddleware the background task's
+    # own session can start before pg_session_middleware commits this one, and
+    # the engine would then not find the row it is meant to fill in.
+    await db.session.commit()
+
+    logger.info(
+        "timetable job queued run_id=%s school=%s requested_by=%s role=%s",
+        run_id, school_id, current_user.get("id"), current_user.get("role"),
+    )
+
+    background_tasks.add_task(
+        _run_generation_job,
+        run_id, school_id, request.academic_year_id, request.term_id,
+        current_user.get("id", "system"),
+        # Sanitized copy — the engine only needs identity/tenant for its
+        # tenant assertion, never the token fields.
+        {
+            "id": current_user.get("id"),
+            "role": current_user.get("role"),
+            "tenant_id": current_user.get("tenant_id"),
+            "school_id": current_user.get("school_id"),
+        },
+        context_payload,
+    )
+
+    return {
+        "job_id": run_id,
+        "run_id": run_id,
+        "status": TimetableRunStatus.PENDING.value,
+        "poll_url": f"/api/smart-scheduling/job/{run_id}",
+        "message_ar": "بدأ توليد الجدول. يمكنك متابعة التقدّم أو مواصلة عملك.",
+        "message_en": "Timetable generation started. You can follow progress or keep working.",
+    }
+
+
+@router.get("/smart-scheduling/job/{job_id}")
+async def smart_get_generation_job(
+    job_id: str,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """حالة مهمة توليد الجدول وتقدّمها. Status and progress of a generation job."""
+    run = await gd_find_one(db.session, "timetable_runs", {"id": job_id})
+    if not run:
+        raise HTTPException(status_code=404, detail="لم يتم العثور على مهمة التوليد")
+    assert_school_access(current_user, str(run.get("school_id") or ""))
+
+    run = await _reap_if_stale(run)
+    status_value = run.get("status")
+    is_done = status_value in (
+        TimetableRunStatus.COMPLETED.value,
+        TimetableRunStatus.PARTIAL.value,
+        TimetableRunStatus.FAILED.value,
+    )
+    return {
+        "job_id": job_id,
+        "run_id": job_id,
+        "school_id": run.get("school_id"),
+        "status": status_value,
+        "is_done": is_done,
+        "success": status_value in (
+            TimetableRunStatus.COMPLETED.value, TimetableRunStatus.PARTIAL.value
+        ),
+        "progress": run.get("completion_percentage") or 0,
+        "timetable_id": run.get("timetable_id"),
+        "conflicts_count": run.get("conflicts_count") or 0,
+        "unscheduled_count": run.get("unscheduled_count") or 0,
+        "optimization_score": run.get("optimization_score"),
+        "generation_summary": run.get("generation_summary"),
+        # Full GenerationResult payload once the job is done — the same shape
+        # the synchronous endpoint returns, so the UI has one code path.
+        "result": run.get("job_result"),
+        "error_code": run.get("error_code"),
+        "started_at": run.get("started_at"),
+        "finished_at": run.get("finished_at"),
+        "message_ar": run.get("notes") or "",
+    }
 
 
 async def _assemble_hakim_context_payload(school_id: str) -> Dict[str, Any]:
@@ -1169,7 +1601,7 @@ async def smart_get_academic_demand(
             
             subjects_with_names.append({
                 **subj,
-                "subject_name": subject_doc.get("name_ar", "") if subject_doc else ""
+                "subject_name": subject_display_name(subject_doc)
             })
         
         enriched.append({

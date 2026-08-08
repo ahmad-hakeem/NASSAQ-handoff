@@ -24,8 +24,12 @@ import {
   ArrowUpRight, ArrowDownRight, Activity, Star, Flame,
   Radar, HeartPulse, Cpu, BrainCircuit, ExternalLink,
   ChevronRight, ChevronLeft, Eye, TrendingDown, AlertCircle,
-  BookOpen, ClipboardCheck, Award, UserCheck,
+  BookOpen, ClipboardCheck, Award, UserCheck, HelpCircle, CalendarRange,
 } from 'lucide-react';
+import {
+  getKindPresentation, getInsightGauge, formatInsightWindow,
+  getInsightBasis, getRecommendationContext,
+} from '../utils/insightSemantics';
 import { Progress } from '../components/ui/progress';
 import { AttendanceRadial } from '../components/dashboard/AttendancePanel';
 import SectionErrorBoundary from '../components/SectionErrorBoundary';
@@ -263,12 +267,26 @@ const AlertsTimeline = ({ alerts, isRTL, onNavigate, isTeacher = false }) => {
   );
 };
 
+// Icon per semantic kind — shown instead of a gauge when no number is
+// meaningful (a data gap or a counted fact has no "confidence").
+const INSIGHT_KIND_ICONS = {
+  forecast: Radar,
+  trend: TrendingUp,
+  current_state: Activity,
+  risk_signal: AlertTriangle,
+  data_gap: HelpCircle,
+};
+
 const PredictionsPanel = ({ predictions, isRTL }) => {
   const { t } = useTranslation();
+  // Severity tint of the card surface. `info` is a neutral, non-alarming
+  // reading (a stable measurement or a data gap) — it must NOT fall through
+  // to the amber "medium" styling, which reads as a warning.
   const impactColors = {
-    positive: { ring: '#10B981', bg: 'bg-emerald-50 dark:bg-emerald-950/30', text: 'text-emerald-600', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' },
-    medium: { ring: '#F59E0B', bg: 'bg-amber-50 dark:bg-amber-950/30', text: 'text-amber-600', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' },
-    high: { ring: '#EF4444', bg: 'bg-red-50 dark:bg-red-950/30', text: 'text-red-600', badge: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' },
+    positive: { ring: '#10B981', bg: 'bg-emerald-50 dark:bg-emerald-950/30', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' },
+    medium: { ring: '#F59E0B', bg: 'bg-amber-50 dark:bg-amber-950/30', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' },
+    high: { ring: '#EF4444', bg: 'bg-red-50 dark:bg-red-950/30', badge: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' },
+    info: { ring: '#64748B', bg: 'bg-muted/20', badge: 'bg-muted text-muted-foreground' },
   };
 
   return (
@@ -279,12 +297,15 @@ const PredictionsPanel = ({ predictions, isRTL }) => {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-md shadow-violet-500/20">
               <Radar className="h-4.5 w-4.5 text-white" />
             </div>
-            {t('predictionsForecasts')}
+            {t('insightsSignalsTitle')}
           </CardTitle>
           {predictions.length > 0 && (
             <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400 border-0 font-cairo text-xs px-2.5">{predictions.length}</Badge>
           )}
         </div>
+        <p className="text-[11px] text-muted-foreground/70 font-tajawal mt-1.5" data-testid="insights-signals-subtitle">
+          {t('insightsSignalsSubtitle')}
+        </p>
       </CardHeader>
       <CardContent className="pt-4">
         {predictions.length === 0 ? (
@@ -292,40 +313,75 @@ const PredictionsPanel = ({ predictions, isRTL }) => {
             <div className="w-16 h-16 rounded-2xl bg-violet-100/60 dark:bg-violet-900/20 flex items-center justify-center mb-4 shadow-sm">
               <TrendingUp className="h-8 w-8 text-violet-400/60" />
             </div>
-            <p className="text-sm font-cairo font-bold text-foreground">{t('noPredictionsYet')}</p>
+            <p className="text-sm font-cairo font-bold text-foreground">{t('noInsightReadingsYet')}</p>
             <p className="text-xs text-muted-foreground/60 font-tajawal mt-1">{t('hakimNeedsMoreData')}</p>
           </div>
         ) : (
           <div className="space-y-3">
             {predictions.map((pred, i) => {
-              const colors = impactColors[pred.impact] || impactColors.medium;
-              const confidence = pred.confidence || 0;
-              const reasonText = pred.reason
-                ? (isRTL ? pred.reason.ar || pred.reason : pred.reason.en || pred.reason)
-                : (t('basedOnDataPatternAnalysis'));
+              const colors = impactColors[pred.impact] || impactColors.info;
+              const kindInfo = getKindPresentation(pred);
+              const KindIcon = kindInfo ? INSIGHT_KIND_ICONS[kindInfo.kind] : BrainCircuit;
+              const gauge = getInsightGauge(pred, isRTL);
+              const windowLabel = formatInsightWindow(pred, isRTL);
+              const basisText = getInsightBasis(pred, isRTL)
+                || (pred.reason ? (isRTL ? pred.reason.ar || pred.reason : pred.reason.en || pred.reason) : null);
 
               return (
-                <div key={pred.id || i} className={`p-4 rounded-xl border border-border/50 ${colors.bg} transition-all duration-300 hover:shadow-md hover:-translate-y-0.5`}>
+                <div key={pred.id || i} data-testid={`insight-card-${pred.insight_kind || 'unclassified'}`}
+                  className={`p-4 rounded-xl border border-border/50 ${colors.bg} transition-all duration-300 hover:shadow-md hover:-translate-y-0.5`}>
                   <div className="flex items-start gap-3">
-                    <MiniGauge value={confidence} color={colors.ring} />
+                    {gauge ? (
+                      <div className="flex flex-col items-center gap-1 w-14 shrink-0">
+                        <MiniGauge value={gauge.value} color={colors.ring} />
+                        <span className="text-[9px] text-muted-foreground/70 font-tajawal text-center leading-tight">
+                          {gauge.type === 'measure' ? (gauge.label || '') : t('insightConfidence')}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="w-11 h-11 rounded-xl bg-background/70 border border-border/40 flex items-center justify-center shrink-0">
+                        <KindIcon className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge className={`text-[10px] ${colors.badge} border-0`}>
-                          {pred.impact === 'positive' ? (t('positive')) :
-                            pred.impact === 'high' ? (t('needsAction')) :
-                              (t('moderate'))}
-                        </Badge>
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                        {kindInfo && (
+                          <Badge className={`text-[10px] ${kindInfo.badge} border-0`} title={t(kindInfo.hintKey)}>
+                            {t(kindInfo.labelKey)}
+                          </Badge>
+                        )}
+                        {pred.impact === 'high' && (
+                          <Badge className={`text-[10px] ${impactColors.high.badge} border-0`}>{t('needsAction')}</Badge>
+                        )}
+                        {pred.impact === 'positive' && (
+                          <Badge className={`text-[10px] ${impactColors.positive.badge} border-0`}>{t('positive')}</Badge>
+                        )}
+                        {windowLabel && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/80 font-tajawal">
+                            <CalendarRange className="h-3 w-3" />
+                            {windowLabel}
+                          </span>
+                        )}
                       </div>
                       <h4 className="font-cairo font-bold text-foreground text-sm leading-snug">
                         {isRTL ? pred.title?.ar : pred.title?.en}
                       </h4>
-                      <p className="text-xs text-muted-foreground font-tajawal mt-1 line-clamp-2">
+                      <p className="text-xs text-muted-foreground font-tajawal mt-1">
                         {isRTL ? pred.description?.ar : pred.description?.en}
                       </p>
-                      <div className="mt-2.5 flex items-start gap-1.5 p-2 rounded-lg bg-background/60 border border-border/30">
-                        <BrainCircuit className="h-3 w-3 text-brand-purple flex-shrink-0 mt-0.5" />
-                        <p className="text-[10px] text-muted-foreground font-tajawal leading-relaxed">{reasonText}</p>
-                      </div>
+                      {kindInfo && (
+                        <p className="text-[10px] text-muted-foreground/70 font-tajawal mt-1.5">
+                          {t(kindInfo.hintKey)}
+                        </p>
+                      )}
+                      {basisText && (
+                        <div className="mt-2.5 flex items-start gap-1.5 p-2 rounded-lg bg-background/60 border border-border/30">
+                          <BrainCircuit className="h-3 w-3 text-brand-purple flex-shrink-0 mt-0.5" />
+                          <p className="text-[10px] text-muted-foreground font-tajawal leading-relaxed">
+                            <span className="font-bold">{t('insightBasisLabel')}: </span>{basisText}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -444,9 +500,39 @@ const RecommendationsPanel = ({ recommendations, isRTL, isTeacher = false }) => 
                     <h4 className="font-cairo font-bold text-foreground text-sm leading-snug">
                       {isRTL ? rec.title?.ar : rec.title?.en}
                     </h4>
-                    <p className="text-xs text-muted-foreground font-tajawal mt-1 line-clamp-2">
+                    <p className="text-xs text-muted-foreground font-tajawal mt-1">
                       {isRTL ? rec.description?.ar : rec.description?.en}
                     </p>
+                    {(() => {
+                      // Which class / scope does this apply to, over which
+                      // window, and on what evidence — without it the card
+                      // reads as generic advice the reader can't act on.
+                      const ctx = getRecommendationContext(rec, isRTL);
+                      if (!ctx) return null;
+                      return (
+                        <div className="mt-2 space-y-1" data-testid="recommendation-context">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            {ctx.scopeLabel && (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground font-tajawal">
+                                <Target className="h-3 w-3 text-brand-turquoise" />
+                                <span className="font-bold">{t('recommendationAppliesTo')}:</span> {ctx.scopeLabel}
+                              </span>
+                            )}
+                            {ctx.windowLabel && (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground font-tajawal">
+                                <CalendarRange className="h-3 w-3" />
+                                {ctx.windowLabel}
+                              </span>
+                            )}
+                          </div>
+                          {ctx.evidence && (
+                            <p className="text-[10px] text-muted-foreground/80 font-tajawal leading-relaxed">
+                              <span className="font-bold">{t('recommendationWhyNow')}: </span>{ctx.evidence}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {(() => {
                       const impact = Math.max(0, Math.min(100, Number(rec.expected_impact) || 0));
                       const impactLabel = t('recommendationExpectedImpact', { value: impact });

@@ -25,6 +25,7 @@ import { APPROVAL_TYPE_CONFIG } from './approvalConfig';
 import { getApiErrorMessage } from '../../utils/apiError';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
 import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
+import { useAuth } from '../../contexts/AuthContext';
 
 export function UserDetailsDialog({ user, onClose, onEdit, onSuspend, onNotify }) {
   if (!user) return null;
@@ -207,9 +208,71 @@ export function NotificationDialog({ user, form, setForm, onClose, onSend }) {
 }
 
 export function ApprovalConfirmDialog({ data, onClose, onConfirm }) {
+  const { api } = useAuth();
+  const requestType = data?.requestType;
+  // A queued `teacher` request is a SCHOOL teacher — Independent Teachers are
+  // auto-approved at signup and never reach this queue. The signup form's
+  // school field is optional free text, so the reviewer picks the real school.
+  const needsSchool = requestType === 'teacher';
+  const requestId = data?.request?.id;
+
+  const [schools, setSchools] = React.useState([]);
+  const [schoolsLoading, setSchoolsLoading] = React.useState(false);
+  const [schoolsError, setSchoolsError] = React.useState(false);
+  const [schoolId, setSchoolId] = React.useState('');
+  // 'matched' | 'unmatched' | null — outcome of resolving the school code the
+  // applicant typed at signup (free text, optional) against real schools.
+  const [codeMatch, setCodeMatch] = React.useState(null);
+  const enteredSchoolCode = String(data?.request?.school_code || '').trim();
+
+  React.useEffect(() => { setSchoolId(''); setCodeMatch(null); }, [requestId]);
+
+  // Independent-Teacher workspaces live in the same schools table; filter them
+  // out so a School Teacher can never be scoped to one (backend rejects too).
+  React.useEffect(() => {
+    if (!requestId || !needsSchool || !api) return undefined;
+    let cancelled = false;
+    (async () => {
+      setSchoolsLoading(true);
+      setSchoolsError(false);
+      try {
+        const resp = await api.get('/schools');
+        if (cancelled) return;
+        const list = Array.isArray(resp?.data) ? resp.data : [];
+        const linkable = list.filter(
+          (s) => s?.entity_kind !== 'independent_teacher_workspace'
+            && s?.school_type !== 'independent_teacher'
+            && s?.tenant_type !== 'independent_teacher'
+            // Legacy IT rows carry no type markers, only the id prefix.
+            && !String(s?.id || '').startsWith('itw_'),
+        );
+        setSchools(linkable);
+        // If the applicant typed a school code at signup, resolve it here so
+        // entering a valid code actually pre-picks the school for the reviewer.
+        if (enteredSchoolCode) {
+          const match = linkable.find(
+            (s) => String(s?.code || '').trim().toLowerCase() === enteredSchoolCode.toLowerCase(),
+          );
+          if (match) {
+            setSchoolId(match.id);
+            setCodeMatch('matched');
+          } else {
+            setCodeMatch('unmatched');
+          }
+        }
+      } catch (e) {
+        if (!cancelled) { setSchools([]); setSchoolsError(true); }
+      } finally {
+        if (!cancelled) setSchoolsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [requestId, needsSchool, api]);
+
   if (!data) return null;
-  const config = APPROVAL_TYPE_CONFIG[data.requestType];
+  const config = APPROVAL_TYPE_CONFIG[requestType];
   const fields = config?.confirmFields(data.request) || [];
+  const confirmDisabled = needsSchool && !schoolId;
 
   return (
     <Dialog open={!!data} onOpenChange={onClose}>
@@ -229,11 +292,47 @@ export function ApprovalConfirmDialog({ data, onClose, onConfirm }) {
               </div>
             ))}
           </div>
+          {needsSchool && (
+            <div className="space-y-2 p-4 bg-cyan-50 border border-cyan-200 rounded-xl">
+              <Label className="flex items-center gap-2 text-right">
+                المدرسة التي سينضم إليها المعلم
+                <span className="text-red-500" aria-hidden="true">*</span>
+              </Label>
+              <Select value={schoolId} onValueChange={setSchoolId}>
+                <SelectTrigger className="rounded-xl" data-testid="approval-school-select">
+                  <SelectValue placeholder={schoolsLoading ? 'جاري تحميل المدارس...' : 'اختر المدرسة'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {schools.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name || s.name_en || s.id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {schoolsError ? (
+                <p className="text-xs text-red-600">تعذّر تحميل قائمة المدارس. يرجى إغلاق النافذة والمحاولة مرة أخرى.</p>
+              ) : (
+                <p className="text-xs text-muted-foreground text-right" data-testid="approval-school-hint">
+                  {codeMatch === 'matched'
+                    ? `تم تحديد المدرسة تلقائياً من الرمز الذي أدخله المتقدم (${enteredSchoolCode}) — يمكنك تغييرها.`
+                    : codeMatch === 'unmatched'
+                      ? `الرمز الذي أدخله المتقدم (${enteredSchoolCode}) لا يطابق أي مدرسة — يلزم اختيار المدرسة يدوياً.`
+                      : data.request?.school_mentioned
+                        ? `المدرسة المذكورة في الطلب: ${data.request.school_mentioned}`
+                        : 'لم يذكر مُقدّم الطلب مدرسة — يلزم اختيارها قبل الموافقة.'}
+                </p>
+              )}
+            </div>
+          )}
           <p className="text-sm text-muted-foreground text-center">{config?.approveNote}</p>
         </div>
         <DialogFooter className="flex-row-reverse gap-2">
           <Button variant="outline" onClick={onClose}>إلغاء</Button>
-          <Button className="bg-green-600 hover:bg-green-700" onClick={() => { onConfirm(data.request, data.requestType); onClose(); }}>
+          <Button
+            className="bg-green-600 hover:bg-green-700"
+            disabled={confirmDisabled}
+            data-testid="approval-confirm-button"
+            onClick={() => { onConfirm(data.request, data.requestType, needsSchool ? schoolId : undefined); onClose(); }}
+          >
             <CheckCircle2 className="h-4 w-4 ms-2" />تأكيد الموافقة
           </Button>
         </DialogFooter>
@@ -366,7 +465,10 @@ export function RequestDetailsDialog({ request, onClose }) {
             <FileText className="h-5 w-5 text-brand-navy" />تفاصيل الطلب
           </DialogTitle>
           <DialogDescription className="text-right">
-            {request.account_type === 'teacher' ? 'طلب تسجيل معلم مستقل' :
+            {/* A queued "teacher" request is a school teacher joining an existing
+                school. Independent Teachers are auto-approved at signup and never
+                appear in this review queue. */}
+            {request.account_type === 'teacher' ? 'طلب تسجيل معلم مدرسة' :
              request.account_type === 'school' ? 'طلب تسجيل مدرسة' : 'طلب تسجيل'}
           </DialogDescription>
         </DialogHeader>

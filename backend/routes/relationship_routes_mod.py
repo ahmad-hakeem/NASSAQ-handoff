@@ -275,9 +275,17 @@ async def get_parent_children(
     school_id = current_user.get("tenant_id")
     links = await gd_find(db.session, "guardian_links", {"tenant_id": school_id, "parent_ref": parent_ref, "is_active": True}, limit=20)
 
+    # N+1 fix: fetch every linked student with ONE $in query instead of one
+    # gd_find_one per link, then resolve from a dict preserving link order.
+    _student_ids = list({link["student_id"] for link in links if link.get("student_id")})
+    _students_by_id = {}
+    if _student_ids:
+        _student_rows = await gd_find(db.session, "students", {"id": {"$in": _student_ids}, "tenant_id": school_id, "is_active": True}, limit=len(_student_ids))
+        _students_by_id = {s["id"]: s for s in _student_rows if s.get("id")}
+
     children = []
     for link in links:
-        student = await gd_find_one(db.session, "students", {"id": link["student_id"], "tenant_id": school_id, "is_active": True})
+        student = _students_by_id.get(link["student_id"])
         if student:
             children.append({
                 **student,

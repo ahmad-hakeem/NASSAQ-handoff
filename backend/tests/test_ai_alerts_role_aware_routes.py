@@ -5,7 +5,10 @@ The GET /ai/insights/alerts builder attaches a `route` to attendance and
 behaviour alerts. Teachers / independent teachers must be sent to their own
 self-scoping pages (/teacher/attendance, /teacher/behavior); the admin
 attendance/behaviour pages would 403 their data call. Admins / principals
-keep the admin pages (/admin/attendance, /admin/behaviour).
+keep the canonical leadership pages (/principal/attendance; behaviour
+alerts route to /principal/students because leadership has no dedicated
+behaviour page — /admin/behaviour was never a registered route and
+bounced to the homepage via the frontend catch-all).
 
 These were two separate manual fixes with no automated guard. This test
 fails if a future change silently re-hardcodes an admin route for the
@@ -134,8 +137,9 @@ async def test_teacher_alerts_link_to_self_scoping_pages(client, tenant_a):
 async def test_principal_alerts_link_to_admin_pages(
     client, tenant_a, school_principal_headers
 ):
-    """A principal (non-teacher scope) must get /admin/attendance and
-    /admin/behaviour routes on the same data state."""
+    """A principal (non-teacher scope) must get the canonical leadership
+    routes (/principal/attendance; /principal/students for behaviour)
+    on the same data state."""
     cls = await _seed_class(tenant_a, "P-cls")
     students = [await _seed_student(tenant_a, cls) for _ in range(3)]
     await _seed_chronic_absence(tenant_a, cls, students)
@@ -151,9 +155,9 @@ async def test_principal_alerts_link_to_admin_pages(
 
     assert attendance_routes, f"no attendance alert produced: {alerts!r}"
     assert behaviour_routes, f"no behaviour alert produced: {alerts!r}"
-    assert all(rt == "/admin/attendance" for rt in attendance_routes), \
+    assert all(rt == "/principal/attendance" for rt in attendance_routes), \
         attendance_routes
-    assert all(rt == "/admin/behaviour" for rt in behaviour_routes), \
+    assert all(rt == "/principal/students" for rt in behaviour_routes), \
         behaviour_routes
 
 
@@ -161,8 +165,8 @@ async def test_principal_alerts_link_to_admin_pages(
 async def test_school_admin_alerts_link_to_admin_pages(
     client, tenant_a, school_admin_headers
 ):
-    """A school admin must also land on the admin attendance/behaviour
-    pages, never the teacher self-scoping pages."""
+    """A school admin must also land on the leadership attendance/behaviour
+    destinations, never the teacher self-scoping pages."""
     cls = await _seed_class(tenant_a, "A-cls")
     students = [await _seed_student(tenant_a, cls) for _ in range(3)]
     await _seed_chronic_absence(tenant_a, cls, students)
@@ -173,6 +177,6 @@ async def test_school_admin_alerts_link_to_admin_pages(
     alerts = r.json()
 
     for rt in _routes_by_category(alerts, "attendance"):
-        assert rt == "/admin/attendance", rt
+        assert rt == "/principal/attendance", rt
     for rt in _routes_by_category(alerts, "behaviour"):
-        assert rt == "/admin/behaviour", rt
+        assert rt == "/principal/students", rt

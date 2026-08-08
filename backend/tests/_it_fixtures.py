@@ -96,8 +96,10 @@ async def mk_it_workspace(
         "teacher_id": teacher_id,
         "mfa_enrolled_at": datetime.now(timezone.utc).isoformat(),
     }
-    await gd_insert(db.session, "users", user)
     wsid = independent_workspace_id(user)
+    # Post-bootstrap state: schools row first (FK), then the user row
+    # tenant-bound to the workspace — routes that resolve the tenant from
+    # the DB row fail closed when users.tenant_id is NULL.
     user["tenant_id"] = wsid
 
     await gd_insert(db.session, "schools", {
@@ -109,6 +111,7 @@ async def mk_it_workspace(
         "language": "ar",
         "school_type": "independent_teacher_workspace",
     })
+    await gd_insert(db.session, "users", user)
     await gd_insert(db.session, "teachers", {
         "id": teacher_id,
         "school_id": wsid,

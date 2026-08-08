@@ -356,6 +356,12 @@ describe('Task #338 — /auth/change-password MFA step-up interceptor', () => {
     const { captured, unmount } = mountAndCaptureApi();
     await waitFor(() => expect(captured.api).not.toBeNull());
 
+    // Let the AuthProvider bootstrap (/auth/me with the seeded token)
+    // settle and discard its incidental "تعذر تحميل بيانات المستخدم"
+    // toast — this test only asserts the change-password 500 path.
+    await act(async () => {});
+    toast.error.mockClear();
+
     captured.api.defaults.adapter = (config) =>
       Promise.reject({
         config,

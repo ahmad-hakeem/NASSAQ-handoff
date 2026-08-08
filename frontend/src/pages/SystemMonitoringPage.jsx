@@ -66,6 +66,7 @@ import {
   ChevronRight,
   BarChart3,
   PieChart,
+  Mail,
 } from 'lucide-react';
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartPie, Pie, Cell } from 'recharts';
 
@@ -111,6 +112,7 @@ export const SystemMonitoringPage = () => {
   const [jobs, setJobs] = useState(INITIAL_JOBS);
   const [integrations, setIntegrations] = useState(INITIAL_INTEGRATIONS);
   const [alerts, setAlerts] = useState(INITIAL_ALERTS);
+  const [emailMetrics, setEmailMetrics] = useState(null);
   const [loadingData, setLoadingData] = useState(true);
   
   const [metrics, setMetrics] = useState({
@@ -207,6 +209,7 @@ export const SystemMonitoringPage = () => {
       if (metricsRes.status === 'fulfilled') {
         const m = metricsRes.value.data;
         if (m) {
+          setEmailMetrics(m.email_metrics && !m.email_metrics.error ? m.email_metrics : null);
           const totalReqs = m.response_metrics?.total_requests || 0;
           const totalErrs = m.response_metrics?.total_errors || 0;
           const successRate = totalReqs > 0 ? Math.round(((totalReqs - totalErrs) / totalReqs) * 1000) / 10 : 100;
@@ -735,6 +738,63 @@ export const SystemMonitoringPage = () => {
             
             {/* Details Tab */}
             <TabsContent value="details" className="space-y-6">
+              {/* Email Delivery Health */}
+              <Card className="card-nassaq" data-testid="card-email-delivery">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <Mail className="h-5 w-5 text-brand-navy" />
+                      {t('emailDelivery')}
+                    </CardTitle>
+                    {emailMetrics?.health?.status === 'degraded' ? (
+                      <Badge className="bg-red-500" data-testid="badge-email-degraded">{t('emailDeliveryDegraded')}</Badge>
+                    ) : (
+                      <Badge className="bg-green-500" data-testid="badge-email-healthy">{t('healthy')}</Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {!emailMetrics || !emailMetrics.totals?.calls ? (
+                    <p className="text-sm text-muted-foreground" data-testid="text-email-no-sends">{t('emailNoSends')}</p>
+                  ) : (
+                    <>
+                      {emailMetrics.health?.status === 'degraded' && (
+                        <div className="flex items-center gap-3 p-3 mb-4 rounded-lg border border-red-200 bg-red-50" data-testid="alert-email-degraded">
+                          <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                          <p className="text-sm font-medium text-red-700">
+                            {t('emailDeliveryDegradedDetail')}: {emailMetrics.health.window_failures}/{emailMetrics.health.window_calls} ({Math.round((emailMetrics.health.failure_rate || 0) * 100)}%)
+                          </p>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div>
+                          <p className="text-xs text-muted-foreground">{t('emailSuccesses')}</p>
+                          <p className="text-lg font-bold text-green-600" data-testid="text-email-successes">{emailMetrics.totals.successes || 0}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">{t('emailTimeouts')}</p>
+                          <p className="text-lg font-bold text-yellow-600" data-testid="text-email-timeouts">{emailMetrics.totals.timeouts || 0}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">{t('emailErrors')}</p>
+                          <p className="text-lg font-bold text-red-600" data-testid="text-email-errors">{emailMetrics.totals.errors || 0}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">{t('emailFailureRate')}</p>
+                          <p className="text-lg font-bold" data-testid="text-email-failure-rate">{Math.round((emailMetrics.error_rate || 0) * 100)}%</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">{t('emailLatencyP95')}</p>
+                          <p className="text-lg font-bold" data-testid="text-email-latency">
+                            {Math.max(0, ...Object.values(emailMetrics.by_kind || {}).map(k => k.latency_ms_p95 || 0))} ms
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
               {/* Recent Errors */}
               <Card className="card-nassaq">
                 <CardHeader>

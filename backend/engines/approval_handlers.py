@@ -30,6 +30,10 @@ from sqlalchemy import select, and_, desc as sa_desc
 from pg_models import User, Teacher, School, SchoolSettings
 from engines.sql_utils import model_to_dict, dict_to_model, gd_insert, gd_find_one
 from engines.approval_engine import ApprovalHandler, ApprovalResult
+from utils.platform_admin_preview import (
+    IT_SCHOOL_TYPES,
+    is_independent_teacher_workspace,
+)
 
 
 def _get_db():
@@ -53,6 +57,38 @@ def _generate_teacher_id():
     return f"TCH-{random.randint(100000, 999999)}"
 
 
+async def _load_linkable_school(school_id: str):
+    """Resolve a school a School Teacher may be attached to.
+
+    Returns (school, None) on success or (None, arabic_error) on failure.
+    Independent-Teacher workspaces live in the same `schools` table and are
+    excluded here — a School Teacher must never be scoped to one.
+    """
+    if not school_id or not str(school_id).strip():
+        return None, "يجب اختيار المدرسة التي سينضم إليها المعلم قبل الموافقة"
+
+    database = _get_db()
+    session = database.session
+    stmt = select(School).where(School.id == str(school_id).strip()).limit(1)
+    result = await session.execute(stmt)
+    school = result.scalars().first()
+    if not school:
+        return None, "المدرسة المحددة غير موجودة"
+
+    # IT detection must use the canonical predicate: it also catches legacy rows
+    # identified only by the `itw_` id prefix, with no type markers set.
+    it_error = "لا يمكن ربط معلم مدرسة بمساحة عمل معلم مستقل"
+    if is_independent_teacher_workspace({
+        "id": school.id,
+        "school_type": school.school_type,
+    }):
+        return None, it_error
+    if (getattr(school, "tenant_type", None) or "").strip().lower() in IT_SCHOOL_TYPES:
+        return None, it_error
+
+    return school, None
+
+
 def _generate_qr_code_data(teacher_id: str, user_id: str):
     qr_data = {
         "type": "teacher",
@@ -65,8 +101,11 @@ def _generate_qr_code_data(teacher_id: str, user_id: str):
 
 class TeacherApprovalHandler(ApprovalHandler):
     request_type = "teacher"
-    display_name = "Independent Teacher"
-    display_name_ar = "معلم مستقل"
+    # A queued "teacher" request is a SCHOOL teacher joining an existing school.
+    # Independent Teachers never reach this handler — their signup is instant and
+    # auto-approved (see registration_routes_mod._create_independent_teacher_instant).
+    display_name = "School Teacher"
+    display_name_ar = "معلم مدرسة"
 
     def get_display_fields(self) -> list:
         """Return human-readable display fields for a teacher/school approval."""
@@ -81,13 +120,20 @@ class TeacherApprovalHandler(ApprovalHandler):
             {"key": "created_at", "label": "تاريخ الطلب", "label_en": "Date"},
         ]
 
-    async def validate_before_approve(self, request: dict) -> Optional[str]:
+    async def validate_before_approve(self, request: dict, context: Optional[dict] = None) -> Optional[str]:
         """Validate business rules before approving teacher/school registration."""
         database = _get_db()
         session = database.session
         email = request.get("email")
         phone = request.get("phone")
         national_id = request.get("national_id")
+
+        # The signup form's school field is optional free text ("school_mentioned"),
+        # so it cannot be trusted as a link. The reviewing admin picks the real
+        # school; block approval with a clear message when they have not.
+        _school, school_error = await _load_linkable_school((context or {}).get("school_id"))
+        if school_error:
+            return school_error
 
         if email:
             stmt = select(User).where(User.email == email).limit(1)
@@ -109,7 +155,8 @@ class TeacherApprovalHandler(ApprovalHandler):
 
         return None
 
-    async def create_entities(self, request: dict, approved_by: dict) -> ApprovalResult:
+    async def create_entities(self, request: dict, approved_by: dict,
+                              context: Optional[dict] = None) -> ApprovalResult:
         """Create the teacher or school entities upon approval."""
         database = _get_db()
         session = database.session
@@ -118,6 +165,13 @@ class TeacherApprovalHandler(ApprovalHandler):
         phone = request.get("phone")
         national_id = request.get("national_id")
         approver_id = approved_by.get("id", approved_by.get("user_id"))
+
+        # Re-resolved here rather than trusted from validate_before_approve so
+        # that direct callers cannot create a school-less teacher.
+        school, school_error = await _load_linkable_school((context or {}).get("school_id"))
+        if school_error:
+            return ApprovalResult(success=False, message=school_error, request_type="teacher")
+        school_id = school.id
 
         user_id = str(uuid.uuid4())
         temp_password = _generate_secure_password()
@@ -139,7 +193,18 @@ class TeacherApprovalHandler(ApprovalHandler):
             "created_at": now,
             "updated_at": now,
             "created_by": approver_id,
-            "account_type": "independent_teacher",
+            # dict_to_model aliases school_id -> users.tenant_id, which is what
+            # scopes the new account to the school the reviewer picked.
+            "school_id": school_id,
+            # Must stay "teacher" — a queued request is a SCHOOL teacher.
+            # `users` currently has no account_type column and no `data` overflow,
+            # so dict_to_model drops this key and the old "independent_teacher"
+            # value never actually persisted. It is still wrong to declare it:
+            # auth_scope.is_independent_teacher() treats account_type ==
+            # "independent_teacher" as an IT account *regardless of role*, so the
+            # day this key becomes storable the account would silently be scoped
+            # to a synthetic itw_{user_id} workspace instead of a school tenant.
+            "account_type": "teacher",
             "permissions": ["view_own_profile", "manage_own_classes", "view_own_students", "take_attendance"],
         })
         session.add(new_user)
@@ -152,7 +217,7 @@ class TeacherApprovalHandler(ApprovalHandler):
             "phone": phone,
             "specialization": request.get("subject") or request.get("specialization"),
             "years_of_experience": int(request.get("years_of_experience") or 0),
-            "school_id": None,
+            "school_id": school_id,
             "is_active": True,
             "created_at": now,
             "user_id": user_id,
@@ -202,6 +267,11 @@ class TeacherApprovalHandler(ApprovalHandler):
                 "user_id": user_id,
                 "teacher_id": teacher_id,
                 "email": email,
+                # Deliberately NOT keyed "school_id": the engine treats that key
+                # as "this request created a school" and would repoint
+                # linked_entity_id away from the new teacher user. The engine
+                # mirrors this onto the request's own school_id FK column.
+                "school": school_id,
             },
             credentials={
                 "email": email,
@@ -218,6 +288,7 @@ class TeacherApprovalHandler(ApprovalHandler):
         session = database.session
         user_id = result.created_entities.get("user_id")
         teacher_code = result.created_entities.get("teacher_id")
+        school_id = result.created_entities.get("school")
 
         stmt = select(User).where(User.id == user_id).limit(1)
         res = await session.execute(stmt)
@@ -226,10 +297,14 @@ class TeacherApprovalHandler(ApprovalHandler):
             return f"Post-approval verification failed: user {user_id} not found in users collection"
         if not user.is_active:
             return f"Post-approval verification failed: user {user_id} is not active"
+        if user.tenant_id != school_id:
+            return f"Post-approval verification failed: user {user_id} is not linked to school {school_id}"
 
         teacher_doc = await gd_find_one(session, "teachers", {"user_id": user_id})
         if not teacher_doc:
             return f"Post-approval verification failed: teacher record for user {user_id} not found"
+        if teacher_doc.get("school_id") != school_id:
+            return f"Post-approval verification failed: teacher record for user {user_id} is not linked to school {school_id}"
 
         logger.info(f"Teacher verification passed: user_id={user_id}, teacher_code={teacher_code}")
         return None
@@ -253,7 +328,7 @@ class SchoolApprovalHandler(ApprovalHandler):
             {"key": "created_at", "label": "تاريخ الطلب", "label_en": "Date"},
         ]
 
-    async def validate_before_approve(self, request: dict) -> Optional[str]:
+    async def validate_before_approve(self, request: dict, context: Optional[dict] = None) -> Optional[str]:
         """Validate business rules before approving teacher/school registration."""
         database = _get_db()
         session = database.session
@@ -298,7 +373,8 @@ class SchoolApprovalHandler(ApprovalHandler):
 
         return school_code
 
-    async def create_entities(self, request: dict, approved_by: dict) -> ApprovalResult:
+    async def create_entities(self, request: dict, approved_by: dict,
+                              context: Optional[dict] = None) -> ApprovalResult:
         """Create the teacher or school entities upon approval."""
         database = _get_db()
         session = database.session

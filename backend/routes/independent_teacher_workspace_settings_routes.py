@@ -14,8 +14,11 @@ from auth_scope import (
 )
 from dependencies import db, get_current_user
 from engines.sql_utils import gd_find_one, gd_update_one, gd_upsert
+from utils.avatar_image import normalize_image_field_or_400
 
 logger = logging.getLogger("nassaq.it_workspace_settings")
+
+from utils.avatar_serving import signed_image_url, is_internal_image_url
 
 router = APIRouter()
 
@@ -173,7 +176,7 @@ async def get_workspace_settings(
         "workspace_id": school_id,
         "name_ar": school.get("name") or "",
         "name_en": school.get("name_en") or "",
-        "logo_url": school.get("logo_url") or "",
+        "logo_url": signed_image_url("logo", school_id, school.get("logo_url")) or "",
         "working_days": _normalise_working_days(settings.get("working_days")),
         "periods_per_day": settings.get("periods_per_day") or 7,
         "period_minutes": settings.get("period_duration") or 45,
@@ -207,8 +210,10 @@ async def update_workspace_settings(
         school_update["name"] = payload["name_ar"].strip()
     if "name_en" in payload:
         school_update["name_en"] = (payload["name_en"] or None)
-    if "logo_url" in payload:
-        school_update["logo_url"] = (payload["logo_url"] or None)
+    if "logo_url" in payload and not is_internal_image_url(payload["logo_url"]):
+        school_update["logo_url"] = await normalize_image_field_or_400(
+            payload["logo_url"] or None
+        )
     if school_update:
         school_update["updated_at"] = now_iso
         await gd_update_one(

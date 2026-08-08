@@ -19,9 +19,9 @@ import {
   Bell, Phone, Clock, CheckCircle2, AlertCircle, Search,
   Megaphone, UserCheck, ChevronLeft,
   BookOpen, FileText, AlertTriangle, Eye,
-  Building2, Shield, Star,
+  Building2,
   ScrollText, Presentation, ArrowLeft, ArrowRight,
-  UserCog, HeartHandshake, Sparkles, Info
+  Info
 } from 'lucide-react';
 import { useTranslation } from '../../contexts/ThemeContext';
 import IndependentTeacherCommunicationPage from './IndependentTeacherCommunicationPage';
@@ -44,7 +44,7 @@ import { normalizeStandardNotification } from '../../components/notifications/no
 // (only those are allowed). Templates with no `allowedRecipients` key
 // keep the legacy "all cohorts allowed" behaviour so existing flows do
 // not regress.
-const ALL_RECIPIENT_CATEGORY_IDS = ['parents', 'admin', 'staff'];
+const ALL_RECIPIENT_CATEGORY_IDS = ['parents', 'admin'];
 const TEMPLATES = [
   { id: 'homework', icon: BookOpen, color: 'bg-blue-500', titleKey: 'homeworkReminder', bodyKey: 'homeworkReminderBody', allowedRecipients: ['parents'] },
   { id: 'exam', icon: FileText, color: 'bg-amber-500', titleKey: 'examNotice', bodyKey: 'examNoticeBody', allowedRecipients: ALL_RECIPIENT_CATEGORY_IDS },
@@ -54,20 +54,19 @@ const TEMPLATES = [
   { id: 'absence', icon: AlertCircle, color: 'bg-red-500', titleKey: 'absenceAlert', bodyKey: 'absenceAlertBody', allowedRecipients: ALL_RECIPIENT_CATEGORY_IDS },
 ];
 
-// Recipient categories per spec: Parents / Administration / Staff.
+// Recipient categories per spec: Parents / Administration.
 // Administration auto-resolves to the General Admin Notice (the
 // counselor sub-option was removed; see handleSelectCategory).
+// The former طاقم المدرسة (staff) cohort was removed: its four
+// pseudo-roles (vice_principal/counselor/activity_leader/
+// gifted_coordinator) never existed in users.role — every one of them
+// collapsed to the literal 'school_sub_admin', which 404s in tenants
+// without that role. Management coverage is now provided by the
+// backend's canonical 'admin' alias (see handleSendMessage), which
+// resolves school_principal ∪ school_admin ∪ school_sub_admin.
 const RECIPIENT_CATEGORIES = [
   { id: 'parents', icon: Users, color: 'bg-blue-500', i18nKey: 'parentsCategory' },
   { id: 'admin', icon: Building2, color: 'bg-brand-navy', i18nKey: 'adminCategory' },
-  { id: 'staff', icon: Shield, color: 'bg-brand-purple', i18nKey: 'schoolStaffCategory' },
-];
-
-const STAFF_ROLES = [
-  { id: 'vice_principal', icon: UserCog, i18nKey: 'vicePrincipal' },
-  { id: 'counselor', icon: HeartHandshake, i18nKey: 'studentCounselor' },
-  { id: 'activity_leader', icon: Star, i18nKey: 'activityLeader' },
-  { id: 'gifted_coordinator', icon: Sparkles, i18nKey: 'giftedCoordinator' },
 ];
 
 // Phase 1 §5.6 (Task #198) IT dispatcher wrapper — Independent-Teacher accounts get the
@@ -199,7 +198,7 @@ function TeacherCommunicationPageInner() {
     setSending(true);
     try {
       const isRoleBasedRecipient = (id) =>
-        ['vice_principal', 'counselor', 'activity_leader', 'gifted_coordinator', 'admin_general',
+        ['admin_general', 'admin',
          'school_sub_admin', 'school_principal', 'school_admin'].includes(id);
 
       const roleRecipients = selectedRecipients.filter(isRoleBasedRecipient);
@@ -210,12 +209,15 @@ function TeacherCommunicationPageInner() {
       const templateId = selectedTemplate?.id || null;
 
       if (roleRecipients.length > 0) {
+        // 'admin' is the backend's canonical management alias — POST
+        // /notifications resolves it to every active school_principal,
+        // school_admin, and school_sub_admin in the caller's tenant.
+        // Never send a literal role here: tenants provision their
+        // leadership under any of the three role strings, so a literal
+        // (e.g. 'school_principal') 404s wherever that exact role is
+        // absent — the old «حدث خطأ أثناء الإرسال» bug.
         const roleMap = {
-          'vice_principal': 'school_sub_admin',
-          'counselor': 'school_sub_admin',
-          'activity_leader': 'school_sub_admin',
-          'gifted_coordinator': 'school_sub_admin',
-          'admin_general': 'school_principal',
+          'admin_general': 'admin',
         };
         const roles = [...new Set(roleRecipients.map(r => roleMap[r] || r))];
         for (const role of roles) {
@@ -328,10 +330,6 @@ function TeacherCommunicationPageInner() {
     setSelectedRecipients(prev =>
       prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]
     );
-  };
-
-  const handleStaffSelect = (roleId) => {
-    setSelectedRecipients([roleId]);
   };
 
   const goToPreview = () => {
@@ -843,35 +841,10 @@ function TeacherCommunicationPageInner() {
     </div>
   );
 
-  const renderStaffSubFlow = () => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      {STAFF_ROLES.map(role => {
-        const RIcon = role.icon;
-        const isSel = selectedRecipients.includes(role.id);
-        return (
-          <button
-            key={role.id}
-            onClick={() => handleStaffSelect(role.id)}
-            className={`relative p-4 rounded-xl border-2 bg-card transition-all duration-200 text-start flex items-center gap-4 ${
-              isSel ? 'border-brand-turquoise ring-2 ring-brand-turquoise/30 shadow-md' : 'border-border/50 hover:border-brand-purple/40 hover:shadow-md'
-            }`}
-          >
-            {isSel && <SelectedBadge />}
-            <div className="w-10 h-10 rounded-lg bg-brand-purple/10 flex items-center justify-center">
-              <RIcon className="h-5 w-5 text-brand-purple" />
-            </div>
-            <p className="text-sm font-cairo font-semibold">{t(role.i18nKey)}</p>
-          </button>
-        );
-      })}
-    </div>
-  );
-
   const renderRecipientSubPicker = () => {
     if (!selectedCategory) return null;
     let content = null;
     if (selectedCategory === 'parents') content = renderParentSubFlow();
-    else if (selectedCategory === 'staff') content = renderStaffSubFlow();
     // 'admin' (Management) intentionally has no sub-picker: it
     // auto-resolves to the general admin notice in handleSelectCategory.
     if (!content) return null;

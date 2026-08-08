@@ -100,7 +100,7 @@ async def test_auth_me_is_allowed_pre_bootstrap(client):
 # (e) MFA gates on the bootstrap endpoint.
 # ----------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_bootstrap_requires_mfa_enrolment(client):
+async def test_bootstrap_requires_mfa_enrolment(client, enforce_mfa):
     user = await _mk_pre_bootstrap_it(mfa_enrolled=False)
     h = _headers(user["id"], user["role"], None, mfa_recent_at=int(time.time()))
     resp = await client.post(
@@ -118,7 +118,7 @@ async def test_bootstrap_requires_mfa_enrolment(client):
 
 
 @pytest.mark.asyncio
-async def test_bootstrap_requires_recent_mfa_assertion(client):
+async def test_bootstrap_requires_recent_mfa_assertion(client, enforce_mfa):
     user = await _mk_pre_bootstrap_it(mfa_enrolled=True)
     # No mfa_recent_at in the JWT.
     h = _headers(user["id"], user["role"], None, mfa_recent_at=None)

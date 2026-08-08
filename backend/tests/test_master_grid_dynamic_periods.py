@@ -343,12 +343,13 @@ def test_schedule_page_new_renders_dynamic_period_columns():
     # a literal. Accept any expression of the shape `… periods.length …`
     # multiplied by `days.length` for total data columns.
     assert re.search(
-        r"days\.length\s*\*\s*periods\.length",
+        r"[Dd]ays\.length\s*\*\s*periods\.length",
         src,
     ), (
-        "MasterMatrix must compute totalDataCols from "
-        "`days.length * periods.length` so column count tracks the "
-        "configured period list (10 for a 10-period school)"
+        "MasterMatrix must compute totalDataCols from a days-count "
+        "expression (e.g. `displayDays.length`) multiplied by "
+        "`periods.length` so column count tracks the configured period "
+        "list (10 for a 10-period school)"
     )
     assert re.search(
         r"repeat\(\s*\$\{\s*totalDataCols\s*\}",

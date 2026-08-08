@@ -29,15 +29,28 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_async_engine(
-    _get_async_url(),
-    echo=False,
-    pool_pre_ping=True,
-    pool_size=15,
-    max_overflow=25,
-    pool_recycle=300,
-    pool_use_lifo=True,
-)
+if os.environ.get("TESTING"):
+    # Under pytest every test runs on a fresh event loop; a shared QueuePool
+    # would hand a later test an asyncpg connection created on an earlier
+    # loop ("Future attached to a different loop"). NullPool opens a fresh
+    # connection per checkout, matching the per-test engines in conftest.
+    from sqlalchemy.pool import NullPool
+
+    engine = create_async_engine(
+        _get_async_url(),
+        echo=False,
+        poolclass=NullPool,
+    )
+else:
+    engine = create_async_engine(
+        _get_async_url(),
+        echo=False,
+        pool_pre_ping=True,
+        pool_size=15,
+        max_overflow=25,
+        pool_recycle=300,
+        pool_use_lifo=True,
+    )
 
 async_session_factory = async_sessionmaker(
     engine,

@@ -232,6 +232,41 @@ describe('SessionTeachPage — أنماط التقييم propagate through class
     expect(mockApiDelete).not.toHaveBeenCalledWith('/grade-column/part');
   });
 
+  test('changing a column category (أعمال السنة → الاختبارات) then حفظ النمط PUTs column_type', async () => {
+    serverSettings = { subject_id: 'subj-1' };
+    await mountPage();
+    await act(async () => {
+      capturedSC.onFollowupColumnsChange(
+        capturedSC.followupColumns.map((c) => (
+          c.id === 'hw' ? { ...c, group: 'exams' } : c
+        )),
+      );
+    });
+    await saveSettings();
+    const putCall = mockApiPut.mock.calls.find(([url]) => url === '/grade-column/hw');
+    expect(putCall).toBeTruthy();
+    expect(putCall[1]).toMatchObject({ column_type: 'exams' });
+    // Untouched column must not generate a write.
+    expect(mockApiPut.mock.calls.find(([url]) => url === '/grade-column/part')).toBeUndefined();
+  });
+
+  test('adding a column marked اختبارات then حفظ النمط POSTs column_type exams', async () => {
+    serverSettings = { subject_id: 'subj-1' };
+    await mountPage();
+    await act(async () => {
+      capturedSC.onFollowupColumnsChange([
+        ...capturedSC.followupColumns,
+        { id: 'col_1784404261458', name: 'اختبار شهري', maxGrade: 20, type: 'grade', group: 'exams' },
+      ]);
+    });
+    await saveSettings();
+    const createCall = mockApiPost.mock.calls.find(
+      ([url]) => url === '/class/cls-1/grade-columns',
+    );
+    expect(createCall).toBeTruthy();
+    expect(createCall[1]).toMatchObject({ name: 'اختبار شهري', column_type: 'exams', max_grade: 20 });
+  });
+
   test('renaming and re-scoring a column then حفظ النمط PUTs the change', async () => {
     serverSettings = { subject_id: 'subj-1' };
     await mountPage();

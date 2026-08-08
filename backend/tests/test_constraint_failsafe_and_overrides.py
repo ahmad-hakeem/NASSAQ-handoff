@@ -15,8 +15,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.engines.smart_scheduling_engine import SmartSchedulingEngine
-from backend.engines.hard_constraints import VALIDATION_REGISTRY
+from engines.smart_scheduling_engine import SmartSchedulingEngine
+from engines.hard_constraints import VALIDATION_REGISTRY
 
 
 def _mk_engine():
@@ -100,7 +100,7 @@ def _load_for(school_id, overrides_by_school):
         return []
 
     with patch(
-        "backend.engines.smart_scheduling_engine.gd_find", new=fake_gd_find
+        "engines.smart_scheduling_engine.gd_find", new=fake_gd_find
     ):
         engine = _mk_engine()
         return asyncio.run(engine._load_school_hard_constraints(school_id))

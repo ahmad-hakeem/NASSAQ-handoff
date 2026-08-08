@@ -167,7 +167,8 @@ async def test_undo_reverses_latest_then_walks_back(tenant_a):
 @pytest.mark.asyncio
 async def test_count_reversible_actions_union_and_cap(tenant_a):
     """count_reversible_actions counts across the union, matches the real total,
-    ignores already-reversed events, and caps at 10."""
+    ignores already-reversed events, and is NOT capped at 10 (regression: the
+    undo badge froze at 10 while 12 actions were undoable)."""
     teacher_id = str(uuid.uuid4())
     user_id = str(uuid.uuid4())
     session_id = await _mk_session(tenant_a, teacher_id)
@@ -187,13 +188,45 @@ async def test_count_reversible_actions_union_and_cap(tenant_a):
     count = await eng.count_reversible_actions(session_id, [teacher_id, user_id])
     assert count == 5
 
-    # Cap at 10 even with more eligible events.
+    # No artificial cap: 12 eligible events → 12, and the badge stays aligned
+    # with the real undo stack for larger counts too (20).
     big_session = await _mk_session(tenant_a, teacher_id)
     for i in range(12):
         actor = teacher_id if i % 2 == 0 else user_id
         await _log(big_session, actor, offset_seconds=i)
-    capped = await eng.count_reversible_actions(big_session, [teacher_id, user_id])
-    assert capped == 10
+    assert await eng.count_reversible_actions(big_session, [teacher_id, user_id]) == 12
+
+    huge_session = await _mk_session(tenant_a, teacher_id)
+    for i in range(20):
+        await _log(huge_session, teacher_id, offset_seconds=i)
+    assert await eng.count_reversible_actions(huge_session, teacher_id) == 20
+
+    # The explicit cap still works for callers that only need "at least N".
+    assert await eng.count_reversible_actions(huge_session, teacher_id, cap=10) == 10
+
+
+@pytest.mark.asyncio
+async def test_peek_and_undo_consistent_beyond_200_events(tenant_a):
+    """peek depth, last-action selection and undo share one fetch window
+    (UNDO_EVENT_FETCH_LIMIT) — with >200 events the counter must still match
+    what undo can actually reach, and undo must reverse the truly latest."""
+    teacher_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
+    session_id = await _mk_session(tenant_a, teacher_id)
+
+    eng = _engine()
+    # 205 reversible events, the newest 201 already reversed: the surviving 4
+    # sit BEYOND the old 200-row window used by get_last_reversible_action.
+    for i in range(205):
+        await _log(session_id, teacher_id, offset_seconds=i, reversed_=(i >= 4))
+
+    assert await eng.count_reversible_actions(session_id, [teacher_id, user_id]) == 4
+    last = await eng.get_last_reversible_action(session_id, [teacher_id, user_id])
+    assert last is not None, "peek must still find the older unreversed events"
+
+    result = await eng.undo_last_action(session_id, teacher_id, user_id=user_id)
+    assert result is not None
+    assert await eng.count_reversible_actions(session_id, [teacher_id, user_id]) == 3
 
 
 @pytest.mark.asyncio

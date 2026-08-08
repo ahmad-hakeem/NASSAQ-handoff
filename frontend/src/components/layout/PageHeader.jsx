@@ -118,6 +118,33 @@ const PAGE_CONFIG = {
     title_ar: 'التقييمات',
     title_en: 'Assessments',
   },
+  // Principal route audit 2026-07-28: canonical leadership URLs live under
+  // /principal/* — mirror the /school//admin keys so titles survive the move.
+  '/principal/students': {
+    icon: Users,
+    title_ar: 'الطلاب',
+    title_en: 'Students',
+  },
+  '/principal/classes': {
+    icon: Briefcase,
+    title_ar: 'الفصول',
+    title_en: 'Classes',
+  },
+  '/principal/subjects': {
+    icon: BookOpen,
+    title_ar: 'المواد',
+    title_en: 'Subjects',
+  },
+  '/principal/schedule': {
+    icon: Calendar,
+    title_ar: 'الجدول',
+    title_en: 'Schedule',
+  },
+  '/principal/attendance': {
+    icon: CalendarCheck,
+    title_ar: 'الحضور',
+    title_en: 'Attendance',
+  },
   '/teacher': {
     icon: LayoutDashboard,
     title_ar: 'لوحة المعلم',

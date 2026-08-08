@@ -35,11 +35,12 @@ async function newSignedInParentContext(
   browser: Browser,
   email: string,
   password: string,
+  totpSecret: string,
 ): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext();
   const page = await context.newPage();
   await gotoLogin(page);
-  await signInWith(page, email, password);
+  await signInWith(page, email, password, totpSecret);
   // Parents land somewhere under /parent (dashboard, settings, etc.).
   await page.waitForURL((u) => u.pathname.startsWith('/parent'), { timeout: 15_000 });
   return { context, page };
@@ -101,10 +102,10 @@ test.describe('sign out other devices', () => {
   });
 
   test('clicking "End session" on Browser B\'s row bounces Browser B to /login', async ({ browser }) => {
-    const { email, password } = getParentCredentials();
+    const { email, password, totpSecret } = getParentCredentials();
 
-    const a = await newSignedInParentContext(browser, email, password);
-    const b = await newSignedInParentContext(browser, email, password);
+    const a = await newSignedInParentContext(browser, email, password, totpSecret);
+    const b = await newSignedInParentContext(browser, email, password, totpSecret);
 
     try {
       // Capture B's own session id from B's view of the list.
@@ -135,10 +136,10 @@ test.describe('sign out other devices', () => {
   });
 
   test('clicking "End all other sessions" bounces every other browser to /login', async ({ browser }) => {
-    const { email, password } = getParentCredentials();
+    const { email, password, totpSecret } = getParentCredentials();
 
-    const a = await newSignedInParentContext(browser, email, password);
-    const b = await newSignedInParentContext(browser, email, password);
+    const a = await newSignedInParentContext(browser, email, password, totpSecret);
+    const b = await newSignedInParentContext(browser, email, password, totpSecret);
 
     try {
       const aSessionId = await openSessionsAndGetOwnSessionId(a.page);

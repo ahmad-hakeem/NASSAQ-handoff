@@ -148,23 +148,32 @@ async def test_dashboard_and_schedule_agree_on_today(client):
 
 
 @pytest.mark.asyncio
-async def test_time_slots_blocked_for_it_role_but_schedule_reachable(client):
-    """Perimeter documentation guard: the /time-slots router is gated by
-    `require_full_school_tenant` and denies IT callers, while the teacher
-    schedule endpoint (mounted without that gate) is reachable. This pins the
-    boundary so a future remount can't silently break IT schedule reads or
-    open a gated surface."""
+async def test_time_slots_it_self_scope_reachable_foreign_blocked(client):
+    """Perimeter documentation guard (updated): GET /time-slots is
+    deliberately mounted WITHOUT the `require_full_school_tenant` gate so IT
+    callers can read their OWN synthesized slots (the weekly grid iterates
+    time_slots rows). Tenant binding is enforced in-handler: addressing the
+    caller's own workspace succeeds (200, synthesized rows), while any
+    foreign school_id is denied (403). The teacher schedule endpoint stays
+    reachable. This pins the boundary so a future remount can't silently
+    break IT schedule reads or open cross-tenant addressing."""
     ctx = await mk_it_workspace(with_student=False, with_parent=False,
                                 with_passkey=False)
     await _seed_it_settings(ctx["wsid"])
     h = it_headers(ctx)
 
-    blocked = await client.get(
+    own = await client.get(
         f"/time-slots?school_id={ctx['wsid']}", headers=h)
-    assert blocked.status_code == 403
-    body = blocked.json()
-    msg = (body.get("error") or {}).get("message") or body.get("detail") or ""
-    assert INDEPENDENT_TEACHER_DENIED_AR in msg
+    assert own.status_code == 200, own.text
+    own_body = own.json()
+    own_slots = own_body if isinstance(own_body, list) else (
+        own_body.get("time_slots") or own_body.get("slots") or [])
+    assert own_slots, "expected synthesized IT time slots for the workspace"
+
+    foreign = await client.get(
+        "/time-slots?school_id=00000000-0000-0000-0000-0000deadbeef",
+        headers=h)
+    assert foreign.status_code == 403, foreign.text
 
     reachable = await client.get(
         f"/teacher/schedule/{ctx['teacher_id']}", headers=h)

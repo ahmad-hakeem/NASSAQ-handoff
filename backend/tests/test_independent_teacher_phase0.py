@@ -149,7 +149,7 @@ async def test_two_independent_teachers_cannot_see_each_others_classes(client):
 
     payload = {
         "name_ar": "فصل أ",
-        "grade_id": str(uuid.uuid4()),
+        "grade_id": "5",  # canonical digit grade id (unified stage/grade validation)
         "class_type": "regular",
         "capacity": 10,
     }
@@ -253,7 +253,7 @@ async def test_class_quota_allows_class_beyond_old_cap(client):
 
     payload = {
         "name_ar": "فصل إضافي",
-        "grade_id": str(uuid.uuid4()),
+        "grade_id": "5",  # canonical digit grade id (unified stage/grade validation)
         "class_type": "regular",
         "capacity": 10,
     }

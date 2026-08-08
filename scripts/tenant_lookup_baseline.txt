@@ -1,335 +1,353 @@
 academic_years	backend/routes/academic_structure_routes.py:103:    year = await gd_find_one(db.session, "academic_years", {"id": year_id})
 academic_years	backend/routes/academic_structure_routes.py:542:    year = await gd_find_one(db.session, "academic_years", {"id": year_id})
 academic_years	backend/routes/academic_structure_routes.py:606:    year = await gd_find_one(db.session, "academic_years", {"id": year_id})
-academic_years	backend/routes/academics_year_term_routes.py:136:    academic_years = await gd_find(db.session, "academic_years", query, order_by="start_date", desc_order=True, limit=100)
-academic_years	backend/routes/academics_year_term_routes.py:181:    updated = await gd_find_one(db.session, "academic_years", {"id": academic_year_id})
-assessments	backend/routes/assessment_routes_mod.py:244:    assessments = await gd_find(db.session, "assessments", query, order_by="due_date", desc_order=True, limit=500)
-assessments	backend/routes/assessment_routes_mod.py:337:    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
-assessments	backend/routes/assessment_routes_mod.py:363:    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
-assessments	backend/routes/assessment_routes_mod.py:394:    assessment = await gd_find_one(db.session, "assessments", {"id": data.assessment_id})
-assessments	backend/routes/assessment_routes_mod.py:511:    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
-assessments	backend/routes/assessment_routes_mod.py:576:        assessment = await gd_find_one(db.session, "assessments", {"id": g['assessment_id']})
-assessments	backend/routes/assessment_routes_mod.py:632:        assessment = await gd_find_one(db.session, "assessments", {"id": g['assessment_id']})
-assessments	backend/routes/assessment_routes_mod.py:726:    recent_assessment_docs = await gd_find(db.session, "assessments", assessments_query, order_by="due_date", desc_order=True, limit=5)
-assessments	backend/routes/assessment_routes_mod.py:763:    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
-assessments	backend/routes/assessment_routes_mod.py:922:        assessment = await gd_find_one(db.session, "assessments", {"id": g.get("assessment_id")})
-assessments	backend/routes/role_dashboards_mod.py:1075:    assessments = await gd_find(db.session, "assessments", {
-assessments	backend/routes/role_dashboards_mod.py:1096:        assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
-assessments	backend/routes/role_dashboards_mod.py:1122:        assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
-assessments	backend/routes/role_dashboards_mod.py:1193:        assessment = await gd_find_one(db.session, "assessments", {"id": grade.get("assessment_id")})
-assessments	backend/routes/role_dashboards_mod.py:1698:        assessments = await gd_find(db.session, "assessments", {"class_id": class_id}, limit=100)
-assessments	backend/routes/role_dashboards_mod.py:2878:    teacher_assessments = await gd_find(db.session, "assessments", {"teacher_id": teacher_id}, limit=500)
-assessments	backend/routes/role_dashboards_mod.py:2880:        teacher_assessments = await gd_find(db.session, "assessments", {"class_id": {"$in": class_ids}}, limit=500)
-assessments	backend/routes/role_dashboards_mod.py:583:        assessment = await gd_find_one(db.session, "assessments", {"id": sub.get("assessment_id")})
-assessment_submissions	backend/routes/principal_management_routes.py:521:    assessments = await gd_find(db.session, "assessment_submissions", {"student_id": student_id}, order_by="submitted_at", desc_order=True, limit=10)
-assessment_submissions	backend/routes/role_dashboards_mod.py:2886:        submissions = await gd_find(db.session, "assessment_submissions", {"assessment_id": {"$in": assessment_ids}}, limit=2000)
-assessment_submissions	backend/routes/role_dashboards_mod.py:579:    submissions = await gd_find(db.session, "assessment_submissions", {
-attendance	backend/routes/ai_routes_mod.py:2212:        att_rows = await gd_find(db.session, "attendance", {
-attendance	backend/routes/attendance_routes_mod.py:182:        updated = await gd_find_one(db.session, "attendance", {"id": existing['id']})
-attendance	backend/routes/attendance_routes_mod.py:412:    records = await gd_find(db.session, "attendance", query, limit=limit)
-attendance	backend/routes/attendance_routes_mod.py:477:    records = await gd_find(db.session, "attendance", query, order_by="date", desc_order=True, limit=1000)
-attendance	backend/routes/attendance_routes_mod.py:531:    records = await gd_find(db.session, "attendance", {"class_id": class_id, "date": date}, limit=100)
-attendance	backend/routes/attendance_routes_mod.py:595:    records = await gd_find(db.session, "attendance", query, limit=10000)
-attendance	backend/routes/attendance_routes_mod.py:662:    existing_records = await gd_find(db.session, "attendance", {"class_id": class_id, "date": date}, limit=100)
-attendance	backend/routes/bulk_import_export_routes.py:876:    records = await gd_find(db.session, "attendance", query, order_by="date", desc_order=True, limit=5000)
-attendance	backend/routes/parent_portal_routes.py:402:        records = await gd_find(db.session, "attendance", query, order_by="date", desc_order=True, limit=500)
-attendance	backend/routes/reporting_routes_mod.py:107:    all_attendance = await gd_find(db.session, "attendance", att_query, limit=100000)
-attendance	backend/routes/reporting_routes_mod.py:362:            attendance = await gd_find(db.session, "attendance", {"class_id": cls.get("id")}, limit=10000)
-attendance	backend/routes/role_dashboards_mod.py:1429:    attendance_records = await gd_find(db.session, "attendance", {"student_id": student_id}, order_by="date", desc_order=True, limit=100)
-attendance	backend/routes/role_dashboards_mod.py:401:    recorded_attendance = await gd_find(db.session, "attendance", {
-attendance	backend/routes/role_dashboards_mod.py:569:    attendance_records = await gd_find(db.session, "attendance", {
-attendance	backend/routes/role_dashboards_mod.py:675:        attendance_records = await gd_find(db.session, "attendance", {
-attendance	backend/routes/school_routes_mod.py:789:    student_attendance = await gd_find(db.session, "attendance", {
-attendance	backend/routes/school_routes_mod.py:803:        teacher_attendance_records = await gd_find(db.session, "attendance", {
+academic_years	backend/routes/academics_year_term_routes.py:159:    academic_years = await gd_find(db.session, "academic_years", query, order_by="start_date", desc_order=True, limit=100)
+academic_years	backend/routes/academics_year_term_routes.py:213:    updated = await gd_find_one(db.session, "academic_years", {"id": academic_year_id})
+assessments	backend/routes/assessment_routes_mod.py:1012:        assessment = await gd_find_one(db.session, "assessments", {"id": g.get("assessment_id")})
+assessments	backend/routes/assessment_routes_mod.py:254:    assessments = await gd_find(db.session, "assessments", query, order_by="due_date", desc_order=True, limit=500)
+assessments	backend/routes/assessment_routes_mod.py:347:    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+assessments	backend/routes/assessment_routes_mod.py:379:    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+assessments	backend/routes/assessment_routes_mod.py:410:    assessment = await gd_find_one(db.session, "assessments", {"id": data.assessment_id})
+assessments	backend/routes/assessment_routes_mod.py:544:    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+assessments	backend/routes/assessment_routes_mod.py:620:            assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+assessments	backend/routes/assessment_routes_mod.py:816:    recent_assessment_docs = await gd_find(db.session, "assessments", assessments_query, order_by="due_date", desc_order=True, limit=5)
+assessments	backend/routes/assessment_routes_mod.py:853:    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+assessments	backend/routes/role_dashboards_mod.py:1602:    assessments = await gd_find(db.session, "assessments", {
+assessments	backend/routes/role_dashboards_mod.py:1623:        assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+assessments	backend/routes/role_dashboards_mod.py:1649:        assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+assessments	backend/routes/role_dashboards_mod.py:1734:        assessment = await gd_find_one(db.session, "assessments", {"id": grade.get("assessment_id")})
+assessments	backend/routes/role_dashboards_mod.py:2700:        assessments = await gd_find(db.session, "assessments", {"class_id": class_id}, limit=100)
+assessments	backend/routes/role_dashboards_mod.py:4725:    teacher_assessments = await gd_find(db.session, "assessments", {"teacher_id": teacher_id}, limit=500)
+assessments	backend/routes/role_dashboards_mod.py:4727:        teacher_assessments = await gd_find(db.session, "assessments", {"class_id": {"$in": class_ids}}, limit=500)
+assessments	backend/routes/role_dashboards_mod.py:992:            assessment = await gd_find_one(db.session, "assessments", {"id": sub.get("assessment_id")})
+assessment_submissions	backend/routes/principal_management_routes.py:555:    assessments = await gd_find(db.session, "assessment_submissions", {"student_id": student_id}, order_by="submitted_at", desc_order=True, limit=10)
+assessment_submissions	backend/routes/role_dashboards_mod.py:4733:        submissions = await gd_find(db.session, "assessment_submissions", {"assessment_id": {"$in": assessment_ids}}, limit=2000)
+assessment_submissions	backend/routes/role_dashboards_mod.py:988:        submissions = await gd_find(db.session, "assessment_submissions", {
+attendance	backend/routes/ai_routes_mod.py:3108:        att_rows = await gd_find(db.session, "attendance", {
+attendance	backend/routes/attendance_routes_mod.py:225:        updated = await gd_find_one(db.session, "attendance", {"id": existing['id']})
+attendance	backend/routes/attendance_routes_mod.py:498:    records = await gd_find(db.session, "attendance", query, limit=limit)
+attendance	backend/routes/attendance_routes_mod.py:578:    records = await gd_find(db.session, "attendance", query, order_by="date", desc_order=True, limit=1000)
+attendance	backend/routes/attendance_routes_mod.py:658:    records = await gd_find(db.session, "attendance", _att_q, limit=100)
+attendance	backend/routes/attendance_routes_mod.py:754:    records = await gd_find(db.session, "attendance", query, limit=10000)
+attendance	backend/routes/attendance_routes_mod.py:846:    existing_records = await gd_find(db.session, "attendance", _att_q, limit=100)
+attendance	backend/routes/bulk_import_export_routes.py:887:    records = await gd_find(db.session, "attendance", query, order_by="date", desc_order=True, limit=5000)
+attendance	backend/routes/reporting_routes_mod.py:147:    all_attendance = await gd_find(db.session, "attendance", att_query, limit=100000)
+attendance	backend/routes/reporting_routes_mod.py:417:            attendance = await gd_find(db.session, "attendance", {"class_id": cls.get("id")}, limit=10000)
+attendance	backend/routes/role_dashboards_mod.py:1120:            attendance_records = await gd_find(db.session, "attendance", {
+attendance	backend/routes/role_dashboards_mod.py:1365:    records = await gd_find(db.session, "attendance", attn_query, limit=5000)
+attendance	backend/routes/role_dashboards_mod.py:2205:    attendance_rows = await gd_find(db.session, "attendance", {"student_id": {"$in": student_ids}}, limit=_CAP)
+attendance	backend/routes/role_dashboards_mod.py:2326:    attendance_records = await gd_find(db.session, "attendance", {"student_id": student_id}, order_by="date", desc_order=True, limit=1000)
+attendance	backend/routes/role_dashboards_mod.py:787:    recorded_attendance = await gd_find(db.session, "attendance", {
+attendance	backend/routes/role_dashboards_mod.py:976:        attendance_records = await gd_find(db.session, "attendance", {
+attendance	backend/routes/school_routes_mod.py:957:    student_attendance = await gd_find(db.session, "attendance", {
+attendance	backend/routes/school_routes_mod.py:971:        teacher_attendance_records = await gd_find(db.session, "attendance", {
 attendance	backend/routes/student_portal_routes.py:266:        records = await gd_find(db.session, "attendance", query, order_by="date", desc_order=True, limit=500)
-behaviour_records	backend/routes/ai_routes_mod.py:517:    behaviour_records = await gd_find(db.session, "behaviour_records", {
-behaviour_records	backend/routes/behaviour_routes_mod.py:318:    records = await gd_find(db.session, "behaviour_records", query, order_by="incident_date", desc_order=True, offset=skip, limit=limit)
-behaviour_records	backend/routes/behaviour_routes_mod.py:351:    records = await gd_find(db.session, "behaviour_records", query, limit=10000)
-behaviour_records	backend/routes/behaviour_routes_mod.py:399:    records = await gd_find(db.session, "behaviour_records", query, order_by="follow_up_date", desc_order=False, limit=100)
-behaviour_records	backend/routes/behaviour_routes_mod.py:426:    record = await gd_find_one(db.session, "behaviour_records", {"id": record_id})
-behaviour_records	backend/routes/behaviour_routes_mod.py:442:    record = await gd_find_one(db.session, "behaviour_records", {"id": record_id})
-behaviour_records	backend/routes/behaviour_routes_mod.py:461:    return await gd_find_one(db.session, "behaviour_records", {"id": record_id})
-behaviour_records	backend/routes/behaviour_routes_mod.py:487:    record = await gd_find_one(db.session, "behaviour_records", {"id": record_id})
-behaviour_records	backend/routes/behaviour_routes_mod.py:515:    return await gd_find_one(db.session, "behaviour_records", {"id": record_id})
-behaviour_records	backend/routes/behaviour_routes_mod.py:697:    records = await gd_find(db.session, "behaviour_records", query, limit=10000)
-behaviour_records	backend/routes/parent_portal_routes.py:1640:        records = await gd_find(db.session, "behaviour_records", {"student_id": child_id}, order_by="created_at", desc_order=True, limit=limit)
-behaviour_records	backend/routes/parent_portal_routes.py:1800:            behaviour_records = await gd_find(db.session, "behaviour_records", {"student_id": sid}, limit=200)
-behaviour_records	backend/routes/role_dashboards_mod.py:2872:    behavior_records = await gd_find(db.session, "behaviour_records", {"teacher_id": teacher_id}, limit=1000)
-behaviour_records	backend/routes/role_dashboards_mod.py:2874:        behavior_records = await gd_find(db.session, "behaviour_records", {"recorded_by": teacher_id}, limit=1000)
-behaviour_records	backend/routes/role_dashboards_mod.py:702:        behaviour_records = await gd_find(db.session, "behaviour_records", {
-calendar_events	backend/routes/calendar_routes_mod.py:177:    row = await gd_find_one(db.session, "calendar_events", {"id": new_id})
-classes	backend/routes/academics_class_routes.py:207:    classes = await gd_find(db.session, "classes", query, limit=1000)
-classes	backend/routes/academics_class_routes.py:269:    class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/academics_class_routes.py:362:    class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/academics_student_routes.py:133:        class_doc = await gd_find_one(db.session, "classes", {"id": student_data.class_id})
-classes	backend/routes/academics_student_routes.py:160:    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=100)
-classes	backend/routes/academics_student_routes.py:292:    cls = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/academics_student_routes.py:352:        class_doc = await gd_find_one(db.session, "classes", {"id": student.get("class_id")})
-classes	backend/routes/academics_student_routes.py:376:        class_doc = await gd_find_one(db.session, "classes", {"id": student.get("class_id")})
+behaviour_records	backend/routes/ai_routes_mod.py:520:    behaviour_records = await gd_find(db.session, "behaviour_records", {
+behaviour_records	backend/routes/behaviour_routes_mod.py:323:    records = await gd_find(db.session, "behaviour_records", query, order_by="incident_date", desc_order=True, offset=skip, limit=limit)
+behaviour_records	backend/routes/behaviour_routes_mod.py:356:    records = await gd_find(db.session, "behaviour_records", query, limit=10000)
+behaviour_records	backend/routes/behaviour_routes_mod.py:404:    records = await gd_find(db.session, "behaviour_records", query, order_by="follow_up_date", desc_order=False, limit=100)
+behaviour_records	backend/routes/behaviour_routes_mod.py:512:    record = await gd_find_one(db.session, "behaviour_records", {"id": record_id})
+behaviour_records	backend/routes/behaviour_routes_mod.py:540:    return await gd_find_one(db.session, "behaviour_records", {"id": record_id})
+behaviour_records	backend/routes/behaviour_routes_mod.py:722:    records = await gd_find(db.session, "behaviour_records", query, limit=10000)
+behaviour_records	backend/routes/parent_portal_routes.py:3727:        records = await gd_find(db.session, "behaviour_records", {"student_id": child_id}, order_by="created_at", desc_order=True, limit=limit)
+behaviour_records	backend/routes/parent_portal_routes.py:3952:            behaviour_records = await gd_find(db.session, "behaviour_records", {"student_id": sid}, limit=200)
+behaviour_records	backend/routes/role_dashboards_mod.py:1150:        behaviour_records = await gd_find(db.session, "behaviour_records", {
+behaviour_records	backend/routes/role_dashboards_mod.py:1876:    records = await gd_find(db.session, "behaviour_records", query,
+behaviour_records	backend/routes/role_dashboards_mod.py:2065:    rows = await gd_find(db.session, "behaviour_records", query, limit=limit)
+behaviour_records	backend/routes/role_dashboards_mod.py:4719:    behavior_records = await gd_find(db.session, "behaviour_records", {"teacher_id": teacher_id}, limit=1000)
+behaviour_records	backend/routes/role_dashboards_mod.py:4721:        behavior_records = await gd_find(db.session, "behaviour_records", {"recorded_by": teacher_id}, limit=1000)
+calendar_events	backend/routes/calendar_routes_mod.py:183:    row = await gd_find_one(db.session, "calendar_events", {"id": new_id})
+calendar_events	backend/routes/independent_teacher_calendar_routes.py:211:    row = await gd_find_one(db.session, "calendar_events", {"id": doc["id"]})
+calendar_events	backend/routes/independent_teacher_calendar_routes.py:247:    row = await gd_find_one(db.session, "calendar_events", {"id": event_id})
+classes	backend/routes/academics_class_routes.py:428:    all_classes = await gd_find(db.session, "classes", query, limit=1000)
+classes	backend/routes/academics_class_routes.py:629:            class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/academics_class_routes.py:697:            existing = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/academics_student_routes.py:257:    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=100)
+classes	backend/routes/academics_student_routes.py:601:        class_doc = await gd_find_one(db.session, "classes", {"id": student.get("class_id")})
+classes	backend/routes/academics_student_routes.py:642:        class_doc = await gd_find_one(db.session, "classes", {"id": student.get("class_id")})
 classes	backend/routes/academics_teacher_routes.py:317:    classes = await gd_find(db.session, "classes", query, limit=500)
-classes	backend/routes/ai_routes_mod.py:1597:    classes_list = await gd_find(db.session, "classes", classes_q, limit=100)
-classes	backend/routes/ai_routes_mod.py:1868:    class_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
-classes	backend/routes/ai_routes_mod.py:2203:        classes = await gd_find(db.session, "classes", {
-classes	backend/routes/ai_routes_mod.py:2680:        class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/ai_routes_mod.py:2973:        class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/ai_routes_mod.py:972:            classes = await gd_find(db.session, "classes", {
-classes	backend/routes/assessment_routes_mod.py:160:    class_info = await gd_find_one(db.session, "classes", {"id": assessment.class_id})
-classes	backend/routes/assessment_routes_mod.py:251:        class_info = await gd_find_one(db.session, "classes", {"id": class_id}) if class_id else None
-classes	backend/routes/assessment_routes_mod.py:305:    class_info = await gd_find_one(db.session, "classes", {"id": assessment['class_id']})
-classes	backend/routes/assessment_routes_mod.py:561:    class_info = await gd_find_one(db.session, "classes", {"id": student.get('class_id')})
-classes	backend/routes/assessment_routes_mod.py:666:    class_info = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/assessment_routes_mod.py:768:    class_info = await gd_find_one(db.session, "classes", {"id": assessment['class_id']})
-classes	backend/routes/attendance_routes_mod.py:137:    class_info = await gd_find_one(db.session, "classes", {"id": attendance.class_id})
-classes	backend/routes/attendance_routes_mod.py:425:    classes_coro = gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=len(class_ids)) if class_ids else _empty_list()
-classes	backend/routes/attendance_routes_mod.py:491:        class_info = await gd_find_one(db.session, "classes", {"id": record['class_id']})
-classes	backend/routes/attendance_routes_mod.py:522:    class_info = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/attendance_routes_mod.py:654:    class_info = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/attendance_routes_mod.py:851:        class_info = await gd_find_one(db.session, "classes", {"id": student.get("class_id")}) if student else None
-classes	backend/routes/attendance_routes_mod.py:882:        class_info = await gd_find_one(db.session, "classes", {"id": student.get("class_id")}) if student else None
-classes	backend/routes/principal_management_routes.py:751:        grade = await gd_find_one(db.session, "classes", {"id": data.new_class_id})
-classes	backend/routes/relationship_routes_mod.py:375:            classes_docs = await gd_find(db.session, "classes", {"id": {"$in": cls_ids}}, limit=50)
-classes	backend/routes/reporting_routes_mod.py:102:    classes = await gd_find(db.session, "classes", class_query, limit=100)
-classes	backend/routes/role_dashboards_mod.py:1082:            cls = await gd_find_one(db.session, "classes", {"id": assessment.get("class_id")})
-classes	backend/routes/role_dashboards_mod.py:115:        classes = await gd_find(db.session, "classes", {"id": {"$in": list(set(class_ids))}}, limit=500) if class_ids else []
-classes	backend/routes/role_dashboards_mod.py:162:        classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
-classes	backend/routes/role_dashboards_mod.py:1913:    class_info = await gd_find_one(db.session, "classes", {"id": session.get("class_id")})
-classes	backend/routes/role_dashboards_mod.py:2473:        cls = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/role_dashboards_mod.py:375:    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=50)
-classes	backend/routes/role_dashboards_mod.py:520:    class_info = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/role_dashboards_mod.py:672:        class_info = await gd_find_one(db.session, "classes", {"id": student.get("class_id")})
-classes	backend/routes/role_dashboards_mod.py:870:            cls = await gd_find_one(db.session, "classes", {"id": s["class_id"]})
-classes	backend/routes/role_dashboards_mod.py:924:    classes = await gd_find(db.session, "classes", {"id": {"$in": all_class_ids}}, limit=100)
-classes	backend/routes/schedule_master_grid_routes.py:491:        await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=len(class_ids) or 1)
-classes	backend/routes/scheduling_smart_engine_routes.py:513:        cls = await gd_find_one(db.session, "classes", {"id": session.get("class_id")})
-classes	backend/routes/scheduling_smart_engine_routes.py:576:    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=len(class_ids) or 1) if class_ids else []
-classes	backend/routes/scheduling_smart_session_routes.py:1129:                class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/scheduling_smart_session_routes.py:611:    cls = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/scheduling_smart_session_routes.py:807:    cls = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/school_settings_mod.py:2591:    classes_list = await gd_find(db.session, "classes", {"id": {"$in": c_ids}}, limit=len(c_ids) + 1) if c_ids else []
-classes	backend/routes/school_settings_mod.py:2669:    class_doc = await gd_find_one(db.session, "classes", {"id": assignment.class_id})
-classes	backend/routes/school_settings_mod.py:2890:    classes_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
-classes	backend/routes/school_settings_routes.py:516:        created = await gd_find_one(db.session, "classes", {"id": class_id})
-classes	backend/routes/search_directory_routes_mod.py:212:    classes = await gd_find(db.session, "classes", query, order_by="name", desc_order=False, limit=200)
-classes	backend/routes/search_directory_routes_mod.py:60:        classes = await gd_find(db.session, "classes", {**tenant_filter, "$or": [{"name": pattern}, {"name_en": pattern}]}, limit=limit)
-classes	backend/routes/student_creation_routes.py:535:            class_info = await gd_find_one(db.session, "classes", {"id": request.class_id})
-educational_stages	backend/routes/academics_structure_engine_routes.py:140:    stages = await gd_find(db.session, "educational_stages", query, order_by="order", desc_order=False, limit=100)
-grade_levels	backend/routes/academics_class_routes.py:76:        grade_level = await gd_find_one(db.session, "grade_levels", {"id": data.grade_id})
-grade_levels	backend/routes/academics_student_routes.py:752:        ) or await gd_find_one(db.session, "grade_levels", {"id": data.grade_id})
-grade_levels	backend/routes/academics_year_term_routes.py:404:    grade_levels = await gd_find(db.session, "grade_levels", query, order_by="order", desc_order=False, limit=100)
-grade_levels	backend/routes/academics_year_term_routes.py:442:    updated = await gd_find_one(db.session, "grade_levels", {"id": grade_id})
-guardian_links	backend/routes/ai_routes_mod.py:417:    links = await gd_find(db.session, "guardian_links", link_query, limit=100)
-guardian_links	backend/routes/parent_portal_routes.py:60:        links = await gd_find(db.session, "guardian_links", query, limit=50)
-guardian_links	backend/routes/relationship_routes_mod.py:215:    links = await gd_find(db.session, "guardian_links", query, order_by="is_primary", desc_order=True, limit=20)
-guardian_links	backend/routes/relationship_routes_mod.py:406:        children_links = await gd_find(db.session, "guardian_links", link_query, limit=20)
-messages	backend/routes/communication_routes.py:231:        messages = await gd_find(db.session, "messages", query, order_by="created_at", desc_order=True, offset=skip, limit=limit)
-messages	backend/routes/communication_routes.py:344:        messages = await gd_find(db.session, "messages", {"status": "scheduled"}, order_by="scheduled_at", desc_order=False, limit=50)
-messages	backend/routes/communication_routes.py:367:        messages = await gd_find(db.session, "messages", {"status": "sent"}, order_by="sent_at", desc_order=True, limit=50)
-messages	backend/routes/communication_routes.py:481:        broadcast_msgs = await gd_find(db.session, "messages", broadcast_query, order_by="sent_at", desc_order=True, limit=50)
-messages	backend/routes/communication_routes.py:482:        custom_msgs = await gd_find(db.session, "messages", custom_query, order_by="sent_at", desc_order=True, limit=200)
-messages	backend/routes/communication_routes.py:515:        msg = await gd_find_one(db.session, "messages", {"id": message_id})
-messages	backend/routes/parent_portal_routes.py:1416:        messages = await gd_find(db.session, "messages", msg_query, order_by="created_at", desc_order=True, limit=50)
-messages	backend/routes/role_dashboards_mod.py:1608:    messages = await gd_find(db.session, "messages", query, order_by="created_at", desc_order=True, limit=100)
+classes	backend/routes/ai_routes_mod.py:1754:            classes = await gd_find(db.session, "classes", {
+classes	backend/routes/ai_routes_mod.py:2471:    classes_list = await gd_find(db.session, "classes", {**classes_q, "is_active": {"$ne": False}}, limit=100)
+classes	backend/routes/ai_routes_mod.py:2759:    class_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=500) if class_ids else []
+classes	backend/routes/ai_routes_mod.py:3098:        classes = await gd_find(db.session, "classes", {
+classes	backend/routes/ai_routes_mod.py:3734:        class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/ai_routes_mod.py:4047:        class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/assessment_routes_mod.py:161:    class_info = await gd_find_one(db.session, "classes", {"id": assessment.class_id})
+classes	backend/routes/assessment_routes_mod.py:261:        class_info = await gd_find_one(db.session, "classes", {"id": class_id}) if class_id else None
+classes	backend/routes/assessment_routes_mod.py:315:    class_info = await gd_find_one(db.session, "classes", {"id": assessment['class_id']})
+classes	backend/routes/assessment_routes_mod.py:594:    class_info = await gd_find_one(db.session, "classes", {"id": student.get('class_id')})
+classes	backend/routes/assessment_routes_mod.py:756:    class_info = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/assessment_routes_mod.py:858:    class_info = await gd_find_one(db.session, "classes", {"id": assessment['class_id']})
+classes	backend/routes/attendance_routes_mod.py:1261:        class_info = await gd_find_one(db.session, "classes", {"id": student.get("class_id")}) if student else None
+classes	backend/routes/attendance_routes_mod.py:1292:        class_info = await gd_find_one(db.session, "classes", {"id": student.get("class_id")}) if student else None
+classes	backend/routes/attendance_routes_mod.py:511:    classes_coro = gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=len(class_ids)) if class_ids else _empty_list()
+classes	backend/routes/attendance_routes_mod.py:592:        class_info = await gd_find_one(db.session, "classes", {"id": record['class_id']})
+classes	backend/routes/independent_teacher_collab_routes.py:366:            cls = await gd_find_one(db.session, "classes", {"id": payload.class_id})
+classes	backend/routes/independent_teacher_collab_routes.py:583:    cls = await gd_find_one(db.session, "classes", {"id": class_id}) or {}
+classes	backend/routes/principal_management_routes.py:802:        grade = await gd_find_one(db.session, "classes", {"id": data.new_class_id})
+classes	backend/routes/relationship_routes_mod.py:448:            classes_docs = await gd_find(db.session, "classes", {"id": {"$in": cls_ids}, "is_active": {"$ne": False}}, limit=50)
+classes	backend/routes/reporting_routes_mod.py:142:    classes = await gd_find(db.session, "classes", class_query, limit=100)
+classes	backend/routes/role_dashboards_mod.py:1111:        class_info = await gd_find_one(db.session, "classes", {"id": student.get("class_id")})
+classes	backend/routes/role_dashboards_mod.py:1318:            cls = await gd_find_one(db.session, "classes", {"id": s["class_id"]})
+classes	backend/routes/role_dashboards_mod.py:1394:        classes = await gd_find(db.session, "classes", {
+classes	backend/routes/role_dashboards_mod.py:1452:        classes = await gd_find(db.session, "classes", {"id": {"$in": all_class_ids}, "is_active": {"$ne": False}}, limit=100)
+classes	backend/routes/role_dashboards_mod.py:1609:            cls = await gd_find_one(db.session, "classes", {"id": assessment.get("class_id")})
+classes	backend/routes/role_dashboards_mod.py:227:        classes = await gd_find(db.session, "classes", {"id": {"$in": list(set(class_ids))}, "is_active": {"$ne": False}}, limit=500) if class_ids else []
+classes	backend/routes/role_dashboards_mod.py:274:        classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=500) if class_ids else []
+classes	backend/routes/role_dashboards_mod.py:2976:    class_info = await gd_find_one(db.session, "classes", {"id": session.get("class_id")})
+classes	backend/routes/role_dashboards_mod.py:3896:        cls = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/role_dashboards_mod.py:761:    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=500) if class_ids else []
+classes	backend/routes/role_dashboards_mod.py:923:    class_info = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/role_dashboards_mod.py:97:    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}}, limit=500) if class_ids else []
+classes	backend/routes/schedule_master_grid_routes.py:512:        await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=len(class_ids) or 1)
+classes	backend/routes/scheduling_smart_engine_routes.py:604:        cls = await gd_find_one(db.session, "classes", {"id": session.get("class_id")})
+classes	backend/routes/scheduling_smart_engine_routes.py:667:    classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=len(class_ids) or 1) if class_ids else []
+classes	backend/routes/scheduling_smart_session_routes.py:1001:    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/scheduling_smart_session_routes.py:1134:            cls = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/scheduling_smart_session_routes.py:1191:    class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/scheduling_smart_session_routes.py:1257:    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/scheduling_smart_session_routes.py:1395:    cls = await gd_find_one(db.session, "classes", {"id": existing["class_id"]})
+classes	backend/routes/scheduling_smart_session_routes.py:1658:    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/scheduling_smart_session_routes.py:1777:    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/scheduling_smart_session_routes.py:1882:    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/scheduling_smart_session_routes.py:2045:                class_doc = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/scheduling_smart_session_routes.py:630:    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/scheduling_smart_session_routes.py:851:    cls = await gd_find_one(db.session, "classes", {"id": class_id})
+classes	backend/routes/school_settings_mod.py:2663:    classes_list = await gd_find(db.session, "classes", {"id": {"$in": c_ids}, "is_active": {"$ne": False}}, limit=len(c_ids) + 1) if c_ids else []
+classes	backend/routes/school_settings_mod.py:3083:    classes_docs = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=500) if class_ids else []
+classes	backend/routes/search_directory_routes_mod.py:144:        classes = await gd_find(db.session, "classes", {**tenant_filter, "is_active": {"$ne": False}, "$or": [{"name": pattern}, {"name_en": pattern}]}, limit=limit)
+classes	backend/routes/search_directory_routes_mod.py:555:    classes = await gd_find(db.session, "classes", query, order_by="name", desc_order=False, limit=200)
+classes	backend/routes/student_creation_routes.py:586:            class_info = await gd_find_one(db.session, "classes", {"id": request.class_id})
+educational_stages	backend/routes/academics_structure_engine_routes.py:156:    stages = await gd_find(db.session, "educational_stages", query, order_by="order", desc_order=False, limit=100)
+grade_levels	backend/routes/academics_student_routes.py:1297:        ) or await gd_find_one(db.session, "grade_levels", {"id": data.grade_id})
+grade_levels	backend/routes/academics_year_term_routes.py:579:        grade_levels = await gd_find(db.session, "grade_levels", query, order_by="order", desc_order=False, limit=100)
+grade_levels	backend/routes/academics_year_term_routes.py:631:    updated = await gd_find_one(db.session, "grade_levels", {"id": grade_id})
+guardian_links	backend/routes/parent_portal_routes.py:599:            links = await gd_find(db.session, "guardian_links", query, limit=50)
+guardian_links	backend/routes/relationship_routes_mod.py:227:    links = await gd_find(db.session, "guardian_links", query, order_by="is_primary", desc_order=True, limit=20)
+guardian_links	backend/routes/relationship_routes_mod.py:486:        children_links = await gd_find(db.session, "guardian_links", link_query, limit=20)
+guardian_links	backend/routes/role_dashboards_mod.py:1085:    active_links = await gd_find(db.session, "guardian_links", {**_pd_id_cond, "is_active": True}) if (_pd_parent_row_id or parent_user_id_for_links) else []
+messages	backend/routes/communication_routes.py:334:        messages = await gd_find(db.session, "messages", query, order_by="created_at", desc_order=True, offset=skip, limit=limit)
+messages	backend/routes/communication_routes.py:454:        messages = await gd_find(db.session, "messages", {"status": "scheduled"}, order_by="scheduled_at", desc_order=False, limit=50)
+messages	backend/routes/communication_routes.py:477:        messages = await gd_find(db.session, "messages", {"status": "sent"}, order_by="sent_at", desc_order=True, limit=50)
+messages	backend/routes/communication_routes.py:619:        broadcast_msgs = await gd_find(db.session, "messages", broadcast_query, order_by="sent_at", desc_order=True, limit=50)
+messages	backend/routes/communication_routes.py:620:        custom_msgs = await gd_find(db.session, "messages", custom_query, order_by="sent_at", desc_order=True, limit=200)
+messages	backend/routes/communication_routes.py:662:        msg = await gd_find_one(db.session, "messages", {"id": message_id})
+messages	backend/routes/parent_portal_routes.py:3532:        messages = await gd_find(db.session, "messages", msg_query, order_by="created_at", desc_order=True, limit=50)
+messages	backend/routes/role_dashboards_mod.py:2604:    messages = await gd_find(db.session, "messages", query, order_by="created_at", desc_order=True, limit=100)
 messages	backend/routes/student_portal_routes.py:385:        messages = await gd_find(db.session, "messages", query, order_by="created_at", desc_order=True, limit=50)
-notifications	backend/routes/consent_privacy_routes_mod.py:336:    notifications = await gd_find(db.session, "notifications", {"recipient_id": user_id}, limit=500)
-notifications	backend/routes/notification_routes_mod.py:351:    notifications = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=True, offset=skip, limit=limit)
-notifications	backend/routes/notification_routes_mod.py:393:    notification = await gd_find_one(db.session, "notifications", {"id": notification_id})
-notifications	backend/routes/notification_routes_mod.py:427:    notification = await gd_find_one(db.session, "notifications", {"id": notification_id})
-notifications	backend/routes/notification_routes_mod.py:464:    original = await gd_find_one(db.session, "notifications", {"id": notification_id})
-notifications	backend/routes/notification_routes_mod.py:606:    rows = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=False, limit=2000)
-notifications	backend/routes/parent_portal_routes.py:1766:        notifications = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=True, limit=limit)
-notifications	backend/routes/role_dashboards_mod.py:600:    notifications = await gd_find(db.session, "notifications", {
-notifications	backend/routes/role_dashboards_mod.py:759:    notifications = await gd_find(db.session, "notifications", {
-notifications	backend/routes/school_routes_mod.py:831:    alerts = await gd_find(db.session, "notifications", {
-parents	backend/routes/academics_student_routes.py:640:    parents = await gd_find(db.session, "parents", query, limit=1000)
-parents	backend/routes/academics_student_routes.py:683:    parents = await gd_find(db.session, "parents", query, limit=10)
-parents	backend/routes/academics_student_routes.py:807:        parent_doc = await gd_find_one(db.session, "parents", {"id": data.link_to_parent_id})
-parents	backend/routes/parent_portal_routes.py:270:            parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
-parents	backend/routes/parent_portal_routes.py:65:            parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
-parents	backend/routes/role_dashboards_mod.py:644:    parent = await gd_find_one(db.session, "parents", {"id": parent_id})
-parents	backend/routes/role_dashboards_mod.py:801:    parent = await gd_find_one(db.session, "parents", {"id": parent_id})
-parents	backend/routes/search_directory_routes_mod.py:182:    parents = await gd_find(db.session, "parents", query, order_by="full_name", desc_order=False, offset=skip, limit=per_page)
-parents	backend/routes/search_directory_routes_mod.py:53:        parents = await gd_find(db.session, "parents", {**parent_filter, "$or": [
-physical_classrooms	backend/routes/academics_structure_engine_routes.py:378:    classrooms = await gd_find(db.session, "physical_classrooms", query, order_by="name", desc_order=False, limit=1000)
-physical_classrooms	backend/routes/academics_structure_engine_routes.py:397:    return await gd_find_one(db.session, "physical_classrooms", {"id": classroom_id})
-registration_requests	backend/routes/registration_routes_mod.py:549:    requests = await gd_find(db.session, "registration_requests", query, order_by="created_at", desc_order=True, limit=1000)
-registration_requests	backend/routes/registration_routes_mod.py:69:    pending_requests = await gd_find(db.session, "registration_requests", {"account_type": "school", "status": {"$in": ["pending", "pending_review"]}}, limit=200)
-registration_requests	backend/routes/registration_routes_mod.py:722:    request = await gd_find_one(db.session, "registration_requests", {"id": request_id})
-registration_requests	backend/routes/registration_routes_mod.py:844:    requests = await gd_find(db.session, "registration_requests", query, order_by="submitted_at", desc_order=True, limit=100)
-registration_requests	backend/routes/registration_routes_mod.py:855:    req = await gd_find_one(db.session, "registration_requests", {"id": request_id, "type": "student_enrollment"})
-registration_requests	backend/routes/registration_routes_mod.py:901:    req = await gd_find_one(db.session, "registration_requests", {"id": request_id, "type": "student_enrollment"})
-schedule_sessions	backend/routes/role_dashboards_mod.py:149:        sessions = await gd_find(db.session, "schedule_sessions", ss_filter, limit=500)
-schedule_sessions	backend/routes/role_dashboards_mod.py:533:        sessions = await gd_find(db.session, "schedule_sessions", {
-schedule_sessions	backend/routes/role_dashboards_mod.py:725:            sessions = await gd_find(db.session, "schedule_sessions", {
-schedule_sessions	backend/routes/role_dashboards_mod.py:930:        schedule_sessions = await gd_find(db.session, "schedule_sessions", {"schedule_id": schedule["id"], "teacher_id": resolved_teacher_id, "status": "scheduled"}, limit=500)
-schedule_sessions	backend/routes/scheduling_smart_session_routes.py:1073:    session = await gd_find_one(db.session, "schedule_sessions", {"id": session_id})
-student_grades	backend/routes/ai_routes_mod.py:473:    grades = await gd_find(db.session, "student_grades", {
-students	backend/routes/academics_student_routes.py:156:    students = await gd_find(db.session, "students", query, limit=1000)
-students	backend/routes/academics_student_routes.py:251:    students = await gd_find(db.session, "students", query, limit=500)
-students	backend/routes/academics_student_routes.py:290:    students = await gd_find(db.session, "students", query, limit=1000)
-students	backend/routes/academics_student_routes.py:329:        student = await gd_find_one(db.session, "students", {"id": sid})
-students	backend/routes/academics_student_routes.py:364:    student = await gd_find_one(db.session, "students", {"id": student_id})
-students	backend/routes/academics_student_routes.py:513:    student = await gd_find_one(db.session, "students", {"id": student_id})
-students	backend/routes/academics_student_routes.py:649:            students_docs = await gd_find(db.session, "students", child_query, limit=50)
-students	backend/routes/academics_teacher_routes.py:918:    matching_students = await gd_find(db.session, "students", {"parent_ids": parent_id})
-students	backend/routes/ai_routes_mod.py:1020:            students = await gd_find(db.session, "students", {
-students	backend/routes/ai_routes_mod.py:2199:        students = await gd_find(db.session, "students", {
-students	backend/routes/ai_routes_mod.py:398:    student = await gd_find_one(db.session, "students", {"id": child_id})
-students	backend/routes/ai_routes_mod.py:424:        for s in await gd_find(db.session, "students", student_query, limit=100):
-students	backend/routes/ai_routes_mod.py:433:    for s in await gd_find(db.session, "students", legacy_query, limit=100):
-students	backend/routes/ai_routes_mod.py:983:            students = await gd_find(db.session, "students", student_filter, limit=2000)
-students	backend/routes/assessment_routes_mod.py:525:        student = await gd_find_one(db.session, "students", {"id": g['student_id']})
-students	backend/routes/assessment_routes_mod.py:550:    student = await gd_find_one(db.session, "students", {"id": student_id})
-students	backend/routes/assessment_routes_mod.py:671:    students = await gd_find(db.session, "students", {"class_id": class_id}, limit=100)
-students	backend/routes/assessment_routes_mod.py:774:    students = await gd_find(db.session, "students", {"class_id": assessment['class_id']}, limit=100)
-students	backend/routes/attendance_routes_mod.py:132:    student = await gd_find_one(db.session, "students", {"id": attendance.student_id})
-students	backend/routes/attendance_routes_mod.py:424:    students_coro = gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=len(student_ids)) if student_ids else _empty_list()
-students	backend/routes/attendance_routes_mod.py:464:    student = await gd_find_one(db.session, "students", {"id": student_id})
-students	backend/routes/attendance_routes_mod.py:527:    students = await gd_find(db.session, "students", {"class_id": class_id}, limit=100)
-students	backend/routes/attendance_routes_mod.py:545:        student = await gd_find_one(db.session, "students", {"id": record['student_id']})
-students	backend/routes/attendance_routes_mod.py:659:    students = await gd_find(db.session, "students", {"class_id": class_id}, limit=100)
-students	backend/routes/attendance_routes_mod.py:815:        student = await gd_find_one(db.session, "students", {"id": excuse["student_id"]})
-students	backend/routes/attendance_routes_mod.py:850:        student = await gd_find_one(db.session, "students", {"id": cs["_id"]})
-students	backend/routes/attendance_routes_mod.py:881:        student = await gd_find_one(db.session, "students", {"id": ls["_id"]})
-students	backend/routes/behaviour_routes_mod.py:199:    student = await gd_find_one(db.session, "students", {"id": data.student_id})
-students	backend/routes/behaviour_routes_mod.py:572:    student = await gd_find_one(db.session, "students", {"id": data.student_id})
-students	backend/routes/behaviour_routes_mod.py:619:    student = await gd_find_one(db.session, "students", {"id": student_id})
-students	backend/routes/bulk_import_export_routes.py:784:    students = await gd_find(db.session, "students", query, limit=10000)
-students	backend/routes/notification_routes_mod.py:247:            student = await gd_find_one(db.session, "students", {"id": resolved_user_id})
-students	backend/routes/parent_portal_routes.py:101:            extra = await gd_find(db.session, "students", extra_q, limit=50)
-students	backend/routes/parent_portal_routes.py:93:        children = await gd_find(db.session, "students", student_query, limit=50)
-students	backend/routes/relationship_routes_mod.py:338:            siblings = await gd_find(db.session, "students", {"id": {"$in": sibling_ids}}, limit=20)
-students	backend/routes/relationship_routes_mod.py:439:        parent = await gd_find_one(db.session, "students", {"id": student_id})
-students	backend/routes/reporting_routes_mod.py:220:        students = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=len(student_ids))
-students	backend/routes/role_dashboards_mod.py:1163:    _stg_student = await gd_find_one(db.session, "students", {"id": student_id})
-students	backend/routes/role_dashboards_mod.py:1208:    _sas_student = await gd_find_one(db.session, "students", {"id": student_id})
-students	backend/routes/role_dashboards_mod.py:1311:    students = await gd_find(db.session, "students", {"class_id": class_id}, limit=100)
-students	backend/routes/role_dashboards_mod.py:1411:    student = await gd_find_one(db.session, "students", {"id": student_id})
-students	backend/routes/role_dashboards_mod.py:1641:        student = await gd_find_one(db.session, "students", {"id": rid})
-students	backend/routes/role_dashboards_mod.py:668:        student = await gd_find_one(db.session, "students", {"id": student_id})
-students	backend/routes/search_directory_routes_mod.py:126:    students = await gd_find(db.session, "students", query, order_by=sort_by, desc_order=False, offset=skip, limit=per_page)
-students	backend/routes/search_directory_routes_mod.py:39:        students = await gd_find(db.session, "students", {**tenant_filter, "$or": [
-students	backend/routes/student_creation_routes.py:359:                siblings = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=20)
-students	backend/routes/student_creation_routes.py:628:            students = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=20)
+notifications	backend/routes/notification_routes_mod.py:1244:    notifications = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=True, offset=skip, limit=limit)
+notifications	backend/routes/notification_routes_mod.py:1348:    notification = await gd_find_one(db.session, "notifications", {"id": notification_id})
+notifications	backend/routes/notification_routes_mod.py:1389:    notification = await gd_find_one(db.session, "notifications", {"id": notification_id})
+notifications	backend/routes/notification_routes_mod.py:1426:    original = await gd_find_one(db.session, "notifications", {"id": notification_id})
+notifications	backend/routes/notification_routes_mod.py:1582:    rows = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=False, limit=2000)
+notifications	backend/routes/parent_portal_routes.py:3918:        notifications = await gd_find(db.session, "notifications", query, order_by="created_at", desc_order=True, limit=limit)
+notifications	backend/routes/role_dashboards_mod.py:1008:    notifications = await gd_find(db.session, "notifications", {
+notifications	backend/routes/role_dashboards_mod.py:1207:    notifications = await gd_find(db.session, "notifications", {
+notifications	backend/routes/school_routes_mod.py:999:    alerts = await gd_find(db.session, "notifications", {
+parents	backend/routes/academics_student_routes.py:1052:    parents = await gd_find(db.session, "parents", query, limit=1000)
+parents	backend/routes/academics_student_routes.py:1138:    parents = await gd_find(db.session, "parents", query, limit=10)
+parents	backend/routes/academics_student_routes.py:1436:        parent_doc = await gd_find_one(db.session, "parents", {"id": data.link_to_parent_id})
+parents	backend/routes/notification_routes_mod.py:1229:                    parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
+parents	backend/routes/parent_portal_routes.py:612:                parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
+parents	backend/routes/parent_portal_routes.py:889:                parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
+parents	backend/routes/relationship_routes_mod.py:261:            parent_row = await gd_find_one(db.session, "parents", {"id": parent_ref})
+parents	backend/routes/role_dashboards_mod.py:1052:    parent = await gd_find_one(db.session, "parents", {"id": parent_id})
+parents	backend/routes/role_dashboards_mod.py:1249:    parent = await gd_find_one(db.session, "parents", {"id": parent_id})
+parents	backend/routes/search_directory_routes_mod.py:137:        parents = await gd_find(db.session, "parents", {**parent_filter, "$or": [
+parents	backend/routes/search_directory_routes_mod.py:524:    parents = await gd_find(db.session, "parents", query, order_by="full_name", desc_order=False, offset=skip, limit=per_page)
+physical_classrooms	backend/routes/academics_structure_engine_routes.py:456:    classrooms = await gd_find(db.session, "physical_classrooms", query, order_by="name", desc_order=False, limit=1000)
+physical_classrooms	backend/routes/academics_structure_engine_routes.py:468:    existing_classroom = await gd_find_one(db.session, "physical_classrooms", {"id": classroom_id})
+physical_classrooms	backend/routes/academics_structure_engine_routes.py:480:    return await gd_find_one(db.session, "physical_classrooms", {"id": classroom_id})
+registration_requests	backend/routes/registration_routes_mod.py:1005:    req = await gd_find_one(db.session, "registration_requests", {"id": request_id, "type": "student_enrollment"})
+registration_requests	backend/routes/registration_routes_mod.py:1069:    req = await gd_find_one(db.session, "registration_requests", {"id": request_id, "type": "student_enrollment"})
+registration_requests	backend/routes/registration_routes_mod.py:699:    requests = await gd_find(db.session, "registration_requests", query, order_by="created_at", desc_order=True, limit=1000)
+registration_requests	backend/routes/registration_routes_mod.py:872:    request = await gd_find_one(db.session, "registration_requests", {"id": request_id})
+registration_requests	backend/routes/registration_routes_mod.py:994:    requests = await gd_find(db.session, "registration_requests", query, order_by="submitted_at", desc_order=True, limit=100)
+schedule_sessions	backend/routes/parent_portal_routes.py:1141:            rows = await gd_find(db.session, "schedule_sessions", {
+schedule_sessions	backend/routes/parent_portal_routes.py:3251:        sessions = await gd_find(db.session, "schedule_sessions",
+schedule_sessions	backend/routes/parent_portal_routes.py:331:        rows = await gd_find(session, "schedule_sessions", {
+schedule_sessions	backend/routes/role_dashboards_mod.py:1173:            sessions = await gd_find(db.session, "schedule_sessions", {
+schedule_sessions	backend/routes/role_dashboards_mod.py:261:        sessions = await gd_find(db.session, "schedule_sessions", ss_filter, limit=500)
+schedule_sessions	backend/routes/role_dashboards_mod.py:80:    sessions = await gd_find(db.session, "schedule_sessions", ss_filter, limit=500)
+schedule_sessions	backend/routes/role_dashboards_mod.py:936:        sessions = await gd_find(db.session, "schedule_sessions", {
+schedule_sessions	backend/routes/scheduling_smart_session_routes.py:1090:        for ss in await gd_find(db.session, "schedule_sessions", ss_filter, limit=1000):
+schedule_sessions	backend/routes/scheduling_smart_session_routes.py:1783:    for ss in await gd_find(db.session, "schedule_sessions", {"class_id": class_id}, limit=1000):
+schedule_sessions	backend/routes/scheduling_smart_session_routes.py:1989:    session = await gd_find_one(db.session, "schedule_sessions", {"id": session_id})
+student_grades	backend/routes/ai_routes_mod.py:476:    grades = await gd_find(db.session, "student_grades", {
+students	backend/routes/academics_student_routes.py:1071:            back_students = await gd_find(db.session, "students", back_query, limit=5000)
+students	backend/routes/academics_student_routes.py:1090:            students_docs = await gd_find(db.session, "students", child_query, limit=50)
+students	backend/routes/academics_student_routes.py:253:    students = await gd_find(db.session, "students", query, limit=1000)
+students	backend/routes/academics_student_routes.py:355:    students = await gd_find(db.session, "students", query, limit=500)
+students	backend/routes/academics_student_routes.py:509:    students = await gd_find(db.session, "students", query, order_by="full_name", desc_order=False, limit=1000)
+students	backend/routes/academics_student_routes.py:578:        student = await gd_find_one(db.session, "students", {"id": sid, "is_active": True})
+students	backend/routes/academics_student_routes.py:620:    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
+students	backend/routes/academics_student_routes.py:909:        student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
+students	backend/routes/academics_teacher_routes.py:1133:    matching_students = await gd_find(db.session, "students", {"parent_ids": parent_id})
+students	backend/routes/ai_routes_mod.py:1766:            students = await gd_find(db.session, "students", student_filter, limit=2000)
+students	backend/routes/ai_routes_mod.py:1803:            students = await gd_find(db.session, "students", {
+students	backend/routes/ai_routes_mod.py:3094:        students = await gd_find(db.session, "students", {
+students	backend/routes/assessment_routes_mod.py:558:        student = await gd_find_one(db.session, "students", {"id": g['student_id'], "is_active": True})
+students	backend/routes/assessment_routes_mod.py:583:    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
+students	backend/routes/assessment_routes_mod.py:761:    students = await gd_find(db.session, "students", {"class_id": class_id, "is_active": True}, limit=100)
+students	backend/routes/assessment_routes_mod.py:864:    students = await gd_find(db.session, "students", {"class_id": assessment['class_id'], "is_active": True}, limit=100)
+students	backend/routes/attendance_routes_mod.py:1260:        student = await gd_find_one(db.session, "students", {"id": cs["_id"], "is_active": True})
+students	backend/routes/attendance_routes_mod.py:1291:        student = await gd_find_one(db.session, "students", {"id": ls["_id"], "is_active": True})
+students	backend/routes/attendance_routes_mod.py:510:    students_coro = gd_find(db.session, "students", {"id": {"$in": student_ids}, "is_active": True}, limit=len(student_ids)) if student_ids else _empty_list()
+students	backend/routes/attendance_routes_mod.py:654:    students = await gd_find(db.session, "students", _students_q, limit=100)
+students	backend/routes/attendance_routes_mod.py:672:        student = await gd_find_one(db.session, "students", {"id": record['student_id'], "is_active": True})
+students	backend/routes/attendance_routes_mod.py:843:    students = await gd_find(db.session, "students", _students_q, limit=100)
+students	backend/routes/behaviour_routes_mod.py:200:    student = await gd_find_one(db.session, "students", {"id": data.student_id, "is_active": True})
+students	backend/routes/behaviour_routes_mod.py:597:    student = await gd_find_one(db.session, "students", {"id": data.student_id, "is_active": True})
+students	backend/routes/behaviour_routes_mod.py:644:    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
+students	backend/routes/bulk_import_export_routes.py:795:    students = await gd_find(db.session, "students", query, limit=10000)
+students	backend/routes/notification_routes_mod.py:1197:        student_doc = await gd_find_one(db.session, "students", {"id": student_id})
+students	backend/routes/relationship_routes_mod.py:402:            raw_siblings = await gd_find(db.session, "students", {"id": {"$in": sibling_ids}}, limit=20)
+students	backend/routes/relationship_routes_mod.py:527:        parent = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
+students	backend/routes/reporting_routes_mod.py:270:        students = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=len(student_ids))
+students	backend/routes/role_dashboards_mod.py:1101:        student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
+students	backend/routes/role_dashboards_mod.py:1690:    _stg_student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
+students	backend/routes/role_dashboards_mod.py:1749:    _sas_student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
+students	backend/routes/role_dashboards_mod.py:1902:        student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
+students	backend/routes/role_dashboards_mod.py:2198:    students = await gd_find(db.session, "students", {"class_id": class_id, "is_active": True}, limit=100)
+students	backend/routes/role_dashboards_mod.py:2303:    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
+students	backend/routes/role_dashboards_mod.py:2643:        student = await gd_find_one(db.session, "students", {"id": rid, "is_active": True})
+students	backend/routes/search_directory_routes_mod.py:126:        students = await gd_find(db.session, "students", student_query, limit=limit)
+students	backend/routes/search_directory_routes_mod.py:275:    student_rows = await gd_find(db.session, "students", student_query, limit=limit * 3)
+students	backend/routes/search_directory_routes_mod.py:388:        students = await gd_find(db.session, "students", student_query, limit=limit)
+students	backend/routes/search_directory_routes_mod.py:455:    students = await gd_find(db.session, "students", query, order_by=sort_by, desc_order=False, offset=skip, limit=per_page)
+students	backend/routes/student_creation_routes.py:383:                siblings = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=20)
+students	backend/routes/student_creation_routes.py:679:            students = await gd_find(db.session, "students", {"id": {"$in": student_ids}}, limit=20)
 students	backend/routes/student_portal_routes.py:42:    s = await gd_find_one(db.session, "students", {"id": student_id})
-subjects	backend/routes/academics_reference_routes.py:157:        subjects = await gd_find(db.session, "subjects", {"is_active": True}, limit=100)
-subjects	backend/routes/academics_structure_engine_routes.py:459:    subjects = await gd_find(db.session, "subjects", query, order_by="name_ar", desc_order=False, limit=1000)
-subjects	backend/routes/academics_subject_routes.py:328:    subjects = await gd_find(db.session, "subjects", query, limit=1000)
-subjects	backend/routes/academics_subject_routes.py:344:    subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
-subjects	backend/routes/academics_subject_routes.py:356:    old_subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
-subjects	backend/routes/academics_subject_routes.py:381:    subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
-subjects	backend/routes/assessment_routes_mod.py:165:    subject = await gd_find_one(db.session, "subjects", {"id": assessment.subject_id})
-subjects	backend/routes/assessment_routes_mod.py:254:        subject = await gd_find_one(db.session, "subjects", {"id": subject_id}) if subject_id else None
-subjects	backend/routes/assessment_routes_mod.py:306:    subject = await gd_find_one(db.session, "subjects", {"id": assessment['subject_id']})
-subjects	backend/routes/assessment_routes_mod.py:585:        subject = await gd_find_one(db.session, "subjects", {"id": g['subject_id']})
-subjects	backend/routes/assessment_routes_mod.py:633:        subject = await gd_find_one(db.session, "subjects", {"id": g['subject_id']})
-subjects	backend/routes/assessment_routes_mod.py:684:        subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
-subjects	backend/routes/assessment_routes_mod.py:771:    subject = await gd_find_one(db.session, "subjects", {"id": assessment['subject_id']})
-subjects	backend/routes/assessment_routes_mod.py:999:        subject = await gd_find_one(db.session, "subjects", {"id": sid})
-subjects	backend/routes/attendance_routes_mod.py:142:        subject = await gd_find_one(db.session, "subjects", {"id": attendance.subject_id})
-subjects	backend/routes/attendance_routes_mod.py:427:    subjects_coro = gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids)) if subject_ids else _empty_list()
-subjects	backend/routes/parent_portal_routes.py:1529:                    subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
-subjects	backend/routes/parent_portal_routes.py:470:                subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
-subjects	backend/routes/parent_portal_routes.py:534:                subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=50) if sub_ids else []
-subjects	backend/routes/relationship_routes_mod.py:316:            sub_docs = await gd_find(db.session, "subjects", {"id": {"$in": ta_subject_ids}}, limit=50)
-subjects	backend/routes/relationship_routes_mod.py:369:            subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=50)
-subjects	backend/routes/reporting_routes_mod.py:151:    subjects = await gd_find(db.session, "subjects", subject_query, limit=100)
-subjects	backend/routes/role_dashboards_mod.py:116:        subjects = await gd_find(db.session, "subjects", {"id": {"$in": list(set(subj_ids))}}, limit=500) if subj_ids else []
-subjects	backend/routes/role_dashboards_mod.py:163:        subjects = await gd_find(db.session, "subjects", {"id": {"$in": subj_ids}}, limit=500) if subj_ids else []
-subjects	backend/routes/role_dashboards_mod.py:1914:    subject = await gd_find_one(db.session, "subjects", {"id": session.get("subject_id")})
-subjects	backend/routes/role_dashboards_mod.py:2470:        subj = await gd_find_one(db.session, "subjects", {"id": subject_id})
-subjects	backend/routes/role_dashboards_mod.py:383:    subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=50)
-subjects	backend/routes/role_dashboards_mod.py:422:        sub_doc = await gd_find_one(db.session, "subjects", {"id": primary_sub_id})
-subjects	backend/routes/role_dashboards_mod.py:547:        subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=20)
-subjects	backend/routes/role_dashboards_mod.py:586:            subj = await gd_find_one(db.session, "subjects", {"id": assessment["subject_id"]})
-subjects	backend/routes/role_dashboards_mod.py:734:                subject = await gd_find_one(db.session, "subjects", {"id": session.get("subject_id")})
-subjects	backend/routes/role_dashboards_mod.py:873:            subj = await gd_find_one(db.session, "subjects", {"id": s["subject_id"]})
-subjects	backend/routes/role_dashboards_mod.py:963:            subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=20)
-subjects	backend/routes/schedule_master_grid_routes.py:501:        await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids) or 1)
-subjects	backend/routes/scheduling_smart_engine_routes.py:577:    subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids) or 1) if subject_ids else []
-subjects	backend/routes/scheduling_smart_engine_routes.py:969:            subject_doc = await gd_find_one(db.session, "subjects", {"id": subj.get("subject_id")})
-subjects	backend/routes/school_settings_mod.py:2777:    subjects_list = await gd_find(db.session, "subjects", {"id": {"$in": s_ids}}, limit=len(s_ids) + 1) if s_ids else []
-subjects	backend/routes/school_settings_mod.py:2830:    subject = await gd_find_one(db.session, "subjects", {"id": payload.subject_id})
-subjects	backend/routes/school_settings_mod.py:765:    subjects = await gd_find(db.session, "subjects", {"is_active": True}, limit=50)
-subjects	backend/routes/search_directory_routes_mod.py:64:        subjects = await gd_find(db.session, "subjects", {**tenant_filter, "$or": [{"name": pattern}, {"name_en": pattern}]}, limit=limit)
-subjects	backend/routes/student_portal_routes.py:1179:            subjects_rows = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids))
-subjects	backend/routes/student_portal_routes.py:1376:            subj_rows = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids_in_grades}}, limit=len(subject_ids_in_grades))
+subjects	backend/routes/academics_reference_routes.py:207:    return await gd_find(db.session, "subjects", query, limit=100)
+subjects	backend/routes/academics_structure_engine_routes.py:558:    subjects = await gd_find(db.session, "subjects", query, order_by="name_ar", desc_order=False, limit=1000)
+subjects	backend/routes/academics_subject_routes.py:586:    subjects = await gd_find(db.session, "subjects", query, limit=1000)
+subjects	backend/routes/assessment_routes_mod.py:1089:        subject = await gd_find_one(db.session, "subjects", {"id": sid})
+subjects	backend/routes/assessment_routes_mod.py:166:    subject = await gd_find_one(db.session, "subjects", {"id": assessment.subject_id})
+subjects	backend/routes/assessment_routes_mod.py:264:        subject = await gd_find_one(db.session, "subjects", {"id": subject_id}) if subject_id else None
+subjects	backend/routes/assessment_routes_mod.py:316:    subject = await gd_find_one(db.session, "subjects", {"id": assessment['subject_id']})
+subjects	backend/routes/assessment_routes_mod.py:636:                subject = await gd_find_one(db.session, "subjects", {"id": subj_id})
+subjects	backend/routes/assessment_routes_mod.py:774:        subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
+subjects	backend/routes/assessment_routes_mod.py:861:    subject = await gd_find_one(db.session, "subjects", {"id": assessment['subject_id']})
+subjects	backend/routes/attendance_routes_mod.py:181:        subject = await gd_find_one(db.session, "subjects", {"id": attendance.subject_id})
+subjects	backend/routes/attendance_routes_mod.py:513:    subjects_coro = gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids)) if subject_ids else _empty_list()
+subjects	backend/routes/parent_portal_routes.py:1152:            subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100) if sub_ids else []
+subjects	backend/routes/parent_portal_routes.py:1217:                subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
+subjects	backend/routes/parent_portal_routes.py:1317:            subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=50) if sub_ids else []
+subjects	backend/routes/parent_portal_routes.py:3609:                    subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
+subjects	backend/routes/relationship_routes_mod.py:380:            sub_docs = await gd_find(db.session, "subjects", {"id": {"$in": ta_subject_ids}}, limit=50)
+subjects	backend/routes/relationship_routes_mod.py:442:            subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=50)
+subjects	backend/routes/reporting_routes_mod.py:196:    subjects = await gd_find(db.session, "subjects", subject_query, limit=100)
+subjects	backend/routes/role_dashboards_mod.py:1182:                subject = await gd_find_one(db.session, "subjects", {"id": session.get("subject_id")})
+subjects	backend/routes/role_dashboards_mod.py:1321:            subj = await gd_find_one(db.session, "subjects", {"id": s["subject_id"]})
+subjects	backend/routes/role_dashboards_mod.py:1490:            subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=20)
+subjects	backend/routes/role_dashboards_mod.py:228:        subjects = await gd_find(db.session, "subjects", {"id": {"$in": list(set(subj_ids))}}, limit=500) if subj_ids else []
+subjects	backend/routes/role_dashboards_mod.py:275:        subjects = await gd_find(db.session, "subjects", {"id": {"$in": subj_ids}}, limit=500) if subj_ids else []
+subjects	backend/routes/role_dashboards_mod.py:2977:    subject = await gd_find_one(db.session, "subjects", {"id": session.get("subject_id")})
+subjects	backend/routes/role_dashboards_mod.py:3893:        subj = await gd_find_one(db.session, "subjects", {"id": subject_id})
+subjects	backend/routes/role_dashboards_mod.py:769:    subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=50)
+subjects	backend/routes/role_dashboards_mod.py:808:        sub_doc = await gd_find_one(db.session, "subjects", {"id": primary_sub_id})
+subjects	backend/routes/role_dashboards_mod.py:950:        subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=20)
+subjects	backend/routes/role_dashboards_mod.py:98:    subjects = await gd_find(db.session, "subjects", {"id": {"$in": subj_ids}}, limit=500) if subj_ids else []
+subjects	backend/routes/role_dashboards_mod.py:995:                subj = await gd_find_one(db.session, "subjects", {"id": assessment["subject_id"]})
+subjects	backend/routes/schedule_master_grid_routes.py:522:        await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids) or 1)
+subjects	backend/routes/scheduling_smart_engine_routes.py:1166:            subject_doc = await gd_find_one(db.session, "subjects", {"id": subj.get("subject_id")})
+subjects	backend/routes/scheduling_smart_engine_routes.py:668:    subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids) or 1) if subject_ids else []
+subjects	backend/routes/scheduling_smart_session_routes.py:1103:            subj = await gd_find_one(db.session, "subjects", {"id": sid})
+subjects	backend/routes/scheduling_smart_session_routes.py:1145:            subj = await gd_find_one(db.session, "subjects", {"id": subject_id})
+subjects	backend/routes/scheduling_smart_session_routes.py:1826:            subj = await gd_find_one(db.session, "subjects", {"id": sub_id})
+subjects	backend/routes/school_settings_mod.py:2767:    subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
+subjects	backend/routes/school_settings_mod.py:2957:    subjects_list = await gd_find(db.session, "subjects", {"id": {"$in": s_ids}}, limit=len(s_ids) + 1) if s_ids else []
+subjects	backend/routes/school_settings_mod.py:833:    subjects = await gd_find(db.session, "subjects", {"is_active": True}, limit=50)
+subjects	backend/routes/search_directory_routes_mod.py:148:        subjects = await gd_find(db.session, "subjects", {**tenant_filter, "$or": [{"name": pattern}, {"name_en": pattern}]}, limit=limit)
+subjects	backend/routes/student_portal_routes.py:1184:            subjects_rows = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=len(subject_ids))
+subjects	backend/routes/student_portal_routes.py:1381:            subj_rows = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids_in_grades}}, limit=len(subject_ids_in_grades))
 subjects	backend/routes/student_portal_routes.py:335:                subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
 subjects	backend/routes/student_portal_routes.py:500:                subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
 subjects	backend/routes/student_portal_routes.py:88:                subs = await gd_find(db.session, "subjects", {"id": {"$in": sub_ids}}, limit=100)
-teacher_assignments	backend/routes/ai_routes_mod.py:1007:        assignments = await gd_find(db.session, "teacher_assignments", {
-teacher_assignments	backend/routes/role_dashboards_mod.py:153:        assignments = await gd_find(db.session, "teacher_assignments", {"id": {"$in": assignment_ids}}, limit=500) if assignment_ids else []
-teacher_assignments	backend/routes/role_dashboards_mod.py:2291:    assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": resolved_teacher_id, "is_active": True}, limit=200)
-teacher_assignments	backend/routes/role_dashboards_mod.py:2850:    assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": resolved_teacher_id, "is_active": True}, limit=200)
-teacher_assignments	backend/routes/role_dashboards_mod.py:367:    assignments = await gd_find(db.session, "teacher_assignments", {
-teacher_assignments	backend/routes/role_dashboards_mod.py:908:    assignments = await gd_find(db.session, "teacher_assignments", {
-teacher_assignments	backend/routes/role_dashboards_mod.py:956:            ta_for_class = await gd_find(db.session, "teacher_assignments", {"class_id": cls_id, "is_active": True}, limit=20)
-teacher_assignments	backend/routes/scheduling_smart_session_routes.py:1083:    assignment = await gd_find_one(db.session, "teacher_assignments", {"id": assignment_id})
-teacher_assignments	backend/routes/scheduling_smart_session_routes.py:1109:        conflict_assignment = await gd_find_one(db.session, "teacher_assignments", {"id": teacher_conflict.get("assignment_id")})
-teacher_assignments	backend/routes/scheduling_smart_session_routes.py:821:        teacher_assignments = await gd_find(db.session, "teacher_assignments", {"class_id": class_id, "teacher_id": tid}, limit=1)
-teacher_assignments	backend/routes/school_settings_mod.py:2772:    assignments = await gd_find(db.session, "teacher_assignments", query_filter, limit=5000)
-teacher_assignments	backend/routes/school_settings_routes.py:450:        created = await gd_find_one(db.session, "teacher_assignments", {"id": aid})
-teacher_class_assignments	backend/routes/ai_routes_mod.py:1010:        tca_docs = await gd_find(db.session, "teacher_class_assignments", {
-teacher_class_assignments	backend/routes/role_dashboards_mod.py:2294:    tca_docs = await gd_find(db.session, "teacher_class_assignments", {"teacher_id": resolved_teacher_id}, limit=200)
-teacher_class_assignments	backend/routes/role_dashboards_mod.py:2851:    tca_docs = await gd_find(db.session, "teacher_class_assignments", {"teacher_id": resolved_teacher_id}, limit=200)
-teacher_class_assignments	backend/routes/role_dashboards_mod.py:915:    tca_docs = await gd_find(db.session, "teacher_class_assignments", {
-teacher_class_assignments	backend/routes/school_settings_mod.py:2094:            class_assignments = await gd_find(db.session, "teacher_class_assignments", {
-teacher_class_assignments	backend/routes/school_settings_mod.py:2585:    assignments = await gd_find(db.session, "teacher_class_assignments", query_filter, offset=skip, limit=page_size)
-teacher_class_assignments	backend/routes/school_settings_mod.py:2884:    assignments = await gd_find(db.session, "teacher_class_assignments", {
-teachers	backend/routes/academics_class_routes.py:130:        teacher = await gd_find_one(db.session, "teachers", {"id": data.homeroom_teacher_id})
-teachers	backend/routes/academics_class_routes.py:184:        teacher = await gd_find_one(db.session, "teachers", {"id": class_doc["homeroom_teacher_id"]})
-teachers	backend/routes/academics_class_routes.py:211:    teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=100)
-teachers	backend/routes/academics_class_routes.py:276:        teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id_resolved})
-teachers	backend/routes/academics_class_routes.py:290:            teacher = await gd_find_one(db.session, "teachers", {"id": tca["teacher_id"]})
-teachers	backend/routes/academics_teacher_routes.py:752:    teachers = await gd_find(db.session, "teachers", query, limit=1000)
-teachers	backend/routes/academics_teacher_routes.py:774:        teacher = await gd_find_one(db.session, "teachers", {"id": tid})
-teachers	backend/routes/academics_teacher_routes.py:776:        teacher = await gd_find_one(db.session, "teachers", {"user_id": current_user.get("id")})
-teachers	backend/routes/academics_teacher_routes.py:799:    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
-teachers	backend/routes/academics_teacher_routes.py:859:    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
-teachers	backend/routes/assessment_routes_mod.py:172:    teacher_in_db = await gd_find_one(db.session, "teachers", {"id": teacher_id})
-teachers	backend/routes/bulk_import_export_routes.py:815:    teachers = await gd_find(db.session, "teachers", query, limit=5000)
-teachers	backend/routes/parent_portal_routes.py:1357:                        receiver = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
-teachers	backend/routes/parent_portal_routes.py:1451:            receiver = await gd_find_one(db.session, "teachers", {"id": receiver_id})
-teachers	backend/routes/parent_portal_routes.py:471:                tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=100)
-teachers	backend/routes/parent_portal_routes.py:535:                tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=50) if tch_ids else []
-teachers	backend/routes/relationship_routes_mod.py:312:            tch_docs = await gd_find(db.session, "teachers", {"id": {"$in": ta_teacher_ids}}, limit=50)
-teachers	backend/routes/role_dashboards_mod.py:1915:    teacher = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
-teachers	backend/routes/role_dashboards_mod.py:244:    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
-teachers	backend/routes/role_dashboards_mod.py:263:    candidates = await gd_find(db.session, "teachers", {
-teachers	backend/routes/role_dashboards_mod.py:546:        teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=20)
-teachers	backend/routes/role_dashboards_mod.py:733:                teacher = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
-teachers	backend/routes/role_dashboards_mod.py:806:    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
-teachers	backend/routes/scheduling_smart_engine_routes.py:511:        teacher = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
-teachers	backend/routes/scheduling_smart_engine_routes.py:575:    teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=len(teacher_ids) or 1) if teacher_ids else []
-teachers	backend/routes/scheduling_smart_session_routes.py:1116:                teacher_doc = await gd_find_one(db.session, "teachers", {"id": teacher_id})
-teachers	backend/routes/scheduling_smart_session_routes.py:721:            teacher_doc = await gd_find_one(db.session, "teachers", {"id": teacher_id})
-teachers	backend/routes/school_settings_mod.py:2590:    teachers_list = await gd_find(db.session, "teachers", {"id": {"$in": t_ids}}, limit=len(t_ids) + 1) if t_ids else []
-teachers	backend/routes/school_settings_mod.py:2668:    teacher = await gd_find_one(db.session, "teachers", {"id": assignment.teacher_id})
-teachers	backend/routes/school_settings_mod.py:2776:    teachers_list = await gd_find(db.session, "teachers", {"id": {"$in": t_ids}}, limit=len(t_ids) + 1) if t_ids else []
-teachers	backend/routes/school_settings_mod.py:2829:    teacher = await gd_find_one(db.session, "teachers", {"id": payload.teacher_id})
-teachers	backend/routes/standby_routes.py:748:    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
-teachers	backend/routes/standby_routes.py:837:    teacher = await gd_find_one(db.session, "teachers", {"id": body.teacher_id})
-teachers	backend/routes/student_portal_routes.py:1189:            teachers_rows = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=len(teacher_ids))
+teacher_assignments	backend/routes/ai_routes_mod.py:1790:        assignments = await gd_find(db.session, "teacher_assignments", {
+teacher_assignments	backend/routes/attendance_routes_mod.py:1236:        ta_rows = await gd_find(db.session, "teacher_assignments",
+teacher_assignments	backend/routes/attendance_routes.py:612:            ta_rows = await gd_find(db.session, "teacher_assignments",
+teacher_assignments	backend/routes/attendance_routes.py:656:            ta_rows = await gd_find(db.session, "teacher_assignments",
+teacher_assignments	backend/routes/role_dashboards_mod.py:1436:        assignments = await gd_find(db.session, "teacher_assignments", {
+teacher_assignments	backend/routes/role_dashboards_mod.py:1483:            ta_for_class = await gd_find(db.session, "teacher_assignments", {"class_id": cls_id, "is_active": True}, limit=20)
+teacher_assignments	backend/routes/role_dashboards_mod.py:265:        assignments = await gd_find(db.session, "teacher_assignments", {"id": {"$in": assignment_ids}}, limit=500) if assignment_ids else []
+teacher_assignments	backend/routes/role_dashboards_mod.py:3459:    assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": resolved_teacher_id, "is_active": True}, limit=200)
+teacher_assignments	backend/routes/role_dashboards_mod.py:4698:    assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": resolved_teacher_id, "is_active": True}, limit=200)
+teacher_assignments	backend/routes/role_dashboards_mod.py:728:    assignments = await gd_find(db.session, "teacher_assignments", {
+teacher_assignments	backend/routes/scheduling_smart_session_routes.py:1081:    for ta in await gd_find(db.session, "teacher_assignments", ta_filter, limit=500):
+teacher_assignments	backend/routes/scheduling_smart_session_routes.py:1999:    assignment = await gd_find_one(db.session, "teacher_assignments", {"id": assignment_id})
+teacher_assignments	backend/routes/scheduling_smart_session_routes.py:2025:        conflict_assignment = await gd_find_one(db.session, "teacher_assignments", {"id": teacher_conflict.get("assignment_id")})
+teacher_assignments	backend/routes/school_settings_mod.py:2242:            class_assignments = await gd_find(db.session, "teacher_assignments", {
+teacher_assignments	backend/routes/school_settings_mod.py:2644:    canonical = await gd_find(db.session, "teacher_assignments", ta_filter, limit=50000)
+teacher_assignments	backend/routes/school_settings_mod.py:2952:    assignments = await gd_find(db.session, "teacher_assignments", query_filter, limit=5000)
+teacher_assignments	backend/routes/school_settings_mod.py:3070:    assignments = await gd_find(db.session, "teacher_assignments", {
+teacher_class_assignments	backend/routes/ai_routes_mod.py:1793:        tca_docs = await gd_find(db.session, "teacher_class_assignments", {
+teachers	backend/routes/academics_class_routes.py:295:        teacher = await gd_find_one(db.session, "teachers", {"id": _htid})
+teachers	backend/routes/academics_class_routes.py:371:        teacher = await gd_find_one(db.session, "teachers", {"id": class_doc["homeroom_teacher_id"]})
+teachers	backend/routes/academics_class_routes.py:455:    teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=100)
+teachers	backend/routes/academics_class_routes.py:636:        teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id_resolved})
+teachers	backend/routes/academics_class_routes.py:650:            teacher = await gd_find_one(db.session, "teachers", {"id": tca["teacher_id"]})
+teachers	backend/routes/academics_teacher_routes.py:785:    teachers = await gd_find(db.session, "teachers", query, limit=1000)
+teachers	backend/routes/academics_teacher_routes.py:837:        teacher = await gd_find_one(db.session, "teachers", {"id": tid})
+teachers	backend/routes/academics_teacher_routes.py:839:        teacher = await gd_find_one(db.session, "teachers", {"user_id": current_user.get("id")})
+teachers	backend/routes/academics_teacher_routes.py:863:    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+teachers	backend/routes/academics_teacher_routes.py:882:    existing_teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+teachers	backend/routes/assessment_routes_mod.py:176:    teacher_in_db = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+teachers	backend/routes/bulk_import_export_routes.py:826:    teachers = await gd_find(db.session, "teachers", query, limit=5000)
+teachers	backend/routes/parent_portal_routes.py:1218:                tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=100)
+teachers	backend/routes/parent_portal_routes.py:1318:            tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=50) if tch_ids else []
+teachers	backend/routes/parent_portal_routes.py:2358:                tch_rows = await gd_find(db.session, "teachers", {
+teachers	backend/routes/parent_portal_routes.py:3295:        teacher_rows = await gd_find(db.session, "teachers",
+teachers	backend/routes/relationship_routes_mod.py:376:            tch_docs = await gd_find(db.session, "teachers", {"id": {"$in": ta_teacher_ids}}, limit=50)
+teachers	backend/routes/role_dashboards_mod.py:1181:                teacher = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
+teachers	backend/routes/role_dashboards_mod.py:1254:    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+teachers	backend/routes/role_dashboards_mod.py:2978:    teacher = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
+teachers	backend/routes/role_dashboards_mod.py:604:    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+teachers	backend/routes/role_dashboards_mod.py:623:    candidates = await gd_find(db.session, "teachers", {
+teachers	backend/routes/role_dashboards_mod.py:949:        teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=20)
+teachers	backend/routes/scheduling_smart_engine_routes.py:602:        teacher = await gd_find_one(db.session, "teachers", {"id": session.get("teacher_id")})
+teachers	backend/routes/scheduling_smart_engine_routes.py:666:    teachers = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=len(teacher_ids) or 1) if teacher_ids else []
+teachers	backend/routes/scheduling_smart_session_routes.py:2032:                teacher_doc = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+teachers	backend/routes/scheduling_smart_session_routes.py:745:            teacher_doc = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+teachers	backend/routes/school_settings_mod.py:2662:    teachers_list = await gd_find(db.session, "teachers", {"id": {"$in": t_ids}}, limit=len(t_ids) + 1) if t_ids else []
+teachers	backend/routes/school_settings_mod.py:2956:    teachers_list = await gd_find(db.session, "teachers", {"id": {"$in": t_ids}}, limit=len(t_ids) + 1) if t_ids else []
+teachers	backend/routes/standby_routes.py:1136:    teacher = await gd_find_one(db.session, "teachers", {"id": body.teacher_id})
+teachers	backend/routes/standby_routes.py:943:    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+teachers	backend/routes/student_portal_routes.py:1194:            teachers_rows = await gd_find(db.session, "teachers", {"id": {"$in": teacher_ids}}, limit=len(teacher_ids))
 teachers	backend/routes/student_portal_routes.py:336:                tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=100)
 teachers	backend/routes/student_portal_routes.py:421:            receiver = await gd_find_one(db.session, "teachers", {"id": receiver_id})
 teachers	backend/routes/student_portal_routes.py:89:                tchs = await gd_find(db.session, "teachers", {"id": {"$in": tch_ids}}, limit=100)
-terms	backend/routes/academics_year_term_routes.py:277:    terms = await gd_find(db.session, "terms", query, order_by="start_date", desc_order=True, limit=100)
-terms	backend/routes/academics_year_term_routes.py:326:    updated = await gd_find_one(db.session, "terms", {"id": term_id})
-time_slots	backend/routes/role_dashboards_mod.py:154:        slots = await gd_find(db.session, "time_slots", {"id": {"$in": slot_ids}}, limit=500) if slot_ids else []
-time_slots	backend/routes/role_dashboards_mod.py:545:        slots = await gd_find(db.session, "time_slots", {"id": {"$in": slot_ids}}, limit=20)
-time_slots	backend/routes/role_dashboards_mod.py:732:                slot = await gd_find_one(db.session, "time_slots", {"id": session.get("time_slot_id")})
-time_slots	backend/routes/scheduling_smart_session_routes.py:1091:    new_slot = await gd_find_one(db.session, "time_slots", {"id": move_data.new_time_slot_id})
-timetables	backend/routes/schedule_candidates_routes.py:50:    tt = await gd_find_one(db.session, "timetables", {"id": timetable_id})
-timetables	backend/routes/scheduling_smart_engine_routes.py:1039:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
-timetables	backend/routes/scheduling_smart_engine_routes.py:559:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
-timetables	backend/routes/scheduling_smart_engine_routes.py:610:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
-timetables	backend/routes/scheduling_smart_engine_routes.py:654:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
-timetables	backend/routes/scheduling_smart_engine_routes.py:680:        _published_row = await gd_find_one(db.session, "timetables", {"id": timetable_id}) or {}
-timetables	backend/routes/scheduling_smart_engine_routes.py:747:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
-timetables	backend/routes/scheduling_smart_engine_routes.py:801:    published_row = await gd_find_one(db.session, "timetables", {"id": timetable_id})
-timetables	backend/routes/scheduling_smart_engine_routes.py:890:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
-timetables	backend/routes/scheduling_smart_session_routes.py:112:    tt = await gd_find_one(db.session, "timetables", {"id": tt_id}) if tt_id else None
-timetables	backend/routes/scheduling_smart_session_routes.py:338:    tt = await gd_find_one(db.session, "timetables", {"id": tt_id})
-timetables	backend/routes/scheduling_smart_session_routes.py:441:    tt = await gd_find_one(db.session, "timetables", {"id": tt_id})
-timetables	backend/routes/scheduling_smart_session_routes.py:577:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
-user_relationships	backend/routes/relationship_routes_mod.py:321:        siblings_rels = await gd_find(db.session, "user_relationships", {"$or": [
-user_relationships	backend/routes/role_dashboards_mod.py:2492:            rels = await gd_find(db.session, "user_relationships", {**rel_filter, "to_entity_id": sid}, limit=10)
+teachers	backend/routes/user_routes_mod.py:54:    if await gd_find_one(db.session, "teachers", {"id": candidate}):
+teachers	backend/routes/user_routes_mod.py:627:        teacher_rows += await gd_find(db.session, "teachers", {"user_id": {"$in": user_ids}}, limit=5000) or []
+teachers	backend/routes/user_routes_mod.py:629:        teacher_rows += await gd_find(db.session, "teachers", {"email": {"$in": emails}}, limit=5000) or []
+teachers	backend/routes/user_routes_mod.py:800:        rows = await gd_find(db.session, "teachers", {"user_id": uid}) or []
+teachers	backend/routes/user_routes_mod.py:802:        rows = await gd_find(db.session, "teachers", {"email": email}) or []
+teachers	backend/routes/user_routes_mod.py:81:        rows = await gd_find(db.session, "teachers", {"user_id": uid}) or []
+teachers	backend/routes/user_routes_mod.py:83:        rows = await gd_find(db.session, "teachers", {"email": email}) or []
+terms	backend/routes/academics_year_term_routes.py:328:    terms = await gd_find(db.session, "terms", query, order_by="start_date", desc_order=True, limit=100)
+terms	backend/routes/academics_year_term_routes.py:381:    updated = await gd_find_one(db.session, "terms", {"id": term_id})
+terms	backend/routes/scheduling_smart_session_routes.py:957:        term = await gd_find_one(db.session, "terms", {"academic_year_id": year.get("id"), "is_current": True})
+terms	backend/routes/scheduling_smart_session_routes.py:960:        terms = await gd_find(db.session, "terms", {"academic_year_id": year.get("id")}, order_by="start_date", limit=1)
+time_slots	backend/routes/role_dashboards_mod.py:1180:                slot = await gd_find_one(db.session, "time_slots", {"id": session.get("time_slot_id")})
+time_slots	backend/routes/role_dashboards_mod.py:266:        slots = await gd_find(db.session, "time_slots", {"id": {"$in": slot_ids}}, limit=500) if slot_ids else []
+time_slots	backend/routes/role_dashboards_mod.py:948:        slots = await gd_find(db.session, "time_slots", {"id": {"$in": slot_ids}}, limit=20)
+time_slots	backend/routes/scheduling_smart_session_routes.py:2007:    new_slot = await gd_find_one(db.session, "time_slots", {"id": move_data.new_time_slot_id})
+timetables	backend/routes/schedule_candidates_routes.py:51:    tt = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+timetables	backend/routes/scheduling_smart_engine_routes.py:1023:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+timetables	backend/routes/scheduling_smart_engine_routes.py:1067:    updated = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+timetables	backend/routes/scheduling_smart_engine_routes.py:1087:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+timetables	backend/routes/scheduling_smart_engine_routes.py:1236:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+timetables	backend/routes/scheduling_smart_engine_routes.py:498:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+timetables	backend/routes/scheduling_smart_engine_routes.py:537:    timetables = await gd_find(db.session, "timetables", query, order_by="created_at", desc_order=True, limit=100)
+timetables	backend/routes/scheduling_smart_engine_routes.py:650:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+timetables	backend/routes/scheduling_smart_engine_routes.py:701:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+timetables	backend/routes/scheduling_smart_engine_routes.py:745:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+timetables	backend/routes/scheduling_smart_engine_routes.py:771:        _published_row = await gd_find_one(db.session, "timetables", {"id": timetable_id}) or {}
+timetables	backend/routes/scheduling_smart_engine_routes.py:838:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+timetables	backend/routes/scheduling_smart_engine_routes.py:892:    published_row = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+timetables	backend/routes/scheduling_smart_session_routes.py:131:    tt = await gd_find_one(db.session, "timetables", {"id": tt_id}) if tt_id else None
+timetables	backend/routes/scheduling_smart_session_routes.py:357:    tt = await gd_find_one(db.session, "timetables", {"id": tt_id})
+timetables	backend/routes/scheduling_smart_session_routes.py:460:    tt = await gd_find_one(db.session, "timetables", {"id": tt_id})
+timetables	backend/routes/scheduling_smart_session_routes.py:596:    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+timetables	backend/routes/school_settings_mod.py:2866:        published_tts = await gd_find(db.session, "timetables", {
+user_relationships	backend/routes/relationship_routes_mod.py:385:        siblings_rels = await gd_find(db.session, "user_relationships", {"$or": [

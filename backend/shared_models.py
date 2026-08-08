@@ -128,6 +128,24 @@ class UserResponse(BaseModel):
     preferred_language: Optional[str] = "ar"
     preferred_theme: Optional[str] = "light"
     created_at: Optional[str] = None
+    # Last profile-update timestamp (users.updated_at). The account
+    # settings header renders "آخر تحديث" from this; omitting it made the
+    # FE fall back to a permanent "—" for every role.
+    updated_at: Optional[str] = None
+    # Time-display preference ("12h" / "24h"). Surfaced on UserResponse so
+    # every time-rendering component can read it via useAuth() without a
+    # separate preferences fetch.
+    time_format: Optional[str] = "12h"
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def _coerce_timestamp_to_iso(cls, v):
+        """Rows fetched via the generic doc helpers may carry raw datetime
+        objects; coerce them so UserResponse(**row) sites never 500 on the
+        Optional[str] declaration."""
+        if isinstance(v, datetime):
+            return v.isoformat()
+        return v
     teacher_id: Optional[str] = None
     student_id: Optional[str] = None
     parent_id: Optional[str] = None
@@ -378,6 +396,11 @@ class RegistrationRequestResponse(BaseModel):
 
 class ApproveRequestData(BaseModel):
     admin_note: Optional[str] = None
+    # School chosen by the reviewing admin. Required for `teacher` requests:
+    # the signup form's school field is optional and free text, so the school
+    # link is decided at review time. Ignored by request types that create
+    # their own tenant (e.g. `school`).
+    school_id: Optional[str] = None
 
 class RejectRequestData(BaseModel):
     reason: str
@@ -592,6 +615,11 @@ class ClassResponse(BaseModel):
     deleted_at: Optional[str] = None
     deleted_by: Optional[str] = None
     deleted_by_name: Optional[str] = None
+    # Human-readable grade display names resolved server-side (GET /classes).
+    # Legacy rows can hold a grade_levels row UUID in grade_level, so the UI
+    # must never render grade_id/grade_level raw — it reads these instead.
+    grade_name_ar: Optional[str] = None
+    grade_name_en: Optional[str] = None
 
 class SubjectCreate(BaseModel):
     name: str

@@ -168,7 +168,7 @@ async def _mk_user_with_role(tenant_id: str, role: str) -> dict:
 
 @pytest.mark.parametrize(
     "role",
-    [UserRole.PRINCIPAL.value, UserRole.TEACHER.value, UserRole.SCHOOL_ADMIN.value],
+    [UserRole.SCHOOL_PRINCIPAL.value, UserRole.TEACHER.value, UserRole.SCHOOL_ADMIN.value],
 )
 @pytest.mark.asyncio
 async def test_other_roles_change_password_smoke(client, tenant_a, role):

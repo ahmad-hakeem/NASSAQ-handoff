@@ -40,13 +40,14 @@ run_step() {
 run_step "token-storage chokepoint"  bash scripts/check_token_storage.sh
 run_step "tenant-scoped lookup chokepoint"  bash scripts/check_tenant_scoped_lookups.sh
 
-# pytest may not be installed in every CI image — skip cleanly if absent.
-if command -v pytest >/dev/null 2>&1; then
-    run_step "phase 1 security tests"  pytest -q backend/tests/test_security_phase1.py
-    run_step "phase 2 security tests"  pytest -q backend/tests/test_security_phase2.py
-    run_step "phase 3 security tests"  pytest -q backend/tests/test_security_phase3.py
+# Security pytest suites are mandatory — a missing pytest fails the gate.
+if python3 -m pytest --version >/dev/null 2>&1; then
+    run_step "phase 1 security tests"  bash -c "cd backend && python3 -m pytest -q tests/test_security_phase1.py"
+    run_step "phase 2 security tests"  bash -c "cd backend && python3 -m pytest -q tests/test_security_phase2.py"
+    run_step "phase 3 security tests"  bash -c "cd backend && python3 -m pytest -q tests/test_security_phase3.py"
 else
-    echo "──▶ pytest not installed — skipping security test suites"
+    echo "──▶ pytest not installed — security test suites cannot run"
+    FAIL=1
 fi
 
 # Dependency audit — hard-fail. Install pip-audit in the CI image.
@@ -67,7 +68,7 @@ fi
 
 # SAST — bandit, hard-fail on high-severity findings only.
 if command -v bandit >/dev/null 2>&1; then
-    run_step "bandit (high severity)"  bandit -r backend -ll -ii -x backend/tests
+    run_step "bandit (high severity)"  bandit -r backend -lll -ii -x backend/tests
 else
     echo "──▶ bandit not installed — install with: pip install bandit"
     FAIL=1

@@ -56,6 +56,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
     handleAddBreak, handleEditBreak, handleDeleteBreak,
     handleAddUnavailability, handleDeleteUnavailability,
     handleCreateClassAssignment, handleDeleteClassAssignment,
+    subjectPickerRequest, subjectPickerSaving, cancelSubjectPicker, confirmSubjectPicker,
     nassaqWarning, nassaqError, user, api, setAssignments, handleOpenNoorImport,
   } = hook;
 
@@ -561,7 +562,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                     setAssignments(prev => [...prev, optimistic]);
                     const schoolId = user?.tenant_id || user?.school_id || 'SCH-001';
                     api.post('/teacher-assignments', { teacher_id: teacher.id, subject_id: subject.id, school_id: schoolId })
-                      .then(res => { const realId = res.data?.id || res.data?.assignment_id || tempId; setAssignments(prev => prev.map(a => a.id === tempId ? { ...a, id: realId, _optimistic: false } : a)); })
+                      .then(res => { const realId = res.data?.assignment?.id || res.data?.id || res.data?.assignment_id || tempId; setAssignments(prev => prev.map(a => a.id === tempId ? { ...a, id: realId, _optimistic: false } : a)); })
                       .catch(err => {
                         setAssignments(prev => prev.filter(a => a.id !== tempId));
                         const msg = getApiErrorMessage(err) || err?.response?.data?.error?.message || err?.message || 'تعذّر إسناد المادة للمعلم';
@@ -918,6 +919,73 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
           />
         </TabsContent>
       </Tabs>
+
+      <ClassAssignmentSubjectPicker
+        request={subjectPickerRequest}
+        saving={subjectPickerSaving}
+        onCancel={cancelSubjectPicker}
+        onConfirm={confirmSubjectPicker}
+      />
+    </div>
+  );
+}
+
+/**
+ * حوار اختيار المادة عند تعذّر تحديدها تلقائيًا لزوج (معلم، فصل).
+ * يظهر فقط عندما يرجع الخادم 409 subject_required ومعه قائمة مواد مرشّحة،
+ * فيكمل المدير الإسناد من مكانه بدل الانتقال إلى تبويب آخر.
+ */
+function ClassAssignmentSubjectPicker({ request, saving, onCancel, onConfirm }) {
+  const [selected, setSelected] = React.useState('');
+
+  React.useEffect(() => {
+    setSelected(request?.candidates?.length === 1 ? request.candidates[0].id : '');
+  }, [request]);
+
+  if (!request) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" dir="rtl">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden" data-testid="subject-picker-dialog">
+        <div className="p-5 border-b">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+              <BookOpen className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-brand-navy">اختر المادة لهذا الإسناد</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {request.teacherName || 'المعلم'} • {request.className || 'الفصل'}
+              </p>
+            </div>
+          </div>
+          {request.message && <p className="text-xs text-slate-600 mt-3">{request.message}</p>}
+        </div>
+        <div className="p-5 max-h-[320px] overflow-y-auto space-y-2">
+          {request.candidates.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setSelected(c.id)}
+              data-testid={`subject-candidate-${c.id}`}
+              className={`w-full text-right px-4 py-3 rounded-xl border-2 transition-all ${selected === c.id ? 'border-brand-turquoise bg-brand-turquoise/5 font-bold text-brand-turquoise-dark' : 'border-slate-200 hover:border-slate-300 text-slate-700'}`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+        <div className="p-5 border-t flex justify-end gap-3">
+          <button onClick={onCancel} disabled={saving} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-all disabled:opacity-50">إلغاء</button>
+          <button
+            onClick={() => onConfirm(selected)}
+            disabled={!selected || saving}
+            data-testid="subject-picker-confirm"
+            className="px-5 py-2 text-sm bg-brand-turquoise text-white rounded-lg hover:bg-brand-turquoise-dark transition-all disabled:opacity-50"
+          >
+            {saving ? 'جاري الإسناد...' : 'إسناد الفصل'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

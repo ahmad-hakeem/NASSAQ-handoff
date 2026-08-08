@@ -516,4 +516,65 @@ describe('SessionTeachPage follow-up persistence (integration)', () => {
     // The dirty cell is preserved: the poll did NOT clobber the newer 9.
     expect(screen.getByTestId('grade-stu-1-part').value).toBe('9');
   });
+
+  test('ending the session flushes a pending (debounced) follow-up edit first', async () => {
+    await mountPage();
+    await openFollowup();
+
+    // Edit a cell but do NOT wait out the 1.5s debounce and do NOT close the
+    // dialog — the flush must not depend on either.
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('grade-stu-1-part'), { target: { value: '6' } });
+    });
+    expect(followupPosts().length).toBe(0);
+
+    // Open the end-session confirm and start the review — this path must
+    // flush the pending edit before fetching the review preview.
+    await act(async () => {
+      fireEvent.click(screen.getByTitle('endSession'));
+    });
+    await flushMicrotasks();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'reviewAndEnd' }));
+    });
+    await flushMicrotasks();
+
+    const posts = followupPosts();
+    expect(posts.length).toBe(1);
+    expect(posts[0][1].data['stu-1'].part).toBe('6');
+    // The review preview was requested (after the flush resolved).
+    const previewGets = mockApiGet.mock.calls.filter(([u]) => u === '/session/sess-1/review-preview');
+    expect(previewGets.length).toBe(1);
+  });
+
+  test('a rejected end-path flush blocks the review (fail closed, edit retained)', async () => {
+    await mountPage();
+    await openFollowup();
+
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('grade-stu-1-part'), { target: { value: '6' } });
+    });
+
+    // The flush POST fails (network/server error).
+    mockApiPost.mockImplementation((url) => {
+      if (url === '/session/sess-1/followup-record') return Promise.reject(new Error('network'));
+      return Promise.resolve({ data: {} });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTitle('endSession'));
+    });
+    await flushMicrotasks();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'reviewAndEnd' }));
+    });
+    await flushMicrotasks();
+
+    // Fail closed: no review preview, no /end — the session cannot end past
+    // an unsaved sheet edit; an error was surfaced and the edit stays dirty.
+    expect(mockApiGet.mock.calls.filter(([u]) => u === '/session/sess-1/review-preview').length).toBe(0);
+    expect(mockApiPost.mock.calls.filter(([u]) => u === '/session/sess-1/end').length).toBe(0);
+    expect(mockAlert.nassaqError).toHaveBeenCalled();
+    expect(screen.getByTestId('grade-stu-1-part').value).toBe('6');
+  });
 });

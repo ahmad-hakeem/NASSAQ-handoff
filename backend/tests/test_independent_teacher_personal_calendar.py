@@ -29,6 +29,12 @@ from middleware.rbac import Permission, ROLE_PERMISSIONS
 
 
 PATH = "/independent-teacher/calendar/events"
+
+# Dynamic future dates: the calendar API rejects past dates, so hardcoded
+# literals become time-bombs once the wall clock passes them.
+from datetime import date as _date, timedelta as _timedelta
+_FUTURE_D1 = (_date.today() + _timedelta(days=30)).isoformat()
+_FUTURE_D2 = (_date.today() + _timedelta(days=31)).isoformat()
 LEGACY_PATH = "/v1/calendar/events"
 
 
@@ -112,7 +118,7 @@ async def test_create_personal_event_pins_tenant_and_author(client):
     payload = {
         "title_ar": "اجتماع شخصي",
         "type": "meeting",
-        "date": "2026-06-01",
+        "date": _FUTURE_D1,
         "details_ar": "تحضير الدرس",
     }
     resp = await client.post(PATH, json=payload, headers=h)
@@ -135,7 +141,7 @@ async def test_create_personal_event_pins_tenant_and_author(client):
 async def test_create_rejects_missing_title(client):
     ctx = await _mk_it()
     h = _headers(ctx["user"]["id"], ctx["user"]["role"], ctx["wsid"])
-    resp = await client.post(PATH, json={"date": "2026-06-01"}, headers=h)
+    resp = await client.post(PATH, json={"date": _FUTURE_D1}, headers=h)
     assert resp.status_code == 422
 
 
@@ -155,8 +161,8 @@ async def test_list_returns_only_callers_personal_events(client):
     b = await _mk_it()
     ha = _headers(a["user"]["id"], a["user"]["role"], a["wsid"])
     hb = _headers(b["user"]["id"], b["user"]["role"], b["wsid"])
-    await client.post(PATH, json={"title_ar": "A", "date": "2026-06-01"}, headers=ha)
-    await client.post(PATH, json={"title_ar": "B", "date": "2026-06-02"}, headers=hb)
+    await client.post(PATH, json={"title_ar": "A", "date": _FUTURE_D1}, headers=ha)
+    await client.post(PATH, json={"title_ar": "B", "date": _FUTURE_D2}, headers=hb)
 
     resp_a = await client.get(PATH, headers=ha)
     assert resp_a.status_code == 200
@@ -177,7 +183,7 @@ async def test_cross_workspace_get_via_update_returns_404(client):
     ha = _headers(a["user"]["id"], a["user"]["role"], a["wsid"])
     hb = _headers(b["user"]["id"], b["user"]["role"], b["wsid"])
     created = (await client.post(
-        PATH, json={"title_ar": "A-event", "date": "2026-06-01"}, headers=ha,
+        PATH, json={"title_ar": "A-event", "date": _FUTURE_D1}, headers=ha,
     )).json()["event"]
     eid = created["id"]
 
@@ -203,7 +209,7 @@ async def test_update_own_event_persists(client):
     ctx = await _mk_it()
     h = _headers(ctx["user"]["id"], ctx["user"]["role"], ctx["wsid"])
     created = (await client.post(
-        PATH, json={"title_ar": "old", "date": "2026-06-01"}, headers=h,
+        PATH, json={"title_ar": "old", "date": _FUTURE_D1}, headers=h,
     )).json()["event"]
 
     resp = await client.put(
@@ -224,7 +230,7 @@ async def test_delete_own_event(client):
     ctx = await _mk_it()
     h = _headers(ctx["user"]["id"], ctx["user"]["role"], ctx["wsid"])
     created = (await client.post(
-        PATH, json={"title_ar": "x", "date": "2026-06-01"}, headers=h,
+        PATH, json={"title_ar": "x", "date": _FUTURE_D1}, headers=h,
     )).json()["event"]
 
     resp = await client.delete(f"{PATH}/{created['id']}", headers=h)
@@ -246,7 +252,7 @@ async def test_principal_denied_on_it_surface(client):
     assert INDEPENDENT_TEACHER_DENIED_AR in str(msg)
 
     resp_post = await client.post(
-        PATH, json={"title_ar": "x", "date": "2026-06-01"}, headers=h,
+        PATH, json={"title_ar": "x", "date": _FUTURE_D1}, headers=h,
     )
     assert resp_post.status_code == 403
 
@@ -260,7 +266,7 @@ async def test_principal_legacy_calendar_unchanged(client):
     # Create via legacy route — no is_personal flag passed.
     resp = await client.post(
         LEGACY_PATH,
-        json={"title_ar": "اجتماع المدرسة", "date": "2026-06-01", "type": "meeting"},
+        json={"title_ar": "اجتماع المدرسة", "date": _FUTURE_D1, "type": "meeting"},
         headers=h,
     )
     assert resp.status_code == 201, resp.text

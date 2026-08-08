@@ -20,9 +20,12 @@ describe('SessionCell', () => {
   });
 
   it('applies the monday tint class', () => {
+    // Workspace redesign: the cell body is a white tile — the day tint
+    // now lives on the top band + faint bottom "echo" strip inside it.
     render(<SessionCell session={baseSession} dayKey="monday" onClick={() => {}} />);
     const cell = screen.getByRole('button');
-    expect(cell.className).toMatch(/--day-mon-tint/);
+    expect(cell.querySelector('[class*="--day-mon-tint"]')).not.toBeNull();
+    expect(cell.querySelector('[class*="--day-mon-band"]')).not.toBeNull();
   });
 
   it('calls onClick with the session when activated', () => {

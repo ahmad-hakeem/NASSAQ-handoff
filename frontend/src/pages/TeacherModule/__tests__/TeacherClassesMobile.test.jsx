@@ -87,7 +87,10 @@ test('classes list at 360px renders the ResponsiveTable mobile cards branch', as
     },
   ];
   mockApiGet.mockImplementation((url) => {
-    if (typeof url === 'string' && url.startsWith('/teacher/classes/')) {
+    // IT users load their classes from /classes (workspace classes may
+    // have no teacher_assignments rows); keep /teacher/classes/ wired
+    // too so the test survives either branch.
+    if (typeof url === 'string' && (url === '/classes' || url.startsWith('/teacher/classes/'))) {
       return Promise.resolve({ data: classes });
     }
     if (typeof url === 'string' && url.includes('/class-metrics')) {

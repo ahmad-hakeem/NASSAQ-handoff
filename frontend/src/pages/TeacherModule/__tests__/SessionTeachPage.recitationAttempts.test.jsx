@@ -68,6 +68,7 @@ jest.mock('../../../components/ui/dialog', () => ({
   DialogContent: ({ children }) => <div>{children}</div>,
   DialogHeader: ({ children }) => <div>{children}</div>,
   DialogTitle: ({ children }) => <div>{children}</div>,
+  DialogDescription: ({ children }) => <div>{children}</div>,
 }));
 jest.mock('../../../components/ui/textarea', () => ({
   Textarea: (p) => <textarea {...p} />,

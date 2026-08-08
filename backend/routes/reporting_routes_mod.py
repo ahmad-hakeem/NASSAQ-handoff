@@ -412,15 +412,36 @@ async def export_school_report(
         # Get attendance by class
         classes = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": {"$ne": False}}, limit=100)
         attendance_data = []
-        
+
+        # N+1 fix: replace per-class attendance gd_find (was one query per class,
+        # up to 100) with ONE $in fetch for all class ids, then group in memory.
+        # Preserve the old per-class limit=10000 semantics with a generous
+        # overall cap (100 classes x 10000 = 1,000,000 rows bound).
+        class_ids = [cls.get("id") for cls in classes if cls.get("id")]
+        att_by_class = {}
+        if class_ids:
+            all_attendance = await gd_find(
+                db.session, "attendance",
+                {"class_id": {"$in": class_ids}},
+                limit=1000000,
+            )
+            for a in all_attendance:
+                cid = a.get("class_id")
+                if cid not in att_by_class:
+                    att_by_class[cid] = {"present": 0, "absent": 0, "late": 0, "total": 0}
+                att_by_class[cid]["total"] += 1
+                s = a.get("status")
+                if s in ("present", "absent", "late"):
+                    att_by_class[cid][s] += 1
+
         for cls in classes:
-            attendance = await gd_find(db.session, "attendance", {"class_id": cls.get("id")}, limit=10000)
-            present = len([a for a in attendance if a.get("status") == "present"])
-            absent = len([a for a in attendance if a.get("status") == "absent"])
-            late = len([a for a in attendance if a.get("status") == "late"])
-            total = len(attendance)
+            stats = att_by_class.get(cls.get("id"), {"present": 0, "absent": 0, "late": 0, "total": 0})
+            present = stats["present"]
+            absent = stats["absent"]
+            late = stats["late"]
+            total = stats["total"]
             rate = round((present / total) * 100, 1) if total > 0 else 0
-            
+
             attendance_data.append({
                 "class": cls.get("name"),
                 "present": present,

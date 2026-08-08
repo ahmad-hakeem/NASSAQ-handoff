@@ -141,7 +141,10 @@ export const LoginPage = () => {
     switch (role) {
       case 'platform_admin': return '/admin';
       case 'school_principal': return '/principal';
-      case 'school_sub_admin': return '/school';
+      // Principal route audit 2026-07-28: sub-admins are school leadership
+      // too — they land on the canonical /principal dashboard like the rest
+      // (the old /school target is now a redirect alias of it).
+      case 'school_sub_admin': return '/principal';
       case 'school_admin': return '/principal';
       case 'platform_operations_manager': return '/admin';
       case 'platform_sub_admin': return '/admin';

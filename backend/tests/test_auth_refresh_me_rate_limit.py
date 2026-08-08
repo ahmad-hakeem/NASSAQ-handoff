@@ -159,7 +159,7 @@ async def test_refresh_per_ip_outer_429(client, tenant_a):
     # reach the handler.
     tokens = await _login(client, user)
     # Reset the per-user inner bucket so it's not the one firing.
-    rate_store._store.pop(f"refresh_user:{user['id']}", None)
+    await rate_store.forget(f"refresh_user:{user['id']}", 60)
 
     r = await client.post(
         "/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
@@ -185,7 +185,7 @@ async def test_refresh_per_user_inner_429(client, tenant_a):
     for _ in range(20):
         await rate_store.is_rate_limited(f"refresh_user:{user['id']}", 20, 60)
     # Keep the per-IP outer bucket clear so the inner cap is the one firing.
-    rate_store._store.pop("127.0.0.1:/api/auth/refresh", None)
+    await rate_store.forget("127.0.0.1:/api/auth/refresh", RATE_LIMITS["/api/auth/refresh"]["window"])
 
     r = await client.post(
         "/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
@@ -194,7 +194,7 @@ async def test_refresh_per_user_inner_429(client, tenant_a):
     assert r.headers.get("Retry-After")
     # Inner-cap 429 must not consume the refresh JTI: the same token still
     # rotates cleanly after we clear the bucket.
-    rate_store._store.pop(f"refresh_user:{user['id']}", None)
+    await rate_store.forget(f"refresh_user:{user['id']}", 60)
     r2 = await client.post(
         "/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
     )
@@ -214,7 +214,7 @@ async def test_me_per_ip_outer_429(client, tenant_a):
             "127.0.0.1:/api/auth/me",
             limit, RATE_LIMITS["/api/auth/me"]["window"],
         )
-    rate_store._store.pop(f"auth_me_user:{user['id']}", None)
+    await rate_store.forget(f"auth_me_user:{user['id']}", 60)
 
     r = await client.get(
         "/auth/me",
@@ -237,7 +237,7 @@ async def test_me_per_user_inner_429(client, tenant_a):
     tokens = await _login(client, user)
     for _ in range(60):
         await rate_store.is_rate_limited(f"auth_me_user:{user['id']}", 60, 60)
-    rate_store._store.pop("127.0.0.1:/api/auth/me", None)
+    await rate_store.forget("127.0.0.1:/api/auth/me", RATE_LIMITS["/api/auth/me"]["window"])
 
     r = await client.get(
         "/auth/me",

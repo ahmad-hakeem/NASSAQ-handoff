@@ -3,6 +3,10 @@ import { useTheme , useTranslation } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
 import { useNassaqAlert } from '../ui/NassaqAlertDialog';
+// Loading-indicator standardization swept `<LoadingState>` into this wizard
+// without its import — a runtime-only ReferenceError (webpack doesn't fail on
+// free variables), so the class option crashed to the global error boundary.
+import { LoadingState } from '../ui/LoadingState';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -235,7 +239,11 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
   };
 
   const filteredStudents = (options.students || []).filter(s => {
-    const matchGrade = !data.grade_id || s.grade_id === data.grade_id;
+    // Students with an UNKNOWN grade (legacy rows without a canonical
+    // grade) must stay visible — hiding them made step 3 show
+    // "لا يوجد طلاب متاحين" for the whole roster and left legacy students
+    // unassignable from this wizard.
+    const matchGrade = !data.grade_id || !s.grade_id || s.grade_id === data.grade_id;
     const matchSearch = !studentSearch || (s.full_name_ar || s.full_name_en || '').toLowerCase().includes(studentSearch.toLowerCase());
     return matchGrade && matchSearch;
   });

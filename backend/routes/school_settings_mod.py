@@ -31,9 +31,12 @@ from utils.it_schedule import synthesize_it_time_slots
 from utils.teacher_assignment_sync import (
     materialize_default_class_assignments,
     resolve_class_subject,
+    class_subject_candidates,
     add_tombstone,
     clear_tombstones,
 )
+
+from utils.avatar_serving import signed_image_url
 
 router = APIRouter()
 
@@ -398,6 +401,9 @@ class TeacherClassAssignmentCreate(BaseModel):
     teacher_id: str
     class_id: str
     academic_year_id: Optional[str] = None
+    # Explicit choice from the "pick a subject" dialog: used when the pairing
+    # cannot be auto-resolved (no curriculum + several candidate subjects).
+    subject_id: Optional[str] = None
 
 
 class TeacherClassAssignmentResponse(BaseModel):
@@ -462,7 +468,7 @@ async def get_school_info(
         "principal_name": school.get("principal_name"),
         "principal_mobile": school.get("principal_mobile"),
         "educational_pathway": school.get("educational_pathway"),
-        "logo_url": school.get("logo_url"),
+        "logo_url": signed_image_url("logo", school_id, school.get("logo_url")),
         "is_active": school.get("is_active", True),
         "updated_at": school.get("updated_at"),
         "settings": settings,
@@ -2563,20 +2569,11 @@ async def update_constraints(
 # إسناد المعلمين للفصول
 # ============================================
 
-class TeacherClassAssignmentCreate(BaseModel):
-    teacher_id: str
-    class_id: str
-    academic_year_id: Optional[str] = None
-
-class TeacherClassAssignmentResponse(BaseModel):
-    id: str
-    teacher_id: str
-    class_id: str
-    school_id: str
-    academic_year_id: Optional[str] = None
-    teacher_name: Optional[str] = None
-    class_name: Optional[str] = None
-    created_at: Optional[str] = None
+# NOTE: ``TeacherClassAssignmentCreate`` / ``TeacherClassAssignmentResponse``
+# were declared a second time here, shadowing the definitions near the top of
+# this module — a field added to one copy silently never reached the route.
+# The duplicates are gone; the single definitions live with the other request
+# models above.
 
 async def _auto_populate_teacher_class_assignments(school_id: str):
     """Materialize the default "all teachers ↔ all classes" links into the
@@ -2726,19 +2723,33 @@ async def create_teacher_class_assignment(
     # Class-only assignment (Task #919): auto-resolve the subject from the
     # teacher's subjects ∩ the class grade's curriculum. When the choice is
     # ambiguous or there is no overlap, return a structured "subject required"
-    # signal so the principal can pick/assign a subject (handled in the UI via
-    # NassaqAlertDialog) instead of silently guessing.
-    subject_id, reason = await resolve_class_subject(db.session, school_id, teacher, class_doc)
+    # signal WITH the candidate subjects so the principal can pick one in the
+    # dialog and retry (``subject_id`` below) instead of hitting a dead end.
+    if assignment.subject_id:
+        chosen = await gd_find_one(db.session, "subjects", {
+            "id": assignment.subject_id,
+            "$or": [{"school_id": school_id}, {"is_global": True}],
+        })
+        if not chosen or chosen.get("is_active") is False:
+            raise HTTPException(status_code=404, detail="المادة غير موجودة في هذه المدرسة")
+        subject_id, reason = assignment.subject_id, "explicit"
+    else:
+        subject_id, reason = await resolve_class_subject(db.session, school_id, teacher, class_doc)
     if not subject_id:
         if reason == "ambiguous":
-            msg = "لهذا الفصل أكثر من مادة يدرّسها المعلم. يرجى تحديد المادة المناسبة أولًا من تبويب إسناد المواد."
+            msg = "يدرّس هذا المعلم أكثر من مادة. يرجى اختيار المادة المناسبة لهذا الفصل."
         else:
-            msg = "تعذّر تحديد مادة مناسبة لهذا المعلم في هذا الفصل تلقائيًا. يرجى إسناد مادة مناسبة للمعلم أولًا من تبويب إسناد المواد."
+            msg = "تعذّر تحديد مادة مناسبة لهذا المعلم في هذا الفصل تلقائيًا. يرجى اختيار المادة، أو إسنادها للمعلم من تبويب إسناد المواد."
+        candidates = await class_subject_candidates(db.session, school_id, teacher, class_doc)
         raise HTTPException(status_code=409, detail={
             "code": "subject_required",
+            "reason": reason,
             "message": msg,
             "teacher_id": assignment.teacher_id,
+            "teacher_name": teacher.get("full_name"),
             "class_id": assignment.class_id,
+            "class_name": class_doc.get("name"),
+            "candidates": candidates,
         })
 
     # Already linked? (active canonical row for this pair+subject)

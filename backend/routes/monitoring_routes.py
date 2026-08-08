@@ -382,6 +382,52 @@ async def system_alerts(current_user: dict = Depends(require_roles([UserRole.PLA
             "message": "Unexpected error checking database status",
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
+
+    try:
+        from services.email_client import get_email_health
+        health = get_email_health()
+        if health.get("status") == "degraded":
+            alerts.append({
+                "id": "email-delivery-degraded",
+                "type": "critical",
+                "message": (
+                    f"Email delivery degraded: {health['window_failures']} of "
+                    f"{health['window_calls']} recent sends failed "
+                    f"({round(health['failure_rate'] * 100)}% ≥ {round(health['threshold'] * 100)}% threshold)"
+                ),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+    except Exception as e:
+        logger.debug(f"Email health check unavailable: {e}")
+
+    try:
+        from middleware.rate_limiter import get_rate_limiter_health
+        rl = get_rate_limiter_health()
+        if not rl.get("distributed"):
+            alerts.append({
+                "id": "rate-limiter-memory-store",
+                "type": "warning",
+                "message": (
+                    "Rate limiter is running on the in-memory store — "
+                    "brute-force limits are per-instance, not distributed"
+                ),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        elif rl.get("degraded", 0) > 0:
+            alerts.append({
+                "id": "rate-limiter-degraded",
+                "type": "warning",
+                "message": (
+                    f"Rate limiter degraded to per-instance limits "
+                    f"{rl['degraded']} time(s) since boot on this instance "
+                    f"(shared store unreachable or slower than "
+                    f"{rl.get('db_timeout_ms')}ms); "
+                    f"{rl.get('checks', 0)} checks, {rl.get('denied', 0)} denied"
+                ),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+    except Exception as e:
+        logger.debug(f"Rate limiter health check unavailable: {e}")
     return alerts
 
 
@@ -470,12 +516,39 @@ async def system_metrics(current_user: dict = Depends(require_roles([UserRole.PL
     except Exception as e:
         logger.debug(f"Response metrics unavailable: {e}")
 
+    ai_metrics = {}
+    email_metrics = {}
+    try:
+        from services.email_client import get_email_metrics
+        email_metrics = get_email_metrics()
+    except Exception:
+        email_metrics = {"error": "unavailable"}
+    try:
+        from services.ai_client import get_ai_metrics
+        ai_metrics = get_ai_metrics()
+    except Exception as e:
+        logger.debug(f"AI provider metrics unavailable: {e}")
+
     cache_metrics = {}
     try:
         from middleware.cache_metrics import get_cache_metrics
         cache_metrics = get_cache_metrics()
     except Exception as e:
         logger.debug(f"Cache metrics unavailable: {e}")
+
+    rate_limiter_metrics = {}
+    try:
+        from middleware.rate_limiter import get_rate_limiter_health
+        rate_limiter_metrics = get_rate_limiter_health()
+    except Exception as e:
+        logger.debug(f"Rate limiter metrics unavailable: {e}")
+
+    render_metrics = {}
+    try:
+        from services.cpu_offload import metrics as get_render_metrics
+        render_metrics = get_render_metrics()
+    except Exception as e:
+        logger.debug(f"Render pool metrics unavailable: {e}")
 
     pool_stats = {}
     db_latency_ms = 0
@@ -537,7 +610,26 @@ async def system_metrics(current_user: dict = Depends(require_roles([UserRole.PL
         "database_counts": db_counts,
         "active_users_24h": active_users_24h,
         "response_metrics": response_metrics,
+        "ai_metrics": ai_metrics,
+        "email_metrics": email_metrics,
         "cache_metrics": cache_metrics,
+        # Process-local since boot: on autoscale, a per-instance sample,
+        # not a global total. degraded > 0 = the shared limiter store was
+        # unreachable and brute-force limits fell back to per-instance.
+        "rate_limiter": rate_limiter_metrics,
+        # CPU-bound render pool (PDF/XLSX/CSV). Watch `rejected` (capacity
+        # exhausted → users got a 503 retry) and `slowest_ms`/`by_kind.avg_ms`
+        # (reports getting heavier). in_flight pinned at max_inflight means
+        # the pool is the bottleneck, not the database.
+        "render_pool": render_metrics,
+        # Per-pool breakdown of the same counters. `render` handles PDF/XLSX/CSV
+        # documents (sub-second, high frequency); `timetable` handles the
+        # scheduling search (1-27 s, rare). They are deliberately separate
+        # executors — one long generation in the render pool would starve every
+        # export queued behind it. p95_ms rising on `timetable` means schools
+        # are outgrowing the engine; `rejected` means principals are being told
+        # to retry.
+        "cpu_pools": (render_metrics or {}).get("by_pool", {}),
         "pool_stats": pool_stats,
         "db_latency_ms": db_latency_ms,
         "requests_per_min": reqs_per_min,

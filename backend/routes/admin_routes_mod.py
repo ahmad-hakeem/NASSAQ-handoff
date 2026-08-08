@@ -11,6 +11,7 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 import uuid, os, logging, json, random, re, io, base64
 
+from sqlalchemy import bindparam, text as sa_text
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
@@ -740,11 +741,28 @@ async def get_activity_alerts(current_user: dict = Depends(require_roles([UserRo
         })
     
     schools = await gd_find(db.session, "demo_schools", {}, limit=100)
+    # Batched per-school activity count (was an N+1: one activity_logs COUNT
+    # per school). activity_logs is a generic_documents collection, so we
+    # group on the JSONB school_id field with the same timestamp window filter
+    # (data->>'timestamp' >= today, lexical compare — identical to gd_count).
+    school_id_list = [s["id"] for s in schools if s.get("id")]
+    activity_by_school: dict = {}
+    if school_id_list:
+        _act_rows = (await db.session.execute(
+            sa_text(
+                "SELECT data->>'school_id' AS sid, COUNT(id) AS cnt "
+                "FROM generic_documents "
+                "WHERE collection = 'activity_logs' "
+                "AND data->>'timestamp' >= :cutoff "
+                "AND data->>'school_id' IN :sids "
+                "GROUP BY data->>'school_id'"
+            ).bindparams(bindparam("sids", expanding=True)),
+            {"cutoff": today.isoformat(), "sids": school_id_list},
+        )).all()
+        activity_by_school = {r[0]: int(r[1]) for r in _act_rows}
+
     for school in schools:
-        school_activity = await gd_count(db.session, "activity_logs", {
-            "timestamp": {"$gte": today.isoformat()},
-            "school_id": school["id"]
-        })
+        school_activity = activity_by_school.get(school["id"], 0)
         if school_activity == 0 and now.hour > 8:
             alerts.append({
                 "type": "critical",

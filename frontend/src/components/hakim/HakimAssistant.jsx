@@ -23,6 +23,13 @@ const PAGE_CONTEXT_MAP = {
   '/school/settings': { name: 'الإعدادات', suggestions: ['كيف أعدّل أيام الدراسة؟', 'كيف أضبط أوقات الحصص؟'] },
   '/principal/users-management': { name: 'إدارة المستخدمين والفصول', suggestions: ['كيف أضيف معلم؟', 'كيف أنشئ فصل؟'] },
   '/principal/communication': { name: 'مركز التواصل', suggestions: ['كيف أرسل إشعار لأولياء الأمور؟'] },
+  // Principal route audit 2026-07-28: canonical leadership URLs under
+  // /principal/* — mirrors of the legacy /admin//school keys.
+  '/principal/schedule': { name: 'الجدول الدراسي', suggestions: ['كيف أنشئ جدول جديد؟', 'هل يوجد تعارضات؟', 'كيف أوزع الحصص؟'] },
+  '/principal/settings': { name: 'الإعدادات', suggestions: ['كيف أعدّل أيام الدراسة؟', 'كيف أضبط أوقات الحصص؟'] },
+  '/principal/attendance': { name: 'إدارة الحضور', suggestions: ['ما نسبة الحضور اليوم؟', 'من الطلاب الأكثر غياباً؟', 'كيف أسجل الحضور؟'] },
+  '/principal/students': { name: 'إدارة الطلاب', suggestions: ['كيف أضيف طالب جديد؟', 'كيف أبحث عن طالب؟'] },
+  '/principal/classes': { name: 'إدارة الفصول', suggestions: ['كيف أنشئ فصل جديد؟', 'كم عدد الفصول؟'] },
   '/admin/attendance': { name: 'إدارة الحضور', suggestions: ['ما نسبة الحضور اليوم؟', 'من الطلاب الأكثر غياباً؟', 'كيف أسجل الحضور؟'] },
   '/admin/students': { name: 'إدارة الطلاب', suggestions: ['كيف أضيف طالب جديد؟', 'كيف أبحث عن طالب؟'] },
   '/admin/teachers': { name: 'إدارة المعلمين', suggestions: ['كيف أضيف معلم؟', 'كيف أوزع الحصص على المعلمين؟'] },

@@ -208,21 +208,15 @@ export const RegisterPage = () => {
         break;
       case 3:
         isValid = validateStep3();
-        if (isValid && formData.accountType === 'teacher') {
-          // School-teacher join flow lives on a separate page; IT stays
-          // on this wizard and continues to step 4.
-          navigate('/teacher-register', {
-            replace: true,
-            state: {
-              prefill: {
-                full_name: formData.full_name,
-                phone: formData.phone,
-              },
-              acceptedPrivacy: true,
-            },
-          });
-          return;
-        }
+        // All three account types continue to step 4 of THIS wizard, which
+        // renders the matching form and submits the selected account_type to
+        // /registration-requests.
+        //
+        // Do NOT re-add a hand-off to /teacher-register for the school-teacher
+        // option: that page posts to /teacher-registration/direct, which always
+        // mints an Independent Teacher (it is the Teacher-Experience landing
+        // CTA). Routing "معلم / معلمة" there silently converted school teachers
+        // into IT accounts and dropped them in the IT workspace wizard.
         break;
       case 4:
         isValid = validateStep4();
@@ -299,10 +293,10 @@ export const RegisterPage = () => {
         switch (role) {
           case 'school_principal':
           case 'school_admin':
-            target = '/principal';
-            break;
+          // Principal route audit 2026-07-28: sub-admins also home on the
+          // canonical /principal dashboard (mirrors LoginPage).
           case 'school_sub_admin':
-            target = '/school';
+            target = '/principal';
             break;
           case 'independent_teacher':
             // Spec §5.1 first-login orchestration:

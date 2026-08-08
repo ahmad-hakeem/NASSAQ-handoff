@@ -1128,6 +1128,18 @@ export default function SidebarSettingsDialog({
                     onChange={(e) => updateColumn(ci, { name: e.target.value })}
                     className="flex-1 bg-transparent text-sm font-cairo outline-none"
                   />
+                  {/* Category (أعمال السنة/الاختبارات) — same choice كشف
+                      المتابعة's إضافة عمود modal offers; without it every
+                      pattern column was silently saved as coursework. */}
+                  <select
+                    value={col.group === 'exams' ? 'exams' : 'coursework'}
+                    onChange={(e) => updateColumn(ci, { group: e.target.value })}
+                    data-testid={`col-group-${col.id}`}
+                    className="text-[10px] bg-card dark:bg-muted rounded border px-1 py-0.5 font-cairo"
+                  >
+                    <option value="coursework">{t('coursework')}</option>
+                    <option value="exams">{t('exams')}</option>
+                  </select>
                   <select
                     value={col.type || 'grade'}
                     onChange={(e) => updateColumn(ci, { type: e.target.value })}
@@ -1137,14 +1149,18 @@ export default function SidebarSettingsDialog({
                     <option value="check">{t('checkType')}</option>
                     <option value="text">{t('textType')}</option>
                   </select>
-                  <input
-                    type="number"
-                    value={col.maxGrade}
-                    onChange={(e) => updateColumn(ci, { maxGrade: parseInt(e.target.value) || 0 })}
-                    className="w-14 text-center text-xs bg-card dark:bg-muted rounded border px-1 py-0.5 font-cairo"
-                    min={1}
-                    max={100}
-                  />
+                  {(!col.type || col.type === 'grade') ? (
+                    <input
+                      type="number"
+                      value={col.maxGrade}
+                      onChange={(e) => updateColumn(ci, { maxGrade: parseInt(e.target.value) || 0 })}
+                      className="w-14 text-center text-xs bg-card dark:bg-muted rounded border px-1 py-0.5 font-cairo"
+                      min={1}
+                      max={100}
+                    />
+                  ) : (
+                    <span className="w-14 text-center text-xs text-muted-foreground font-cairo select-none">—</span>
+                  )}
                   <button
                     type="button"
                     onClick={() => sc.onFollowupColumnsChange?.(followupColumns.filter((_, i) => i !== ci))}

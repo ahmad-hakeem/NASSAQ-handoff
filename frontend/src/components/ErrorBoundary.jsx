@@ -62,7 +62,13 @@ class ErrorBoundary extends React.Component {
               </button>
             </div>
 
-            {process.env.NODE_ENV !== 'production' && this.state.error && (
+            {/* Add-flow audit 2026-07-28: the details toggle is now available
+                in production too. The generic screen used to conceal the root
+                cause entirely outside dev (the CreateClassWizard ReferenceError
+                could only be diagnosed by rebuilding locally); a collapsed
+                opt-in toggle keeps the friendly UI while making user-reported
+                crashes actionable from a screenshot. */}
+            {this.state.error && (
               <div className="text-start">
                 <button
                   onClick={this.toggleDetails}
@@ -76,8 +82,13 @@ class ErrorBoundary extends React.Component {
                     dir="ltr"
                     className="mt-3 p-3 max-h-72 overflow-auto text-[11px] leading-relaxed text-left bg-gray-900 text-red-200 rounded-lg whitespace-pre-wrap break-words"
                   >
-                    {String(this.state.error?.stack || this.state.error?.message || this.state.error)}
-                    {this.state.errorInfo?.componentStack ? `\n\nComponent stack:${this.state.errorInfo.componentStack}` : ''}
+                    {/* Production shows only the error MESSAGE (enough to
+                        identify e.g. "LoadingState is not defined" from a
+                        user screenshot) — full stack + component stack stay
+                        dev-only to avoid disclosing internals. */}
+                    {process.env.NODE_ENV !== 'production'
+                      ? `${String(this.state.error?.stack || this.state.error?.message || this.state.error)}${this.state.errorInfo?.componentStack ? `\n\nComponent stack:${this.state.errorInfo.componentStack}` : ''}`
+                      : String(this.state.error?.message || this.state.error)}
                   </pre>
                 )}
               </div>

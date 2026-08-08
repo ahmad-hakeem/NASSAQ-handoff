@@ -1192,7 +1192,9 @@ export default function SessionTeachPage() {
     group: c.column_type === 'exams' ? 'exams' : 'coursework',
     maxGrade: c.max_grade,
     hidden: c.visible === false,
-    type: 'grade',
+    // Input mode (درجة/تحقق/نص) is server truth — hardcoding 'grade' here
+    // silently reset every saved تحقق/نص column back to numeric on reload.
+    type: ['check', 'text'].includes(c.input_type) ? c.input_type : 'grade',
     _order: c.order ?? 0,
   });
 
@@ -1235,7 +1237,7 @@ export default function SessionTeachPage() {
     if (classIdForGrades) loadClassGradeColumns();
   }, [classIdForGrades, loadClassGradeColumns]);
 
-  const addClassGradeColumn = useCallback(async ({ name, group, maxGrade }) => {
+  const addClassGradeColumn = useCallback(async ({ name, group, maxGrade, type }) => {
     if (!classIdForGrades) {
       toast.error('لا يمكن حفظ العمود — معرف الفصل غير متوفر');
       return false;
@@ -1248,6 +1250,7 @@ export default function SessionTeachPage() {
       await api.post(`/class/${classIdForGrades}/grade-columns`, {
         name: name.trim(),
         column_type: group === 'exams' ? 'exams' : 'coursework',
+        input_type: ['check', 'text'].includes(type) ? type : 'grade',
         max_grade: Math.max(1, Number(maxGrade) || 10),
         order: followupColumns.length + 1,
       });
@@ -1269,6 +1272,7 @@ export default function SessionTeachPage() {
     if (patch.maxGrade !== undefined) body.max_grade = Math.max(1, Number(patch.maxGrade) || 1);
     if (patch.hidden !== undefined) body.visible = !patch.hidden;
     if (patch.order !== undefined) body.order = patch.order;
+    if (patch.type !== undefined) body.input_type = ['check', 'text'].includes(patch.type) ? patch.type : 'grade';
     try {
       await api.put(`/grade-column/${columnId}`, body);
       await loadClassGradeColumns();
@@ -1325,6 +1329,7 @@ export default function SessionTeachPage() {
         ops.push(api.post(`/class/${classIdForGrades}/grade-columns`, {
           name: String(col.name || '').trim() || (t('newColumn') || 'عمود جديد'),
           column_type: col.group === 'exams' ? 'exams' : 'coursework',
+          input_type: ['check', 'text'].includes(col.type) ? col.type : 'grade',
           max_grade: Math.max(1, Number(col.maxGrade) || 10),
           order: nextOrder,
         }));
@@ -1336,6 +1341,14 @@ export default function SessionTeachPage() {
       if (Number(col.maxGrade) !== Number(base.maxGrade)) {
         body.max_grade = Math.max(1, Number(col.maxGrade) || 1);
       }
+      const colType = ['check', 'text'].includes(col.type) ? col.type : 'grade';
+      const baseType = ['check', 'text'].includes(base.type) ? base.type : 'grade';
+      if (colType !== baseType) body.input_type = colType;
+      // Category (أعمال السنة/الاختبارات) is editable in the pattern
+      // editor — diff it like the other fields or the selector is a no-op.
+      const colGroup = col.group === 'exams' ? 'exams' : 'coursework';
+      const baseGroup = base.group === 'exams' ? 'exams' : 'coursework';
+      if (colGroup !== baseGroup) body.column_type = colGroup;
       if (Object.keys(body).length > 0) {
         ops.push(api.put(`/grade-column/${col.id}`, body));
       }
@@ -2028,6 +2041,13 @@ export default function SessionTeachPage() {
     setPendingOps(ops);
     setReviewLoading(true);
     try {
+      // Pending follow-up sheet edits ride a 1.5s debounce; ending the
+      // session must not race it. Flush first so the review preview — and
+      // the record after /end — reflect every value the teacher entered.
+      // Fail closed: a rejected flush aborts the review (error surfaced,
+      // dialog stays open, dirty edits retained) so /end can never commit
+      // past an unsaved sheet edit.
+      await flushFollowupRecord({ silent: true });
       const res = await api.get(`/session/${sessionId}/review-preview`);
       setReviewData(res.data);
       setShowEndDialog(false);
@@ -2041,6 +2061,11 @@ export default function SessionTeachPage() {
   const confirmEndSession = async () => {
     setLoading(true);
     try {
+      // Last-chance flush: /end commits scores server-side, so any follow-up
+      // edit still sitting in the debounce window must land first. Fail
+      // closed — a rejected flush aborts the end (error surfaced via the
+      // catch below, dirty edits retained for retry).
+      await flushFollowupRecord({ silent: true });
       const body = closingNote.trim() ? { closing_note: closingNote.trim() } : {};
       const res = await api.post(`/session/${sessionId}/end`, body);
       setSummary(res.data);

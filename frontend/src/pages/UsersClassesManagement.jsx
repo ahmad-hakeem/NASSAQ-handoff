@@ -935,9 +935,13 @@ export default function UsersClassesManagement() {
     return ins;
   }, [studentsNoParent, studentsNoClass, teachersNoSubject, accountsNoEmail, suspendedStudents, overCapClasses, isRTL]);
 
+  // Single load effect: two separate effects here (one for [user, schoolContext],
+  // one for [showInactiveClasses]) both fired on the initial mount, so every
+  // directory endpoint was requested exactly twice per page load in production.
+  // Depend on user?.id (not the user object) so an /auth/me refresh that swaps
+  // the object identity without changing the signed-in user doesn't refetch.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchAllData(); }, [user, schoolContext]);
-  useEffect(() => { fetchAllData(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [showInactiveClasses]);
+  useEffect(() => { fetchAllData(); }, [user?.id, schoolContext, showInactiveClasses]);
   useEffect(() => {
     if (activeTab && activeTab !== 'all') setSearchParams({ filter: activeTab });
     else setSearchParams({});

@@ -47,15 +47,15 @@ import {
 
 import { useTranslation } from '../contexts/ThemeContext';
 import { getApiErrorMessage } from '../utils/apiError';
-// Operational toggles — schools & independent teachers self-register today,
-// so the manual-vetting tabs are temporarily hidden. Re-enable by flipping
-// either flag to true; underlying queries, schemas, and tab components are
-// preserved.
-const showIndependentTeacherRequests = false;
+// Operational toggles — schools self-register today, so the school-request
+// vetting tab stays hidden. SCHOOL-TEACHER signups queue as pending requests
+// (no account is created until an admin approves and picks the school), so
+// their tab MUST stay visible or pending teachers become undiscoverable.
+const showTeacherRequests = true;
 const showSchoolRequests = false;
 
 const isApprovalTypeVisible = (config) => {
-  if (config?.tabValue === 'requests') return showIndependentTeacherRequests;
+  if (config?.tabValue === 'requests') return showTeacherRequests;
   if (config?.tabValue === 'school-requests') return showSchoolRequests;
   return true;
 };
@@ -263,15 +263,24 @@ export default function UsersManagement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Two independent refs — one per filter effect — so effect #2 cannot read
+  // the false written by effect #1 on the same mount cycle (which caused a
+  // duplicate fetchUsers() call on every page load).
   const isFirstRender = useRef(true);
+  const isFirstFetchRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     setCurrentPage(1);
   }, [searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType]);
 
+  // Filter/pagination refetch. Uses `isFirstFetchRender`, NOT `isFirstRender`:
+  // the effect above already flipped that one during the same mount pass, so
+  // sharing a single ref let this effect fire on load and request
+  // /users/platform-users a second time on every page open.
   useEffect(() => {
-    if (isFirstRender.current) return;
+    if (isFirstFetchRender.current) { isFirstFetchRender.current = false; return; }
     fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType]);
 
   const handleViewUser = (user) => navigate(`/admin/users/${user.id}`);
@@ -369,9 +378,13 @@ export default function UsersManagement() {
     setNotificationForm({ type: 'system', title: '', message: '' });
   };
 
-  const handleUnifiedApprove = async (request, requestType) => {
+  const handleUnifiedApprove = async (request, requestType, schoolId) => {
     try {
-      const response = await api.post(`/registration-requests/${request.id}/approve`);
+      // School Teacher requests carry the reviewer's school choice; other
+      // request types create their own tenant and ignore it.
+      const response = await api.post(`/registration-requests/${request.id}/approve`, {
+        school_id: schoolId || null,
+      });
       if (response.data?.success) {
         setApprovalSuccess({ request, requestType, ...response.data });
         toast.success(response.data.message || 'تم الموافقة وإنشاء الحساب بنجاح');

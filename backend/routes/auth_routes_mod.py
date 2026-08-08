@@ -30,6 +30,7 @@ from shared_models import (
     validate_password_complexity,
 )
 from services import mfa_policy as _mfa_policy_module
+from utils.avatar_serving import signed_image_url, attach_image_access_cookie
 
 router = APIRouter()
 
@@ -131,6 +132,7 @@ async def register(user_data: UserCreate):
         preferred_language="ar",
         preferred_theme="light",
         created_at=user_doc["created_at"],
+        updated_at=user_doc.get("updated_at"),
         mfa_enrolled_at=None,
     )
     
@@ -227,8 +229,8 @@ async def _record_session_from_token(
 
 
 @router.post("/auth/login", response_model=TokenResponse)
-async def login(credentials: UserLogin, request: Request, background_tasks: BackgroundTasks):
-    from middleware.rate_limiter import rate_store
+async def login(credentials: UserLogin, request: Request, background_tasks: BackgroundTasks, response: Response):
+    from middleware.rate_limiter import rate_store, rate_limit_headers, identity_tag
 
     # Per-account brute-force protection: limit login attempts by email address
     # regardless of source IP. This prevents credential-stuffing attacks even
@@ -236,9 +238,26 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
     account_key = f"login_account:{credentials.email.lower()}"
     acc_limited, _acc_rem, _acc_retry = await rate_store.is_rate_limited(account_key, 10, 60)
     if acc_limited:
+        # Observability: the identity axis of a brute-force attempt. The
+        # per-IP axis is logged by the middleware; together they let an
+        # operator see "one IP, many accounts" vs "many IPs, one account".
+        from utils.trusted_proxy import extract_client_ip as _xip
+        try:
+            _ip = _xip(request) if request else "unknown"
+        except Exception:
+            _ip = "unknown"
+        logging.getLogger("nassaq.ratelimit").warning(
+            # The account is logged as a stable hash, not the address: this
+            # line is emitted on every blocked attempt, and a security log
+            # full of raw victim emails is its own disclosure risk.
+            "rate_limit_denied scope=account path=/api/auth/login ip=%s account_tag=%s "
+            "limit=10 window=60s retry_after=%ss",
+            _ip, identity_tag(credentials.email), _acc_retry,
+        )
         raise HTTPException(
             status_code=429,
             detail="عدد محاولات تسجيل الدخول تجاوز الحد المسموح. يرجى المحاولة بعد دقيقة",
+            headers=rate_limit_headers(10, 0, _acc_retry),
         )
 
     user = await _find_user_by_email_ci(credentials.email)
@@ -575,6 +594,7 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
     )
     
     from engines.name_validation import is_generic_name
+    attach_image_access_cookie(response, user)
     user_response = UserResponse(
         id=user_id,
         email=user["email"],
@@ -583,13 +603,15 @@ async def login(credentials: UserLogin, request: Request, background_tasks: Back
         role=UserRole(user["role"]),
         tenant_id=user.get("tenant_id"),
         phone=user.get("phone"),
-        avatar_url=user.get("avatar_url"),
+        avatar_url=signed_image_url("avatar", user_id, user.get("avatar_url")),
         is_active=user.get("is_active") if user.get("is_active") is not None else True,
         must_change_password=bool(user.get("must_change_password")),
         has_generic_name=is_generic_name(user.get("full_name")),
         preferred_language=user.get("preferred_language") or "ar",
         preferred_theme=user.get("preferred_theme") or "light",
         created_at=user.get("created_at") or "",
+        updated_at=user.get("updated_at"),
+        time_format=user.get("time_format") or "12h",
         teacher_id=user.get("teacher_id"),
         student_id=user.get("student_id"),
         parent_id=user.get("parent_id"),
@@ -623,7 +645,7 @@ class RefreshTokenRequest(BaseModel):
 
 
 @router.post("/auth/refresh", response_model=TokenResponse)
-async def refresh_token(body: RefreshTokenRequest, request: Request):
+async def refresh_token(body: RefreshTokenRequest, request: Request, response: Response):
     try:
         payload = jwt.decode(body.refresh_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
@@ -644,7 +666,7 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
     # the same stolen refresh token. Must run BEFORE the JTI claim insert
     # and BEFORE the family-revocation check so a 429 never consumes the
     # JTI and never short-circuits reuse detection.
-    from middleware.rate_limiter import rate_store as _rl_store
+    from middleware.rate_limiter import rate_store as _rl_store, rate_limit_headers
     from utils.trusted_proxy import extract_client_ip as _xip
     _refresh_key = f"refresh_user:{user_id}"
     _r_limited, _, _r_retry = await _rl_store.is_rate_limited(_refresh_key, 20, 60)
@@ -660,7 +682,7 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
         raise HTTPException(
             status_code=429,
             detail="عدد طلبات تجديد الجلسة تجاوز الحد المسموح. يرجى المحاولة لاحقاً",
-            headers={"Retry-After": str(_r_retry)},
+            headers=rate_limit_headers(20, 0, _r_retry),
         )
 
     # Phase 3 (audit Open Question 5): refresh-token family check. If the
@@ -931,6 +953,7 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
     )
 
     from engines.name_validation import is_generic_name
+    attach_image_access_cookie(response, user)
     user_response = UserResponse(
         id=user_id,
         email=user["email"],
@@ -939,13 +962,15 @@ async def refresh_token(body: RefreshTokenRequest, request: Request):
         role=UserRole(user["role"]),
         tenant_id=user.get("tenant_id"),
         phone=user.get("phone"),
-        avatar_url=user.get("avatar_url"),
+        avatar_url=signed_image_url("avatar", user_id, user.get("avatar_url")),
         is_active=user.get("is_active") if user.get("is_active") is not None else True,
         must_change_password=bool(user.get("must_change_password")),
         has_generic_name=is_generic_name(user.get("full_name")),
         preferred_language=user.get("preferred_language") or "ar",
         preferred_theme=user.get("preferred_theme") or "light",
         created_at=user.get("created_at") or "",
+        updated_at=user.get("updated_at"),
+        time_format=user.get("time_format") or "12h",
         teacher_id=user.get("teacher_id"),
         student_id=user.get("student_id"),
         parent_id=user.get("parent_id"),
@@ -1061,7 +1086,7 @@ async def logout(
     return {"message": "تم تسجيل الخروج بنجاح"}
 
 @router.get("/auth/me", response_model=UserResponse)
-async def get_me(request: Request, current_user: dict = Depends(get_current_user)):
+async def get_me(request: Request, response: Response, current_user: dict = Depends(get_current_user)):
     # SECURITY (task #483): per-identity inner rate limit on the auth
     # bootstrap endpoint. The outer per-IP cap in RATE_LIMITS bounds a
     # single source; this bound applies to an attacker rotating IPs while
@@ -1096,6 +1121,7 @@ async def get_me(request: Request, current_user: dict = Depends(get_current_user
         school = await gd_find_one(db.session, "schools", {"id": tenant_id})
         if school:
             tenant_name = school.get("name_ar") or school.get("name") or school.get("name_en")
+    attach_image_access_cookie(response, current_user)
     return UserResponse(
         id=current_user["id"],
         email=current_user["email"],
@@ -1106,13 +1132,15 @@ async def get_me(request: Request, current_user: dict = Depends(get_current_user
         tenant_id=tenant_id,
         tenant_name=tenant_name,
         phone=current_user.get("phone"),
-        avatar_url=current_user.get("avatar_url"),
+        avatar_url=signed_image_url("avatar", current_user["id"], current_user.get("avatar_url")),
         is_active=current_user.get("is_active") if current_user.get("is_active") is not None else True,
         must_change_password=bool(current_user.get("must_change_password")),
         has_generic_name=is_generic_name(current_user.get("full_name")),
         preferred_language=current_user.get("preferred_language") or "ar",
         preferred_theme=current_user.get("preferred_theme") or "light",
         created_at=current_user.get("created_at") or "",
+        updated_at=_iso(current_user.get("updated_at")),
+        time_format=current_user.get("time_format") or "12h",
         teacher_id=current_user.get("teacher_id"),
         student_id=current_user.get("student_id"),
         parent_id=current_user.get("parent_id"),
@@ -1457,7 +1485,9 @@ async def forgot_password(request: ForgotPasswordRequest):
         })
 
         from engines.email_service import send_password_reset_email
-        send_password_reset_email(
+        from services.email_client import send_email_off_loop
+        await send_email_off_loop(
+            send_password_reset_email,
             to_email=request.email,
             user_name=user.get("full_name", ""),
             reset_token=token,
@@ -1506,17 +1536,34 @@ async def reset_password(request: ResetPasswordRequest):
     # so two distinct tokens never share a bucket. Token-prefix keys would
     # alias every JWT under a near-constant header and globally throttle
     # password resets.
+    from middleware.rate_limiter import rate_limit_headers
     token_id = payload.get("jti") or _token_hash(request.token)
     token_key = f"reset_password_token:{token_id}"
-    limited, _, _ = await rate_store.is_rate_limited(token_key, 10, 3600)
+    limited, _, _retry = await rate_store.is_rate_limited(token_key, 10, 3600)
     if limited:
-        raise HTTPException(status_code=429, detail="عدد المحاولات تجاوز الحد المسموح. يرجى المحاولة لاحقاً")
+        logging.getLogger("nassaq.ratelimit").warning(
+            "rate_limit_denied scope=reset_token path=/api/auth/reset-password "
+            "sub=%s limit=10 window=3600s retry_after=%ss", user_id, _retry,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="عدد المحاولات تجاوز الحد المسموح. يرجى المحاولة لاحقاً",
+            headers=rate_limit_headers(10, 0, _retry),
+        )
     # Per-identity bucket — caps total reset traffic per victim across
     # arbitrarily many distinct tokens.
     identity_key = f"reset_password_user:{user_id}"
-    limited, _, _ = await rate_store.is_rate_limited(identity_key, 10, 3600)
+    limited, _, _retry = await rate_store.is_rate_limited(identity_key, 10, 3600)
     if limited:
-        raise HTTPException(status_code=429, detail="عدد المحاولات تجاوز الحد المسموح. يرجى المحاولة لاحقاً")
+        logging.getLogger("nassaq.ratelimit").warning(
+            "rate_limit_denied scope=reset_identity path=/api/auth/reset-password "
+            "sub=%s limit=10 window=3600s retry_after=%ss", user_id, _retry,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="عدد المحاولات تجاوز الحد المسموح. يرجى المحاولة لاحقاً",
+            headers=rate_limit_headers(10, 0, _retry),
+        )
     user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=400, detail="رابط إعادة التعيين غير صالح")

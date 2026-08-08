@@ -95,6 +95,11 @@ export function useSchoolSettings() {
   // نتمييز فشل الشبكة عن "صفر فعلي" حتى لا يظهر "0 إسناد" بعد فشل الجلب.
   const [classAssignmentsError, setClassAssignmentsError] = useState(false);
   const [draggingClass, setDraggingClass] = useState(null);
+  // طلب اختيار مادة: يُفتح عندما يتعذّر على الخادم اختيار مادة تلقائيًا
+  // لزوج (معلم، فصل) — يعرض المواد المرشّحة ليختار المدير بدل رسالة خطأ
+  // مسدودة. القيمة: { teacherId, classId, teacherName, className, message, candidates }
+  const [subjectPickerRequest, setSubjectPickerRequest] = useState(null);
+  const [subjectPickerSaving, setSubjectPickerSaving] = useState(false);
 
   const [showEditSchool, setShowEditSchool] = useState(false);
   const [showBreakModal, setShowBreakModal] = useState(false);
@@ -443,7 +448,10 @@ export function useSchoolSettings() {
         subject_id: subjectToAssign.id,
         school_id: schoolId
       });
-      const realId = response.data?.id || response.data?.assignment_id || tempId;
+      // الخادم يعيد { message, assignment: { id, ... } } — قراءة response.data.id
+      // وحدها كانت تُبقي المعرّف المؤقّت، فيفشل الحذف لاحقًا (DELETE على temp-…)
+      // ويختفي الإسناد من الواجهة دون حذفه فعليًا.
+      const realId = response.data?.assignment?.id || response.data?.id || response.data?.assignment_id || tempId;
       setAssignments(prev => prev.map(a => a.id === tempId ? { ...a, id: realId, _optimistic: false } : a));
       toast.success(`✓ إسناد "${subjectToAssign.name_ar}" إلى "${teacher.full_name || teacher.name}"`);
     } catch (error) {
@@ -772,25 +780,57 @@ export function useSchoolSettings() {
     }
   };
 
-  const handleCreateClassAssignment = async (teacherId, classId) => {
+  const handleCreateClassAssignment = async (teacherId, classId, subjectId = null) => {
     try {
       await api.post('/teacher-class-assignments', {
         teacher_id: teacherId,
-        class_id: classId
+        class_id: classId,
+        ...(subjectId ? { subject_id: subjectId } : {}),
       });
       // Re-read the canonical set instead of trusting an optimistic append —
       // the backend auto-resolves the subject and may dedupe the pairing.
       await loadClassAssignments();
       toast.success('تم إسناد الفصل للمعلم بنجاح');
+      return true;
     } catch (error) {
-      // Class-only assignment couldn't auto-resolve a subject for this pairing.
-      // Surface the actionable backend message via NassaqAlertDialog.
+      // Class-only assignment couldn't auto-resolve a subject for this pairing
+      // (no curriculum + several candidate subjects, or none derivable from the
+      // teacher record). Offer the candidates so the principal picks one here
+      // instead of being bounced to another tab.
       const detail = error?.response?.data?.detail;
       if (error?.response?.status === 409 && detail?.code === 'subject_required') {
+        const candidates = Array.isArray(detail.candidates) ? detail.candidates : [];
+        if (candidates.length > 0 && !subjectId) {
+          setSubjectPickerRequest({
+            teacherId,
+            classId,
+            teacherName: detail.teacher_name || '',
+            className: detail.class_name || '',
+            message: detail.message || '',
+            candidates,
+          });
+          return false;
+        }
         nassaqError(detail.message || 'يرجى إسناد مادة مناسبة للمعلم أولًا.');
-        return;
+        return false;
       }
       nassaqError(getApiErrorMessage(error) || 'فشل في إنشاء الإسناد');
+      return false;
+    }
+  };
+
+  const cancelSubjectPicker = () => setSubjectPickerRequest(null);
+
+  const confirmSubjectPicker = async (subjectId) => {
+    if (!subjectPickerRequest || !subjectId) return;
+    setSubjectPickerSaving(true);
+    try {
+      const ok = await handleCreateClassAssignment(
+        subjectPickerRequest.teacherId, subjectPickerRequest.classId, subjectId,
+      );
+      if (ok) setSubjectPickerRequest(null);
+    } finally {
+      setSubjectPickerSaving(false);
     }
   };
 
@@ -1035,13 +1075,13 @@ export function useSchoolSettings() {
 
     const sub = scheduleSubTabByCategory[category];
     if (sub) {
-      navigate(`/school/schedule?tab=settings&sub=${sub}`);
+      navigate(`/principal/schedule?tab=settings&sub=${sub}`);
     } else if (academicSectionCategories.has(category)) {
-      navigate('/school/settings?section=academic');
+      navigate('/principal/settings?section=academic');
     } else {
       // فئة غير معروفة — نرجع المستخدم إلى صفحة الإعدادات العامة دون
       // اختيار تبويب فرعي حتى لا نُحوِّله إلى تبويب لا علاقة له بالمشكلة.
-      navigate('/school/settings');
+      navigate('/principal/settings');
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1086,6 +1126,7 @@ export function useSchoolSettings() {
     handleAddBreak, handleEditBreak, handleDeleteBreak, handleSaveBreak,
     handleAddUnavailability, handleSaveUnavailability, handleDeleteUnavailability, handleOpenNoorImport,
     loadClassAssignments, handleCreateClassAssignment, handleDeleteClassAssignment,
+    subjectPickerRequest, subjectPickerSaving, cancelSubjectPicker, confirmSubjectPicker,
     toggleStageExpand, toggleTrackExpand, toggleGradeExpand,
     navigateToFix, setAssignments,
   };

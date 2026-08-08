@@ -26,6 +26,18 @@ jest.mock('../../ui/sheet', () => {
   };
 });
 
+// EditUserSheet now calls useNassaqAlert() — stub the hook so the test can
+// render without mounting the full NassaqAlertProvider tree.
+jest.mock('../../ui/NassaqAlertDialog', () => ({
+  useNassaqAlert: () => ({
+    nassaqError: jest.fn(),
+    nassaqSuccess: jest.fn(),
+    nassaqInfo: jest.fn(),
+    nassaqWarning: jest.fn(),
+    nassaqConfirm: jest.fn(),
+  }),
+}));
+
 // Native <select> stand-in: Radix Select relies on pointer events jsdom does
 // not implement. Render each SelectItem as an <option> so the school select
 // can be driven with fireEvent.change.

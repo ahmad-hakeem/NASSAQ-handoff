@@ -65,6 +65,10 @@ const PATH_CONTEXT_RULES = [
   { path: '/principal/dashboard', context: 'principal_dashboard', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/principal/users-management', context: 'users_management', category: 'guidance', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/principal/communication', context: 'communication', category: 'guidance', animLevel: ANIMATION_LEVELS.IDLE },
+  // Principal route audit 2026-07-28: canonical leadership URLs under
+  // /principal/* — mirrors of the legacy /school keys below.
+  { path: '/principal/settings', context: 'settings', category: 'guidance', animLevel: ANIMATION_LEVELS.IDLE },
+  { path: '/principal/schedule', context: 'schedule', category: 'teaching', animLevel: ANIMATION_LEVELS.IDLE },
 
   { path: '/school', exact: true, context: 'school_dashboard', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },
   { path: '/school/dashboard', context: 'school_dashboard', category: 'analysis', animLevel: ANIMATION_LEVELS.IDLE },

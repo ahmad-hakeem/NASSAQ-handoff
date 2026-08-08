@@ -318,13 +318,16 @@ beforeEach(() => {
 });
 
 describe('AccountSettingsPage — Task #254 workspace-hub e2e render', () => {
-  test('IT user: sidebar entry "itHubSection" appears in the section nav', async () => {
+  test('IT user: sidebar entry "itWorkspaceSection" appears in the section nav', async () => {
+    // 2026-05-18: the standalone `workspace-hub` entry (itHubSection) was
+    // removed — hub cards render inline under the unified `workspace`
+    // (itWorkspaceSection) tab.
     render(<AccountSettingsPage />);
     // Wait for the page to mount + initial fetches to settle.
     await waitFor(() => expect(mockApiGet).toHaveBeenCalled());
     // Section labels come from t(key); with the identity-t() mock the
     // label renders as the literal i18n key, which is unique per section.
-    expect(screen.getByText('itHubSection')).toBeInTheDocument();
+    expect(screen.getByText('itWorkspaceSection')).toBeInTheDocument();
   });
 
   test.each([
@@ -340,7 +343,7 @@ describe('AccountSettingsPage — Task #254 workspace-hub e2e render', () => {
     });
     render(<AccountSettingsPage />);
     await waitFor(() => expect(mockApiGet).toHaveBeenCalled());
-    expect(screen.queryByText('itHubSection')).toBeNull();
+    expect(screen.queryByText('itWorkspaceSection')).toBeNull();
     // Non-IT must never trigger the hub aggregator's lifecycle fetch.
     expect(mockApiGet).not.toHaveBeenCalledWith(
       '/independent-teacher/workspace/lifecycle',

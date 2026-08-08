@@ -24,6 +24,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 BASE_URL = os.environ.get("TEST_BASE_URL", "http://localhost:8000")
 API = f"{BASE_URL}/api"
 
+# Live-server integration script: only meaningful against an explicitly
+# provided running backend — the localhost:8000 fallback must not be trusted
+# in the CI gate (no server there). See docs/ci/quarantine.md.
+_live_server_skip = pytest.mark.skipif(
+    not os.environ.get("TEST_BASE_URL", "").startswith(("http://", "https://")),
+    reason="live-server integration script: requires TEST_BASE_URL pointing "
+           "at a running, seeded backend (docs/ci/quarantine.md)",
+)
+
 ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "zalat@nassaqapp.com")
 ADMIN_PASSWORD = os.environ.get(
     "TEST_ADMIN_PASSWORD",
@@ -37,7 +46,7 @@ _teacher_id = ""
 _class_id = ""
 _admin_token = ""
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = [pytest.mark.asyncio(loop_scope="session"), _live_server_skip]
 
 
 @pytest.fixture(scope="session")

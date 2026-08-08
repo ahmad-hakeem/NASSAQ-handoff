@@ -19,7 +19,7 @@ from engines.smart_scheduling_engine import (
     SmartSchedulingEngine,
 )
 from engines.sql_utils import gd_insert, gd_find_one, gd_update_many
-from backend.routes._publish_gate import assert_publishable
+from routes._publish_gate import assert_publishable
 
 
 # ---------------------------------------------------------------------------
@@ -382,17 +382,18 @@ async def test_publish_endpoint_blocks_when_assert_publishable_raises(
     await db.session.commit()
 
     r = await client.post(
-        f"/principal/timetable/version/{tt_id}/publish",
+        f"/smart-scheduling/timetable/{tt_id}/publish",
         headers=school_principal_headers,
     )
     assert r.status_code == 409, r.text
     body = r.json()
-    # The app's StarletteHTTPException handler wraps the detail in an
-    # envelope: {"success": False, "error": {"code": "HTTP_409", "message": str(detail)}}
+    # The app's StarletteHTTPException handler passes the structured
+    # detail through: {"success": False, "error": {"code": "PUBLISH_BLOCKED",
+    # "detail": {..., "violations": [...]}, ...}}
     err = body.get("error") if isinstance(body, dict) else None
     assert err is not None
-    assert "PUBLISH_BLOCKED" in err.get("message", "")
-    assert "teacher_overlap" in err.get("message", "")
+    assert err.get("code") == "PUBLISH_BLOCKED"
+    assert "teacher_overlap" in r.text  # violation constraint key present
 
 
 async def test_publish_endpoint_succeeds_when_no_blocking_violations(
@@ -411,7 +412,7 @@ async def test_publish_endpoint_succeeds_when_no_blocking_violations(
     await db.session.commit()
 
     r = await client.post(
-        f"/principal/timetable/version/{tt_id}/publish",
+        f"/smart-scheduling/timetable/{tt_id}/publish",
         headers=school_principal_headers,
     )
     assert r.status_code == 200, r.text
@@ -440,7 +441,7 @@ async def test_publish_endpoint_uses_same_gate_logic_as_validate_before_publish(
     )
 
     r = await client.post(
-        f"/principal/timetable/version/{tt_id}/publish",
+        f"/smart-scheduling/timetable/{tt_id}/publish",
         headers=school_principal_headers,
     )
     endpoint_blocked = r.status_code == 409

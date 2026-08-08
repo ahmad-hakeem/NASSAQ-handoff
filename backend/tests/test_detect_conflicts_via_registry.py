@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.engines.smart_scheduling_engine import (
+from engines.smart_scheduling_engine import (
     AcademicDemand,
     ConflictType,
     ResourceAvailability,

@@ -5,7 +5,8 @@
  * `buildAlertRouteMap(isTeacher)`. Teachers / independent teachers must land on
  * their own self-scoping pages (/teacher/attendance, /teacher/behavior); the
  * admin attendance/behaviour pages would 403 their data calls. Admins /
- * principals keep the admin pages (/admin/attendance, /admin/behaviour).
+ * principals use the canonical leadership pages (/principal/attendance;
+ * behaviour keeps its legacy key — no leadership behaviour page exists).
  *
  * If a future change silently re-hardcodes an admin route here, teachers would
  * be sent to a page that 403s its data — this test catches that.
@@ -27,26 +28,29 @@ describe('buildAlertRouteMap — role-aware AI Insights alert fallback', () => {
     expect(map.behaviour).toBe('/teacher/behavior');
   });
 
-  test('non-teacher (admin/principal) scope routes to admin pages', () => {
+  test('non-teacher (admin/principal) scope routes to canonical principal pages', () => {
     const map = buildAlertRouteMap(false);
-    expect(map.attendance).toBe('/admin/attendance');
-    expect(map.behavior).toBe('/admin/behaviour');
-    expect(map.behaviour).toBe('/admin/behaviour');
+    expect(map.attendance).toBe('/principal/attendance');
+    // Leadership has no behaviour page — /admin/behaviour was never a
+    // registered route (catch-all bounced to the homepage). Conduct is
+    // reviewed from the students page.
+    expect(map.behavior).toBe('/principal/students');
+    expect(map.behaviour).toBe('/principal/students');
   });
 
-  test('defaults to the admin (non-teacher) routes when called with no arg', () => {
+  test('defaults to the leadership (non-teacher) routes when called with no arg', () => {
     const map = buildAlertRouteMap();
-    expect(map.attendance).toBe('/admin/attendance');
-    expect(map.behaviour).toBe('/admin/behaviour');
+    expect(map.attendance).toBe('/principal/attendance');
+    expect(map.behaviour).toBe('/principal/students');
   });
 
   test('non-role-gated categories are stable across roles', () => {
     const teacherMap = buildAlertRouteMap(true);
     const adminMap = buildAlertRouteMap(false);
     for (const map of [teacherMap, adminMap]) {
-      expect(map.academic).toBe('/admin/students');
-      expect(map.teacher).toBe('/admin/teacher-attendance');
-      expect(map.schedule).toBe('/school/schedule');
+      expect(map.academic).toBe('/principal/students');
+      expect(map.teacher).toBe('/principal/teacher-attendance');
+      expect(map.schedule).toBe('/principal/schedule');
       expect(map.performance).toBe('/principal/ai-insights');
     }
   });
@@ -66,9 +70,9 @@ describe('withAlertAttendanceContext — Smart Alerts attendance marker', () => 
     expect(out).toContain(marker);
   });
 
-  test('leaves non-teacher (admin) attendance routes untouched', () => {
-    expect(withAlertAttendanceContext('/admin/attendance', 'attendance', false))
-      .toBe('/admin/attendance');
+  test('leaves non-teacher (leadership) attendance routes untouched', () => {
+    expect(withAlertAttendanceContext('/principal/attendance', 'attendance', false))
+      .toBe('/principal/attendance');
   });
 
   test('does not tag non-attendance categories', () => {
@@ -94,8 +98,8 @@ describe('AI Insights attendance card — composed navigation', () => {
     expect(cardRoute(true)).toBe(`/teacher/attendance?${ALERT_CONTEXT_PARAM}=${ALERT_CONTEXT_VALUE}`);
   });
 
-  test('admin / principal keeps the admin attendance route untouched', () => {
-    expect(cardRoute(false)).toBe('/admin/attendance');
+  test('admin / principal keeps the canonical attendance route untouched', () => {
+    expect(cardRoute(false)).toBe('/principal/attendance');
   });
 });
 
@@ -114,9 +118,9 @@ describe('buildKpiCardRoute — role-aware AI Insights Quick Stats cards', () =>
 
   test('school leadership drills into the users/attendance management pages', () => {
     const opts = { isTeacher: false, isPlatformAdmin: false };
-    expect(buildKpiCardRoute('students', opts)).toBe('/admin/users-management');
-    expect(buildKpiCardRoute('teachers', opts)).toBe('/admin/users-management?filter=teachers');
-    expect(buildKpiCardRoute('attendance', opts)).toBe('/admin/attendance');
+    expect(buildKpiCardRoute('students', opts)).toBe('/principal/users-management');
+    expect(buildKpiCardRoute('teachers', opts)).toBe('/principal/users-management?filter=teachers');
+    expect(buildKpiCardRoute('attendance', opts)).toBe('/principal/attendance');
   });
 
   test('teacher self-scopes attendance and has no roster drill-down', () => {
@@ -130,6 +134,6 @@ describe('buildKpiCardRoute — role-aware AI Insights Quick Stats cards', () =>
 
   test('unknown card keys and missing options resolve to null', () => {
     expect(buildKpiCardRoute('mystery', { isTeacher: false, isPlatformAdmin: false })).toBeNull();
-    expect(buildKpiCardRoute('students')).toBe('/admin/users-management');
+    expect(buildKpiCardRoute('students')).toBe('/principal/users-management');
   });
 });

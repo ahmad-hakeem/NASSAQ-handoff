@@ -1,14 +1,14 @@
 """Task 2 — core hard-constraint validators tests."""
 
-from backend.engines.hard_constraints.validators import (
+from engines.hard_constraints.validators import (
     class_overlap,
     daily_period_limit,
     room_overlap,
     subject_weekly_periods,
     teacher_overlap,
 )
-from backend.engines.hard_constraints.types import ConstraintContext
-from backend.engines.smart_scheduling_engine import ConflictSeverity
+from engines.hard_constraints.types import ConstraintContext
+from engines.smart_scheduling_engine import ConflictSeverity
 
 
 def _ctx(sessions=None, demands=None, settings=None):

@@ -315,12 +315,15 @@ export const Sidebar = ({ children }) => {
     const SCHOOL_ROLES = ['school_principal', 'school_admin', 'school_sub_admin'];
     const SCHOOL_PRINCIPAL_ROLES = ['school_principal', 'school_admin'];
     const schoolItems = [
+      // Principal route audit 2026-07-28: every school-leadership sidebar
+      // entry uses the canonical /principal namespace (the legacy /admin and
+      // /school variants are redirect aliases in appRoutes.js).
       { icon: LayoutDashboard, label: t('commandCenter2'), href: '/principal', roles: SCHOOL_ROLES },
-      { icon: Calendar, label: t('schoolSchedule'), href: '/school/schedule', roles: SCHOOL_ROLES },
-      { icon: Users, label: t('usersClasses'), href: '/admin/users-management', roles: SCHOOL_ROLES },
-      { icon: CalendarCheck, label: t('staffAttendance'), href: '/admin/teacher-attendance', roles: SCHOOL_ROLES },
+      { icon: Calendar, label: t('schoolSchedule'), href: '/principal/schedule', roles: SCHOOL_ROLES },
+      { icon: Users, label: t('usersClasses'), href: '/principal/users-management', roles: SCHOOL_ROLES },
+      { icon: CalendarCheck, label: t('staffAttendance'), href: '/principal/teacher-attendance', roles: SCHOOL_ROLES },
       // 5. Assessments & Grades Management — TEMPORARILY HIDDEN (module under maintenance).
-      { icon: Settings, label: t('schoolSettings'), href: '/school/settings', roles: SCHOOL_PRINCIPAL_ROLES },
+      { icon: Settings, label: t('schoolSettings'), href: '/principal/settings', roles: SCHOOL_PRINCIPAL_ROLES },
       { icon: Bell, label: t('communicationCenter'), href: '/principal/communication', roles: SCHOOL_ROLES },
       { icon: Network, label: t('aiInsights'), href: '/principal/ai-insights', roles: SCHOOL_ROLES },
       { icon: UserCog, label: t('accountSettings'), href: '/account/settings', roles: SCHOOL_ROLES },

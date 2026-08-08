@@ -205,12 +205,31 @@ async def test_public_hakim_chat_json_returns_english_safe_error_when_locale_en(
 
 
 # ---------------------------------------------------------------------------
-# 3. Streaming route — denied -> safe-error NDJSON + done + Retry-After
+# 3. Streaming route — denied -> safe-error SSE event + done + Retry-After
 # ---------------------------------------------------------------------------
 
 
-def _parse_ndjson(body: str) -> list[dict]:
-    return [json.loads(line) for line in body.splitlines() if line.strip()]
+def _parse_stream_events(body: str) -> list[dict]:
+    """Parse the public stream wire format.
+
+    The route deliberately emits SSE (`text/event-stream`, one
+    `data: <json>` line per event, blank-line terminated) instead of
+    NDJSON so intermediary proxies pass chunks through unbuffered —
+    see the wire-format comment in ai_routes_mod. Each `data:` payload
+    is still a single JSON event object.
+    """
+    events = []
+    for line in body.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            # Per the SSE spec, anything that is not a `data:` field
+            # (blank separators, `: comments`, `event:`/`retry:` fields)
+            # is framing, not payload — skip it.
+            continue
+        payload = line[len("data:"):].strip()
+        if payload:
+            events.append(json.loads(payload))
+    return events
 
 
 @pytest.mark.asyncio
@@ -224,8 +243,8 @@ async def test_public_hakim_chat_stream_denied_emits_safe_error_and_retry_after(
         )
     assert resp.status_code == 200
     assert resp.headers.get("retry-after") == "17"
-    assert resp.headers.get("content-type", "").startswith("application/x-ndjson")
-    events = _parse_ndjson(resp.text)
+    assert resp.headers.get("content-type", "").startswith("text/event-stream")
+    events = _parse_stream_events(resp.text)
     assert len(events) == 2
     assert events[0] == {
         "type": "chunk",
@@ -310,7 +329,7 @@ async def test_public_hakim_chat_stream_truncates_at_chunk_cap(client, monkeypat
         json={"message": "hi", "locale": "en"},
     )
     assert resp.status_code == 200
-    events = _parse_ndjson(resp.text)
+    events = _parse_stream_events(resp.text)
     chunk_events = [e for e in events if e.get("type") == "chunk"]
     done_events = [e for e in events if e.get("type") == "done"]
     assert len(chunk_events) == 3, events
@@ -363,7 +382,7 @@ async def test_public_hakim_chat_stream_truncates_at_duration_cap(client, monkey
         json={"message": "hi", "locale": "en"},
     )
     assert resp.status_code == 200
-    events = _parse_ndjson(resp.text)
+    events = _parse_stream_events(resp.text)
     chunk_events = [e for e in events if e.get("type") == "chunk"]
     done_events = [e for e in events if e.get("type") == "done"]
     # The duration guard fires inside the loop *before* yielding the

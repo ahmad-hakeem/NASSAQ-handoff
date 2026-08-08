@@ -95,12 +95,19 @@ export function AcademicStructureContent() {
     try {
       const res = await api.get('/academic-years');
       setAcademicYears(res.data);
-      if (res.data.length > 0 && !selectedYear) {
-        const current = res.data.find(y => y.is_current) || res.data[0];
-        setSelectedYear(current);
-      }
+      // Reconcile the selection against the fresh list. Functional update so
+      // this callback doesn't depend on selectedYear — that identity change
+      // used to re-run the init effect and fire /academic-years +
+      // /academic-structure/overview twice per page load. Keep a selection
+      // that still exists (using the fresh row so renames propagate), else
+      // fall back to the current/first year, else clear it.
+      setSelectedYear(prev => {
+        const match = prev && res.data.find(y => y.id === prev.id);
+        if (match) return match;
+        return res.data.find(y => y.is_current) || res.data[0] || null;
+      });
     } catch (e) { console.error('Years error:', e); }
-  }, [api, selectedYear]);
+  }, [api]);
 
   const fetchYearData = useCallback(async (yearId) => {
     if (!yearId) return;
@@ -306,9 +313,11 @@ export function AcademicStructureContent() {
     nassaqConfirm(t('confirmDeleteYear'), async () => {
       try {
         await api.delete(`/academic-years/${yearId}`);
+        // fetchYears reconciles the selection itself: the deleted year is no
+        // longer in the list, so a replacement (or null) is picked there.
+        // Clearing it here afterwards would wipe that replacement.
         await fetchYears();
         await fetchOverview();
-        if (selectedYear?.id === yearId) setSelectedYear(null);
         if (editingItem?.id === yearId) {
           setShowYearDialog(false);
           setEditingItem(null);

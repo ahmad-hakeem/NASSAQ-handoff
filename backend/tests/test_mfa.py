@@ -37,6 +37,15 @@ from middleware.rate_limiter import rate_store  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
+def _enforce_mfa_for_module(enforce_mfa):
+    """This module asserts the ENFORCED MFA contracts (login tiers, step-up
+    factor lists, recent-MFA gates on sensitive routes). The CI gate runs
+    with the kill-switch engaged (MFA_ENFORCEMENT_DISABLED=true), so opt the
+    whole module back in via the conftest `enforce_mfa` fixture."""
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_store():
     """Per-IP /auth/login is capped at 10/60s. The MFA suite issues many
     logins from 127.0.0.1; without resetting between tests later cases hit
@@ -78,7 +87,18 @@ def _err_code(response) -> str | None:
     return None
 
 
-async def _mk_login_user(role: UserRole, tenant_id: str, *, mfa_required: bool = False) -> dict:
+async def _mk_login_user(
+    role: UserRole, tenant_id: str, *, mfa_required: bool = False,
+    enrolled: bool = False,
+) -> dict:
+    """Insert a login-capable user row.
+
+    ``enrolled=True`` stamps ``mfa_enrolled_at`` so the Task #443
+    enrollment gate in ``get_current_user`` lets the token through and
+    the more specific step-up envelopes (MFA_STEPUP_REQUIRED /
+    MFA_PASSKEY_REQUIRED / MFA_RESTORE_REQUIRED) under test can fire.
+    Tests that exercise the *enrollment* gate itself keep the default.
+    """
     uid = str(uuid.uuid4())
     user = {
         "id": uid,
@@ -90,6 +110,8 @@ async def _mk_login_user(role: UserRole, tenant_id: str, *, mfa_required: bool =
         "password_hash": hash_password(_PASS),
         "mfa_required": mfa_required,
     }
+    if enrolled:
+        user["mfa_enrolled_at"] = datetime.now(timezone.utc)
     await gd_insert(db.session, "users", user)
     return user
 
@@ -313,14 +335,18 @@ async def test_login_tier_a_principal_returns_challenge_not_tokens(client, tenan
 
 
 @pytest.mark.asyncio
-async def test_login_student_skips_mfa(client, tenant_a):
-    """Student is out-of-tier; login mints a real access token immediately."""
+async def test_login_student_disabled_platform_wide(client, tenant_a):
+    """Student login is disabled platform-wide (STUDENT_LOGIN_DISABLED in
+    dependencies.py) pending the student-account rebuild: the MFA
+    challenge is never reached and no tokens of any kind are minted."""
     user = await _mk_login_user(UserRole.STUDENT, tenant_a)
     r = await client.post("/auth/login", json={"email": user["email"], "password": _PASS})
-    assert r.status_code == 200
+    assert r.status_code == 403, r.text
     body = r.json()
-    assert body.get("access_token"), "out-of-tier role must receive an access token on login"
-    assert not body.get("mfa_required")
+    assert (body.get("error") or {}).get("code") == "STUDENT_LOGIN_DISABLED"
+    assert not body.get("access_token")
+    assert not body.get("refresh_token")
+    assert not body.get("challenge_token")
 
 
 # ---------------------------------------------------------------------------
@@ -480,7 +506,7 @@ async def test_change_password_requires_recent_mfa(client, tenant_a):
     code, which here is MFA_PASSKEY_REQUIRED (no enrolled webauthn). Either
     structured 401 satisfies the step-up enforcement contract.
     """
-    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a, enrolled=True)
     token = create_access_token({
         "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
     })  # NB: no mfa_recent_at
@@ -502,7 +528,7 @@ async def test_change_password_requires_recent_mfa(client, tenant_a):
 async def test_tier_a_without_passkey_blocked(client, tenant_a):
     """Tier-A user with a fresh mfa_recent_at but no enrolled passkey is
     still refused with MFA_PASSKEY_REQUIRED."""
-    user = await _mk_login_user(UserRole.SCHOOL_ADMIN, tenant_a)
+    user = await _mk_login_user(UserRole.SCHOOL_ADMIN, tenant_a, enrolled=True)
     now = int(datetime.now(timezone.utc).timestamp())
     token = create_access_token({
         "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
@@ -521,7 +547,7 @@ async def test_tier_a_without_passkey_blocked(client, tenant_a):
 async def test_tier_a_must_restore_factor_blocks(client, tenant_a):
     """`mfa_must_restore_factor=True` on a Tier-A user → MFA_RESTORE_REQUIRED
     even with a passkey enrolled and a fresh mfa_recent_at."""
-    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a, enrolled=True)
     await _seed_webauthn_factor(user["id"])
     # Set the restore flag directly.
     from engines.sql_utils import gd_update_one
@@ -553,7 +579,7 @@ async def test_change_password_restore_required_does_not_mutate_or_audit(
     """
     from dependencies import verify_password as _verify
     from engines.sql_utils import gd_update_one, gd_find as _gd_find
-    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a, enrolled=True)
     await _seed_webauthn_factor(user["id"])
     await gd_update_one(
         db.session, "users", {"id": user["id"]},
@@ -614,7 +640,7 @@ async def test_change_password_succeeds_after_restore_factor_cleared(
     """
     from dependencies import verify_password as _verify
     from engines.sql_utils import gd_update_one
-    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a, enrolled=True)
     await _seed_webauthn_factor(user["id"])
     # Step 1 — recovery-code session state.
     await gd_update_one(
@@ -764,7 +790,7 @@ async def test_stepup_start_enrolled_parent_excludes_email_otp(client, tenant_a)
 async def test_role_switch_requires_recent_mfa(client, tenant_a):
     """Sensitive route #2: /role-switch/switch is gated by require_recent_mfa
     even for platform admins. Stale token → structured 401."""
-    user = await _mk_login_user(UserRole.PLATFORM_ADMIN, tenant_a)
+    user = await _mk_login_user(UserRole.PLATFORM_ADMIN, tenant_a, enrolled=True)
     token = create_access_token({
         "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
     })  # no mfa_recent_at
@@ -781,7 +807,7 @@ async def test_role_switch_requires_recent_mfa(client, tenant_a):
 async def test_end_all_sessions_requires_recent_mfa(client, tenant_a):
     """Sensitive route #3: /security/end-all-sessions (platform-admin only)
     must refuse without a fresh mfa_recent_at."""
-    user = await _mk_login_user(UserRole.PLATFORM_ADMIN, tenant_a)
+    user = await _mk_login_user(UserRole.PLATFORM_ADMIN, tenant_a, enrolled=True)
     token = create_access_token({
         "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
     })
@@ -800,7 +826,7 @@ async def test_change_password_principal_succeeds_with_fresh_mfa_and_passkey(cli
     password's hash must verify and the old password's hash must not.
     """
     from dependencies import verify_password as _verify
-    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a, enrolled=True)
     await _seed_webauthn_factor(user["id"])
     now = int(datetime.now(timezone.utc).timestamp())
     token = create_access_token({
@@ -827,7 +853,7 @@ async def test_change_password_principal_wrong_current_returns_400_and_does_not_
     stored password hash must remain unchanged.
     """
     from dependencies import verify_password as _verify
-    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a, enrolled=True)
     await _seed_webauthn_factor(user["id"])
     now = int(datetime.now(timezone.utc).timestamp())
     token = create_access_token({
@@ -855,7 +881,7 @@ async def test_change_password_stale_mfa_does_not_mutate_password(client, tenant
     future regression cannot silently advance the request past the gate.
     """
     from dependencies import verify_password as _verify
-    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
+    user = await _mk_login_user(UserRole.SCHOOL_PRINCIPAL, tenant_a, enrolled=True)
     token = create_access_token({
         "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
     })  # no mfa_recent_at
@@ -873,7 +899,7 @@ async def test_change_password_stale_mfa_does_not_mutate_password(client, tenant
 async def test_change_password_passes_with_recent_mfa_for_tier_b(client, tenant_a):
     """Tier-B user with a fresh mfa_recent_at can change password (no
     Tier-A passkey requirement)."""
-    user = await _mk_login_user(UserRole.TEACHER, tenant_a)
+    user = await _mk_login_user(UserRole.TEACHER, tenant_a, enrolled=True)
     now = int(datetime.now(timezone.utc).timestamp())
     token = create_access_token({
         "sub": user["id"], "role": user["role"], "tenant_id": user["tenant_id"],
@@ -1131,12 +1157,13 @@ async def _seed_totp_factor(user_id: str, *, active: bool = True) -> tuple[str, 
 
 @pytest.mark.asyncio
 async def test_mfa_disable_clears_factors_and_burns_recovery_codes(client, tenant_a):
-    """Out-of-tier user (STUDENT — no mandatory MFA) disables MFA:
+    """Out-of-tier user (GATEKEEPER — no mandatory MFA; student tokens
+    are rejected platform-wide by STUDENT_LOGIN_DISABLED) disables MFA:
     every active factor row is deactivated, every unconsumed recovery
     code is burned, and the user-row flags collapse to "MFA disabled".
     Requires fresh step-up + correct password."""
     from engines.sql_utils import gd_find
-    user = await _mk_login_user(UserRole.STUDENT, tenant_a)
+    user = await _mk_login_user(UserRole.GATEKEEPER, tenant_a)
     fid, _ = await _seed_totp_factor(user["id"])
     await _seed_recovery_code(user["id"])
     await _seed_recovery_code(user["id"])
@@ -1167,8 +1194,10 @@ async def test_mfa_disable_clears_factors_and_burns_recovery_codes(client, tenan
 
 @pytest.mark.asyncio
 async def test_mfa_disable_wrong_password_returns_401_and_does_not_mutate(client, tenant_a):
-    """Wrong password → 401, factors and recovery codes intact."""
-    user = await _mk_login_user(UserRole.STUDENT, tenant_a)
+    """Wrong password → 401, factors and recovery codes intact.
+    (GATEKEEPER: out-of-tier role whose tokens are accepted — student
+    bearers 401 platform-wide, which would false-pass this assert.)"""
+    user = await _mk_login_user(UserRole.GATEKEEPER, tenant_a)
     fid, _ = await _seed_totp_factor(user["id"])
     now_ts = int(datetime.now(timezone.utc).timestamp())
     token = create_access_token({

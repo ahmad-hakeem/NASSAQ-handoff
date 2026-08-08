@@ -56,6 +56,16 @@ const CONTEXT_MAP = {
   '/principal/dashboard': 'analysis',
   '/principal/users-management': 'guidance',
   '/principal/communication': 'guidance',
+  // Principal route audit 2026-07-28: canonical leadership URLs under
+  // /principal/* — mirrors of the legacy /admin//school keys.
+  '/principal/attendance': 'analysis',
+  '/principal/students': 'guidance',
+  '/principal/classes': 'guidance',
+  '/principal/subjects': 'guidance',
+  '/principal/schedule': 'teaching',
+  '/principal/settings': 'guidance',
+  '/principal/teacher-attendance': 'analysis',
+  '/principal/standby': 'teaching',
   '/school': 'analysis',
   '/school/dashboard': 'analysis',
   '/school/schedule': 'teaching',

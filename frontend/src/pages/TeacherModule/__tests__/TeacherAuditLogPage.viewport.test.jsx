@@ -16,7 +16,7 @@ import {
   TARGET_WIDTHS,
   setViewport,
   fingerprintContainer,
-} from '../../../__tests__/mobileViewportFingerprint';
+} from '../../../testUtils/mobileViewportFingerprint';
 
 jest.mock('../../../components/layout/Sidebar', () => ({
   Sidebar: () => <div data-testid="sidebar" />,

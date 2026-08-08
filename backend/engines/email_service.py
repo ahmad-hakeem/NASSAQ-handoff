@@ -3,24 +3,49 @@ import logging
 from html import escape as _h
 import resend
 
+from services.email_client import deliver_resend_email
+
 logger = logging.getLogger("nassaq.email")
+
+from config import (
+    PublicUrlConfigError,
+    get_public_app_url,
+    is_dev_environment,
+    is_public_base_url,
+)
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 FROM_EMAIL = os.environ.get("FROM_EMAIL", "noreply@nassaqapp.com")
-APP_URL = os.environ.get("APP_URL", "")
 
 LOGO_URL = "https://customer-assets.emergentagent.com/job_f5ea20bb-5cf5-462f-a7f0-958201e27f89/artifacts/q04svb5j_Nassaq%20LinkedIn%20Logo%20White.png"
 
 
 def _get_app_url() -> str:
-    if APP_URL:
-        return APP_URL.rstrip("/")
-    domain = os.environ.get("REPLIT_DEPLOYMENT_URL") or os.environ.get("REPLIT_DEV_DOMAIN", "")
-    if domain:
-        if not domain.startswith("http"):
-            domain = f"https://{domain}"
-        return domain.rstrip("/")
-    return "http://localhost:5000"
+    """Public base URL for every recipient-facing link.
+
+    Delegates to the centralized, validated resolver in ``config``.
+    Raises :class:`PublicUrlConfigError` in non-development environments
+    when the configuration is missing or points at localhost — callers
+    that send email must go through :func:`_safe_link_base` instead so
+    the send is aborted loudly rather than crashing the request.
+    """
+    return get_public_app_url()
+
+
+def _safe_link_base(email_kind: str):
+    """Runtime safety belt: resolve the link base or abort the send.
+
+    Returns the validated base URL, or ``None`` when the configuration
+    is invalid — in which case the caller MUST NOT send the email.
+    """
+    try:
+        return _get_app_url()
+    except PublicUrlConfigError as e:
+        logger.critical(
+            f"EMAIL SEND BLOCKED ({email_kind}): recipient-facing link base is "
+            f"misconfigured — {e}"
+        )
+        return None
 
 
 def send_password_reset_email(to_email: str, user_name: str, reset_token: str) -> bool:
@@ -28,8 +53,12 @@ def send_password_reset_email(to_email: str, user_name: str, reset_token: str) -
         logger.error("RESEND_API_KEY not configured — cannot send password reset email")
         return False
 
+    base = _safe_link_base("password_reset")
+    if base is None:
+        return False
+
     resend.api_key = RESEND_API_KEY
-    reset_link = f"{_get_app_url()}/reset-password?token={reset_token}"
+    reset_link = f"{base}/reset-password?token={reset_token}"
 
     html = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -75,12 +104,12 @@ def send_password_reset_email(to_email: str, user_name: str, reset_token: str) -
 </html>"""
 
     try:
-        result = resend.Emails.send({
+        result = deliver_resend_email({
             "from": f"نَسَّق NASSAQ <{FROM_EMAIL}>",
             "to": [to_email],
             "subject": "إعادة تعيين كلمة المرور — نَسَّق",
             "html": html,
-        })
+        }, kind="password_reset")
         logger.info(f"Password reset email sent to {to_email}, id={result.get('id', 'unknown')}")
         return True
     except Exception as e:
@@ -154,12 +183,12 @@ def send_mfa_email_otp(to_email: str, user_name: str, code: str, expires_in_minu
 </html>"""
 
     try:
-        result = resend.Emails.send({
+        result = deliver_resend_email({
             "from": f"نَسَّق NASSAQ <{FROM_EMAIL}>",
             "to": [to_email],
             "subject": f"رمز التحقق: {code} — نَسَّق",
             "html": html,
-        })
+        }, kind="mfa_email_otp")
         logger.info(f"MFA OTP email sent to {to_email}, id={result.get('id', 'unknown')}")
         return True
     except Exception as e:
@@ -186,11 +215,14 @@ def send_workspace_archived_email(
         logger.warning("RESEND_API_KEY not configured — skipping workspace archived email")
         return False
 
+    base = _safe_link_base("workspace_archived")
+    if base is None:
+        return False
+
     resend.api_key = RESEND_API_KEY
     safe_name = _h(user_name or to_email, quote=True)
     safe_workspace = _h(workspace_name or "", quote=True)
     safe_deadline = _h(reactivation_deadline, quote=True)
-    base = _get_app_url()
 
     html = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -246,12 +278,12 @@ def send_workspace_archived_email(
 </html>"""
 
     try:
-        result = resend.Emails.send({
+        result = deliver_resend_email({
             "from": f"نَسَّق NASSAQ <{FROM_EMAIL}>",
             "to": [to_email],
             "subject": "تم أرشفة مساحة عملك — نَسَّق",
             "html": html,
-        })
+        }, kind="workspace_archived")
         logger.info(f"Workspace archived email sent to {to_email}, id={result.get('id', 'unknown')}")
         return True
     except Exception as e:
@@ -274,11 +306,14 @@ def send_workspace_reactivation_reminder_email(
         logger.warning("RESEND_API_KEY not configured — skipping reactivation reminder email")
         return False
 
+    base = _safe_link_base("workspace_reactivation_reminder")
+    if base is None:
+        return False
+
     resend.api_key = RESEND_API_KEY
     safe_name = _h(user_name or to_email, quote=True)
     safe_workspace = _h(workspace_name or "", quote=True)
     safe_deadline = _h(reactivation_deadline, quote=True)
-    base = _get_app_url()
     days_label = f"{int(days_left)}"
 
     html = f"""<!DOCTYPE html>
@@ -327,12 +362,12 @@ def send_workspace_reactivation_reminder_email(
 </html>"""
 
     try:
-        result = resend.Emails.send({
+        result = deliver_resend_email({
             "from": f"نَسَّق NASSAQ <{FROM_EMAIL}>",
             "to": [to_email],
             "subject": f"تذكير: تبقّى {days_label} يوم لاسترجاع مساحة عملك — نَسَّق",
             "html": html,
-        })
+        }, kind="workspace_reactivation_reminder")
         logger.info(f"Workspace reactivation reminder sent to {to_email}, id={result.get('id', 'unknown')}")
         return True
     except Exception as e:
@@ -358,10 +393,13 @@ def send_workspace_auto_export_email(
         logger.warning("RESEND_API_KEY not configured — skipping workspace auto-export email")
         return False
 
+    base = _safe_link_base("workspace_auto_export")
+    if base is None:
+        return False
+
     resend.api_key = RESEND_API_KEY
     safe_name = _h(user_name or to_email, quote=True)
     safe_workspace = _h(workspace_name or "", quote=True)
-    base = _get_app_url()
 
     html = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -412,12 +450,12 @@ def send_workspace_auto_export_email(
 </html>"""
 
     try:
-        result = resend.Emails.send({
+        result = deliver_resend_email({
             "from": f"نَسَّق NASSAQ <{FROM_EMAIL}>",
             "to": [to_email],
             "subject": "النسخة الاحتياطية الأسبوعية جاهزة — نَسَّق",
             "html": html,
-        })
+        }, kind="workspace_auto_export")
         logger.info(f"Workspace auto-export email sent to {to_email}, id={result.get('id', 'unknown')}")
         return True
     except Exception as e:
@@ -448,11 +486,12 @@ def send_workspace_erasure_final_export_email(
         logger.warning("RESEND_API_KEY not configured — skipping workspace erasure email")
         return False
 
+    # NOTE: this template intentionally embeds NO app link (the export was
+    # already downloaded in-browser), so no link-base resolution is needed.
     resend.api_key = RESEND_API_KEY
     safe_name = _h(user_name or to_email, quote=True)
     safe_workspace = _h(workspace_name or "", quote=True)
     safe_deadline = _h(erasure_deadline, quote=True)
-    base = _get_app_url()
 
     html = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -502,12 +541,12 @@ def send_workspace_erasure_final_export_email(
 </html>"""
 
     try:
-        result = resend.Emails.send({
+        result = deliver_resend_email({
             "from": f"نَسَّق NASSAQ <{FROM_EMAIL}>",
             "to": [to_email],
             "subject": "تأكيد طلب الحذف النهائي لحسابك — نَسَّق",
             "html": html,
-        })
+        }, kind="workspace_erasure_final_export")
         logger.info(f"Workspace erasure email sent to {to_email}, id={result.get('id', 'unknown')}")
         return True
     except Exception as e:
@@ -520,8 +559,12 @@ def send_admin_password_reset_notification(to_email: str, user_name: str, admin_
         logger.warning("RESEND_API_KEY not configured — skipping admin reset notification")
         return False
 
+    base = _safe_link_base("admin_password_reset_notification")
+    if base is None:
+        return False
+
     resend.api_key = RESEND_API_KEY
-    login_link = f"{_get_app_url()}/login"
+    login_link = f"{base}/login"
 
     html = f"""<!DOCTYPE html>
 <html dir="rtl" lang="ar">
@@ -561,12 +604,12 @@ def send_admin_password_reset_notification(to_email: str, user_name: str, admin_
 </html>"""
 
     try:
-        result = resend.Emails.send({
+        result = deliver_resend_email({
             "from": f"نَسَّق NASSAQ <{FROM_EMAIL}>",
             "to": [to_email],
             "subject": "تم تغيير كلمة المرور — نَسَّق",
             "html": html,
-        })
+        }, kind="admin_password_reset_notification")
         logger.info(f"Admin reset notification sent to {to_email}, id={result.get('id', 'unknown')}")
         return True
     except Exception as e:
@@ -595,6 +638,15 @@ def send_parent_invitation_email(
     """
     if not RESEND_API_KEY:
         logger.warning("RESEND_API_KEY not configured — skipping parent invitation email")
+        return False
+
+    # Runtime safety belt: the caller builds the link, but a localhost /
+    # non-public activation link must never reach a real guardian.
+    if not is_dev_environment() and not is_public_base_url(invite_link):
+        logger.critical(
+            "EMAIL SEND BLOCKED (parent_invitation): invite link is not "
+            "publicly reachable — check APP_URL/FRONTEND_URL configuration."
+        )
         return False
 
     resend.api_key = RESEND_API_KEY
@@ -649,12 +701,12 @@ def send_parent_invitation_email(
 </html>"""
 
     try:
-        result = resend.Emails.send({
+        result = deliver_resend_email({
             "from": f"نَسَّق NASSAQ <{FROM_EMAIL}>",
             "to": [to_email],
             "subject": "دعوة لتفعيل حساب ولي الأمر — نَسَّق",
             "html": html,
-        })
+        }, kind="parent_invitation")
         logger.info(f"Parent invitation email sent to {to_email}, id={result.get('id', 'unknown')}")
         return True
     except Exception as e:

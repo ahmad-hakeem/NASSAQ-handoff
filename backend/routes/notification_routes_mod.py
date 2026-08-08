@@ -1159,8 +1159,8 @@ async def create_bulk_notifications(
 async def get_my_notifications(
     notification_type: Optional[str] = None,
     read_status: Optional[bool] = None,
-    limit: int = 50,
-    skip: int = 0,
+    limit: int = Query(default=50, ge=1, le=200),
+    skip: int = Query(default=0, ge=0),
     student_id: Optional[str] = Query(default=None),
     x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(get_current_user)

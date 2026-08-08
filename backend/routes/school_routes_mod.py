@@ -69,6 +69,8 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 from shared_models import (
     SchoolCreate, SchoolResponse
 )
+from utils.avatar_image import normalize_image_field_or_400
+from utils.avatar_serving import is_internal_image_url, signed_image_url
 from utils.platform_admin_preview import assess_principal_preview_eligibility
 from utils.school_code import (
     insert_school_with_unique_code,
@@ -451,6 +453,9 @@ def _normalize_school(
 
     return {
         **s,
+        # Task #1139 — never ship the stored base64 logo inline; mint the
+        # signed cacheable URL (non-data: values pass through unchanged).
+        "logo_url": signed_image_url("logo", school_id, s.get("logo_url")),
         "name": s.get("name") or s.get("name_ar") or s.get("name_en") or "",
         "code": s.get("code") or s.get("license_number") or s.get("id") or "",
         "email": s.get("email") or "",
@@ -895,8 +900,15 @@ async def patch_school(
         if field in data:
             update_data[field] = data[field]
 
+    if "logo_url" in update_data and is_internal_image_url(update_data["logo_url"]):
+        # Echoed-back signed URL means "unchanged" — never store it.
+        update_data.pop("logo_url")
+    if "logo_url" in update_data:
+        update_data["logo_url"] = await normalize_image_field_or_400(update_data["logo_url"])
+
     await gd_update_one(db.session, "schools", {"id": school_id}, update_data)
     updated = await gd_find_one(db.session, "schools", {"id": school_id})
+    updated["logo_url"] = signed_image_url("logo", school_id, updated.get("logo_url"))
     return updated
 
 
@@ -925,10 +937,17 @@ async def update_school(
     for field in allowed_fields:
         if field in data and data[field] is not None:
             update_data[field] = data[field]
-    
+
+    if "logo_url" in update_data and is_internal_image_url(update_data["logo_url"]):
+        # Echoed-back signed URL means "unchanged" — never store it.
+        update_data.pop("logo_url")
+    if "logo_url" in update_data:
+        update_data["logo_url"] = await normalize_image_field_or_400(update_data["logo_url"])
+
     await gd_update_one(db.session, "schools", {"id": school_id}, update_data)
     
     updated_school = await gd_find_one(db.session, "schools", {"id": school_id})
+    updated_school["logo_url"] = signed_image_url("logo", school_id, updated_school.get("logo_url"))
     return updated_school
 
 

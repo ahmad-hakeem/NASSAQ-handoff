@@ -71,6 +71,22 @@ let webpackConfig = {
       },
     },
   },
+  jest: {
+    configure: (jestConfig) => {
+      // react-router-dom v7 ships a broken `main` ("./dist/main.js" does
+      // not exist) and relies on the `exports` map, which CRA's jest 27
+      // resolver does not read. Map the bare specifier to the real CJS
+      // entry so unmocked imports resolve in tests.
+      jestConfig.moduleNameMapper = {
+        '^react-router-dom$': path.resolve(
+          __dirname,
+          'node_modules/react-router-dom/dist/index.js',
+        ),
+        ...(jestConfig.moduleNameMapper || {}),
+      };
+      return jestConfig;
+    },
+  },
   webpack: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

@@ -371,6 +371,24 @@ async def can_view_class(session, current_user: dict, class_id: str) -> bool:
     user_id = current_user.get("id")
     teacher_id = current_user.get("teacher_id") or user_id
 
+    if role == UserRole.INDEPENDENT_TEACHER.value:
+        # An Independent Teacher IS their workspace: every class stored under
+        # `itw_{user_id}` belongs to them by definition. Workspace class
+        # creation does not always write a `teacher_assignments` row, so
+        # requiring one locked owners out of their own class attendance /
+        # reports. Ownership is proven by the class's workspace id, not by
+        # tenant membership in general, so this cannot widen access to
+        # another workspace's classes.
+        from auth_scope import independent_workspace_id  # local: avoid cycle
+
+        workspace_id = independent_workspace_id(current_user)
+        if workspace_id:
+            owned = await gd_find_one(
+                session, "classes", {"id": class_id, "school_id": workspace_id}
+            )
+            if owned:
+                return True
+
     if role in (UserRole.TEACHER.value, UserRole.INDEPENDENT_TEACHER.value):
         # Mirror get_teacher_allowed_class_ids(): only an ACTIVE assignment
         # grants access — a soft-revoked (is_active=False) row must stop

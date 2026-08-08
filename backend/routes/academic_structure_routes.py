@@ -721,7 +721,11 @@ async def import_calendar_ai(
         import io
         import csv
         import os
-        from openai import OpenAI
+        from services.ai_client import (
+            PURPOSE_BACKGROUND,
+            ai_chat_completion,
+            build_openai_client,
+        )
 
         text_content = ""
         if filename.endswith(".csv"):
@@ -749,7 +753,14 @@ async def import_calendar_ai(
         # Fall back to OPENAI_API_KEY for back-compat with older deployments.
         _ai_key = os.getenv("AI_INTEGRATIONS_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
         _ai_base = os.getenv("AI_INTEGRATIONS_OPENAI_BASE_URL")
-        client = OpenAI(api_key=_ai_key, base_url=_ai_base if _ai_base else None)
+        client = build_openai_client(
+            PURPOSE_BACKGROUND, api_key=_ai_key, base_url=_ai_base or None
+        )
+        if client is None:
+            raise HTTPException(
+                status_code=503,
+                detail="خدمة الذكاء الاصطناعي غير متاحة حالياً. يرجى المحاولة لاحقاً.",
+            )
         system_prompt = (
             "You are an Arabic academic calendar analyzer. "
             "Extract holidays and exam periods from the provided table data. "
@@ -762,7 +773,9 @@ async def import_calendar_ai(
         if instructions:
             user_msg += f"\n\nAdditional instructions: {instructions}"
 
-        response = client.chat.completions.create(
+        response = await ai_chat_completion(
+            client,
+            purpose=PURPOSE_BACKGROUND,
             model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -776,6 +789,14 @@ async def import_calendar_ai(
         result = json.loads(response.choices[0].message.content)
         result["message"] = f"تم تحليل الملف بنجاح. تم اكتشاف {len(result.get('holidays', []))} إجازة و{len(result.get('exam_periods', []))} فترة اختبارات."
         return result
+    except HTTPException:
+        raise
+    except AIProviderTimeout as e:
+        logger.warning(f"Calendar import AI timeout: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="خدمة الذكاء الاصطناعي بطيئة حالياً. يرجى المحاولة بعد قليل.",
+        )
     except Exception as e:
         logger.error(f"Calendar import AI error: {e}")
         raise HTTPException(status_code=500, detail="فشل في تحليل الملف. يرجى المحاولة مجدداً أو التواصل مع الدعم الفني.")

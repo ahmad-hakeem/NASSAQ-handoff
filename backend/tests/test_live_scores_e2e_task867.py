@@ -490,8 +490,10 @@ async def test_cross_tenant_followup_record_denied(client, tenant_a, tenant_b):
 
     resp = await client.get(f"/session/{session_id}/followup-record",
                             headers=foreign_headers)
-    assert resp.status_code == 403, (
-        f"Expected 403 for cross-tenant followup-record read, got {resp.status_code}"
+    # Canonical cross-tenant contract for /session/{id} routes: 404 (never
+    # 403/200) so the API does not confirm the existence of foreign rows.
+    assert resp.status_code == 404, (
+        f"Expected 404 for cross-tenant followup-record read, got {resp.status_code}"
     )
 
 
@@ -509,8 +511,10 @@ async def test_cross_tenant_commit_scores_denied(client, tenant_a, tenant_b):
 
     resp = await client.post(f"/session/{session_id}/commit-scores",
                              headers=foreign_headers)
-    assert resp.status_code == 403, (
-        f"Expected 403 for cross-tenant commit-scores, got {resp.status_code}"
+    # Canonical cross-tenant contract for /session/{id} routes: 404 (never
+    # 403/200) so the API does not confirm the existence of foreign rows.
+    assert resp.status_code == 404, (
+        f"Expected 404 for cross-tenant commit-scores, got {resp.status_code}"
     )
 
 

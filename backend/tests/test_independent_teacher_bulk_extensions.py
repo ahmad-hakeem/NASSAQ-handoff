@@ -160,7 +160,7 @@ async def test_classes_parse_returns_diagnostics(client):
 
 
 @pytest.mark.asyncio
-async def test_classes_commit_requires_recent_mfa_403(client):
+async def test_classes_commit_requires_recent_mfa_403(client, enforce_mfa):
     user = await _mk_it_workspace()
     h = _headers(user["id"], user["role"], user["tenant_id"])  # no mfa_recent_at
     rows = [{"row_number": 1, "name": "حلقة", "is_valid": True, "errors": []}]
@@ -373,7 +373,7 @@ async def test_duplicate_week_no_source_rows_422(client):
 
 
 @pytest.mark.asyncio
-async def test_duplicate_week_requires_recent_mfa_403(client):
+async def test_duplicate_week_requires_recent_mfa_403(client, enforce_mfa):
     user = await _mk_it_workspace()
     wsid = user["tenant_id"]
     h = _headers(user["id"], user["role"], wsid)  # no mfa

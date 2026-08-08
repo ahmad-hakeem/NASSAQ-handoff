@@ -32,6 +32,38 @@ args = "fe-build"
 task = "workflow.run"
 args = "fe-test-continue"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "backend-gate"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "frontend-gate"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "e2e-gate"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "ci-backend"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "ci-frontend"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "ci-e2e"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "ci-security"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "ci-all"
+
   [[workflows.workflow]]
 name = "Backend API"
 author = "agent"
@@ -78,6 +110,94 @@ args = "cd frontend && CI=true npx react-scripts test --watchAll=false --testPat
 [workflows.workflow.metadata]
 isValidation = true
 
+[[workflows.workflow]]
+name = "backend-gate"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/ci/run_backend_gate_local.sh"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "frontend-gate"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/ci/frontend_tests.sh"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "e2e-gate"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/ci/run_e2e_gate_local.sh"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "ci-backend"
+author = "agent"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/ci/run_gate_local.sh backend"
+
+[[workflows.workflow]]
+name = "ci-frontend"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/ci/run_gate_local.sh frontend"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "ci-e2e"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/ci/run_gate_local.sh e2e"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "ci-security"
+author = "agent"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/ci/run_gate_local.sh security"
+
+[[workflows.workflow]]
+name = "ci-all"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/ci/run_gate_local.sh all"
+
+[workflows.workflow.metadata]
+isValidation = true
+
 [[ports]]
 localPort = 5000
 externalPort = 5000
@@ -87,8 +207,20 @@ localPort = 5001
 externalPort = 3000
 
 [[ports]]
+localPort = 5055
+externalPort = 3002
+
+[[ports]]
 localPort = 8000
 externalPort = 8000
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8100
+externalPort = 3001
 
 [[ports]]
 localPort = 23636
@@ -112,6 +244,7 @@ FRONTEND_URL = "https://76d3d322-060b-41e8-b1b6-757b9374d907-00-uqpmfo0lufwh.wor
   [userenv.shared]
 ENVIRONMENT = "production"
 MFA_ENFORCEMENT_DISABLED = "true"
+APP_URL = "https://nassaqapp.com"
 
   [objectStorage]
 defaultBucketID = "replit-objstore-74e91ecd-87d7-4ff2-a2ad-91e1fdc9c773"

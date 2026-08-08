@@ -59,6 +59,7 @@ from auth_scope import (
 )
 from dependencies import db, get_current_user, require_recent_mfa_403
 from engines.sql_utils import gd_find_one
+from services.cpu_offload import CpuOffloadBusy, CpuOffloadTimeout, run_cpu_bound
 from middleware.rbac import Permission, ROLE_PERMISSIONS
 
 
@@ -1021,10 +1022,19 @@ async def export_workspace_analytics_xlsx(
             class_label = cls_row.get("name") or None
     try:
         payload = await _aggregate_all(workspace_id, start, end, cid)
-        body = _render_analytics_xlsx(
-            payload, start, end, cid, workspace_id, class_label=class_label,
+        # pandas + XlsxWriter is CPU-bound — off the event loop.
+        body = await run_cpu_bound(
+            _render_analytics_xlsx,
+            payload, start, end, cid, workspace_id,
+            class_label=class_label,
+            kind="xlsx",
         )
     except HTTPException:
+        raise
+    except (CpuOffloadBusy, CpuOffloadTimeout):
+        # Back-pressure / budget overrun: let the central handlers turn these
+        # into 503 RENDER_BUSY / 504 RENDER_TIMEOUT. Swallowing them here
+        # would hand the user an opaque 500 with no retry signal.
         raise
     except Exception as exc:  # noqa: BLE001
         logger.exception("workspace analytics XLSX export failed: %s", exc)
@@ -1053,9 +1063,15 @@ async def export_workspace_analytics_pdf(
     cid = await _resolve_class_filter(workspace_id, class_id)
     try:
         payload = await _aggregate_all(workspace_id, start, end, cid)
-        body = _render_analytics_pdf(payload, start, end, cid, workspace_id)
+        # CPU-bound ReportLab + chart render — off the event loop.
+        body = await run_cpu_bound(
+            _render_analytics_pdf, payload, start, end, cid, workspace_id,
+            kind="pdf",
+        )
     except HTTPException:
         raise
+    except (CpuOffloadBusy, CpuOffloadTimeout):
+        raise  # central handlers → 503 RENDER_BUSY / 504 RENDER_TIMEOUT
     except Exception as exc:  # noqa: BLE001
         logger.exception("workspace analytics PDF export failed: %s", exc)
         raise HTTPException(status_code=500, detail=_MSG_EXPORT_FAILED)

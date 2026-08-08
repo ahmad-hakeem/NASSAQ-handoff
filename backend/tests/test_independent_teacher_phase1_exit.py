@@ -629,7 +629,7 @@ _MFA_ROUTES = [
     ids=[row[0] for row in _MFA_ROUTES],
 )
 async def test_5_9_6_mfa_required_routes_emit_stepup_envelope(  # §5.9 #6
-    client, label, method, path_tpl, body, acceptable_status,
+    client, label, method, path_tpl, body, acceptable_status, enforce_mfa,
 ):
     if label == "bootstrap":
         # Bootstrap needs a pre-bootstrap caller (no synthetic schools row).
@@ -731,7 +731,10 @@ async def test_5_9_7_end_to_end_independent_teacher_loop(client):  # §5.9 #7
         headers=h,
         json={
             "name_ar": "فصل E2E",
-            "grade_id": str(uuid.uuid4()),
+            # Canonical grade id (digit fallback "1".."12") — the create
+            # endpoint fail-closes on non-canonical grade ids since the
+            # unified stage/grade validation.
+            "grade_id": "5",
             "class_type": "regular",
             "capacity": 10,
             "homeroom_teacher_id": teacher_id,
@@ -757,7 +760,7 @@ async def test_5_9_7_end_to_end_independent_teacher_loop(client):  # §5.9 #7
             "gender": "male",
             "date_of_birth": "2015-01-01",
             "education_level": "primary",
-            "grade_id": str(uuid.uuid4()),
+            "grade_id": "5",
             "class_id": class_id,
         },
     )
@@ -777,6 +780,15 @@ async def test_5_9_7_end_to_end_independent_teacher_loop(client):  # §5.9 #7
     await gd_insert(db.session, "subjects", {
         "id": subject_id, "name": "Math", "name_ar": "رياضيات",
         "school_id": wsid, "is_active": True,
+    })
+    # Active teacher→class assignment — attendance writes gate teacher/IT
+    # callers via can_view_class(), which requires a teacher_assignments (or
+    # class_sessions) link; homeroom_teacher_id and schedule_sessions rows
+    # alone do not grant it.
+    await gd_insert(db.session, "teacher_assignments", {
+        "id": str(uuid.uuid4()), "school_id": wsid,
+        "teacher_id": teacher_id, "class_id": class_id,
+        "subject_id": subject_id, "is_active": True,
     })
     slot_resp = await client.put(
         "/independent-teacher/schedule/slot",

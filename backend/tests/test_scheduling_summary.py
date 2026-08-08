@@ -1,4 +1,4 @@
-from backend.engines.scheduling_summary import (
+from engines.scheduling_summary import (
     RejectionCounters,
     TeacherPlacementRecord,
     build_generation_summary,

@@ -25,7 +25,9 @@ async def _check_allowed(client, headers, seeded_school, monkeypatch):
 async def _check_denied(client, headers):
     for route in ROUTES_GET:
         r = await client.get(route, headers=headers)
-        assert r.status_code == 403, (route, r.status_code)
+        # Student bearers are 401 platform-wide (STUDENT_LOGIN_DISABLED);
+        # other denied roles get a plain 403. Both are hard denials.
+        assert r.status_code in (401, 403), (route, r.status_code)
 
 
 @pytest.mark.asyncio
@@ -60,7 +62,15 @@ async def test_get_denied_student(client, student_headers):
 
 @pytest.mark.asyncio
 async def test_get_denied_platform_admin(client, platform_admin_headers):
-    await _check_denied(client, platform_admin_headers)
+    # students-overview is school-role only. recommendations-ai and
+    # at-risk-students INTENTIONALLY admit PLATFORM_ADMIN (L4: cross-tenant
+    # role, route 400s with "select a school" when no tenant is bound, 200
+    # when the token carries one) — those must never be a 403.
+    r = await client.get("/ai/insights/students-overview", headers=platform_admin_headers)
+    assert r.status_code == 403, r.status_code
+    for route in ("/ai/insights/recommendations-ai", "/ai/insights/at-risk-students"):
+        r = await client.get(route, headers=platform_admin_headers)
+        assert r.status_code in (200, 400), (route, r.status_code)
 
 
 async def _post_intervention(client, headers, student_id):
@@ -104,7 +114,8 @@ async def test_post_denied_parent(client, parent_headers, a_student):
 @pytest.mark.asyncio
 async def test_post_denied_student(client, student_headers, a_student):
     r = await _post_intervention(client, student_headers, a_student["id"])
-    assert r.status_code == 403
+    # Student bearers are 401 platform-wide (STUDENT_LOGIN_DISABLED).
+    assert r.status_code in (401, 403)
 
 
 @pytest.mark.asyncio

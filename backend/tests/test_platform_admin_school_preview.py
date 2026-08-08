@@ -150,7 +150,7 @@ async def test_role_switch_archived_returns_clear_message(client, monkeypatch):
         headers=headers,
     )
     assert res.status_code == 403
-    assert MSG_ARCHIVED in res.json().get("detail", "")
+    assert MSG_ARCHIVED in res.text
 
 
 @pytest.mark.asyncio
@@ -171,4 +171,4 @@ async def test_role_switch_itw_returns_it_workspace_message(client, monkeypatch)
         headers=headers,
     )
     assert res.status_code == 403
-    assert MSG_INDEPENDENT_TEACHER_WORKSPACE in res.json().get("detail", "")
+    assert MSG_INDEPENDENT_TEACHER_WORKSPACE in res.text

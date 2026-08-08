@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCanViewInternalIds } from '../../hooks/useCanViewInternalIds';
 import { maskInternalId } from '../../utils/internalId';
+import { formatTimeStr, formatDateObjTime } from '../../utils/timeFormat';
 import { formatFullDate, formatHijriDate } from '../../utils/hijriDate';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
@@ -24,6 +25,14 @@ import OnboardingTrigger from '../../components/teacher/OnboardingTour/Onboardin
 
 import { useTranslation } from '../../contexts/ThemeContext';
 const HAKIM_CHARACTER = '/hakim-poses/teacher-helper.png';
+
+// The Hakim "class health / risk alerts" card is hidden per product request.
+// Single source of truth for BOTH the render and the data fetch — see the
+// fetchHakimData effect. Do not re-enable this flag without first replacing
+// the per-class/per-student fan-out with a single batched endpoint: at C
+// classes and S students it issues C + C + S requests in three sequential
+// stages (~110 requests / 6 MB on a real teacher account).
+const HAKIM_INSIGHTS_ENABLED = false;
 
 const PeriodTimeline = ({ upcomingLessons, totalPeriods, currentPeriod, isSchoolTime, isRTL, t, onDark = false }) => {
   const periods = [];
@@ -228,6 +237,7 @@ export default function TeacherMainDashboard() {
   }, [itEvents, todayISODate]);
 
   const teacherId = user?.teacher_id || user?.id;
+  const tenantId = user?.tenant_id;
   const teacherSubject = user?.primary_subject_name || user?.specialization || '';
   const schoolName = user?.school_name || user?.tenant_name || '';
 
@@ -375,11 +385,17 @@ export default function TeacherMainDashboard() {
 
   useEffect(() => {
     const fetchHakimData = async () => {
-      if (!classes || classes.length === 0 || !user?.tenant_id) return;
+      // The Hakim card is currently hidden (HAKIM_INSIGHTS_ENABLED). Fetching
+      // its data anyway cost the teacher dashboard C + C + S HTTP requests on
+      // every load — health per class, students per class, then risk per
+      // student — for a card that can never render. Gate the fetch on the same
+      // flag as the render so the two can never drift apart again.
+      if (!HAKIM_INSIGHTS_ENABLED) return;
+      if (!classes || classes.length === 0 || !tenantId) return;
       setHakimLoading(true);
       try {
         const healthPromises = classes.map(cls =>
-          api.get(`/hakim/class/${cls.id}/health?school_id=${user.tenant_id}`).catch(() => null)
+          api.get(`/hakim/class/${cls.id}/health?school_id=${tenantId}`).catch(() => null)
         );
         const healthResults = await Promise.all(healthPromises);
         const healthData = healthResults.filter(r => r?.data).map(r => r.data).sort((a, b) => b.health_score - a.health_score);
@@ -391,7 +407,7 @@ export default function TeacherMainDashboard() {
         const studentsResults = await Promise.all(riskPromises);
         const allStudents = studentsResults.flatMap(r => r?.data || []);
         const riskChecks = allStudents.map(s =>
-          api.get(`/hakim/student/${s.id}/risk?school_id=${user.tenant_id}`).catch(() => null)
+          api.get(`/hakim/student/${s.id}/risk?school_id=${tenantId}`).catch(() => null)
         );
         const riskResults = await Promise.all(riskChecks);
         const alerts = riskResults.filter(r => r?.data && (r.data.risk_category === 'critical' || r.data.risk_category === 'high')).map(r => r.data);
@@ -399,7 +415,10 @@ export default function TeacherMainDashboard() {
       } catch (e) { console.error('Error fetching Hakim data:', e); } finally { setHakimLoading(false); }
     };
     fetchHakimData();
-  }, [classes, user, api]);
+    // `tenantId` (a string) rather than the raw `user` object: AuthContext
+    // replaces `user` on every /auth/me refresh, which re-ran this whole
+    // fan-out even though the tenant had not changed.
+  }, [classes, tenantId, api]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -446,11 +465,7 @@ export default function TeacherMainDashboard() {
   };
 
   const formatTimeLabel = (timeStr) => {
-    if (!timeStr) return '';
-    const [h, m] = timeStr.split(':').map(Number);
-    const h12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
-    const ampm = h < 12 ? t('am') : t('pm');
-    return `${isRTL ? h : h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+    return formatTimeStr(timeStr, user?.time_format || '12h', t);
   };
 
   // Task #310 — Brand-new IT workspace: show a single centered welcome
@@ -599,7 +614,12 @@ export default function TeacherMainDashboard() {
                   </div>
                   <div className="min-w-0">
                     <h2 className="font-cairo text-xl md:text-2xl font-bold truncate">
-                      {t('welcomeTeacher').replace('{0}', user?.full_name || t('teacher'))}
+                      {/* Prefer the profile-configured title (اللقب) over the
+                          hardcoded "أستاذ" prefix so a saved title propagates
+                          to the desktop dashboard too (mirrors TeacherHomePage). */}
+                      {user?.title && user.title !== 'none'
+                        ? `${user.title} ${user?.full_name || t('teacher')}`
+                        : t('welcomeTeacher').replace('{0}', user?.full_name || t('teacher'))}
                     </h2>
                     <p className="text-brand-turquoise font-bold font-cairo text-sm mt-0.5 truncate">
                       {teacherSubject ? t('teacherOf').replace('{0}', teacherSubject) : t('teacher')}
@@ -632,7 +652,7 @@ export default function TeacherMainDashboard() {
                   {/* Current Time */}
                   <div className="text-center">
                     <p className="text-2xl md:text-3xl font-bold font-cairo tabular-nums">
-                      {now.toLocaleTimeString(isRTL ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+                      {formatDateObjTime(now, user?.time_format || '12h', isRTL ? 'ar-SA' : 'en-US')}
                     </p>
                     <p className="text-[10px] text-white/40 font-tajawal">
                       {isSchoolTime ? t('schoolInSession') : t('outsideSchoolHours')}
@@ -661,7 +681,7 @@ export default function TeacherMainDashboard() {
                     size="sm"
                     variant="ghost"
                     onClick={fetchDayStatus}
-                    className="h-7 px-2 text-xs text-brand-turquoise hover:bg-white/10 gap-1 font-tajawal"
+                    className="h-7 px-2 text-xs text-brand-turquoise hover:bg-white/10 hover:text-brand-turquoise gap-1 font-tajawal"
                   >
                     <RefreshCw className="h-3 w-3" aria-hidden="true" />
                     {t('retry')}
@@ -917,7 +937,7 @@ export default function TeacherMainDashboard() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="rounded-xl font-cairo border-workspace-accent-border text-workspace-accent hover:bg-workspace-accent-light/40"
+                        className="rounded-xl font-cairo border-workspace-accent-border text-workspace-accent hover:bg-workspace-accent-light/40 hover:text-workspace-accent"
                         onClick={() => navigate('/teacher/planning?tab=calendar')}
                         data-testid="it-home-calendar-empty-cta"
                       >
@@ -1193,7 +1213,7 @@ export default function TeacherMainDashboard() {
           )}
 
           {/* Hakim AI Insights — HIDDEN per request (logic kept intact) */}
-          {false && (classHealthData.length > 0 || riskAlerts.length > 0 || hakimLoading) && (
+          {HAKIM_INSIGHTS_ENABLED && (classHealthData.length > 0 || riskAlerts.length > 0 || hakimLoading) && (
             <Card className="border border-brand-purple/20 shadow-sm overflow-hidden">
               <CardHeader className="pb-3 bg-gradient-to-r from-brand-purple/5 to-transparent border-b border-brand-purple/10">
                 <div className="flex items-center gap-3">

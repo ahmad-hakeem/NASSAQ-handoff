@@ -17,9 +17,19 @@ class _NestedCM:
     async def __aexit__(self, *a): return False
 
 
+class _FakeResult:
+    """Zero-count result: the bulk capacity policy (class_has_room) issues a
+    live COUNT query per target class; an empty school always has room."""
+    def scalar(self): return 0
+    def scalar_one_or_none(self): return None
+    def mappings(self): return self
+    def first(self): return None
+    def all(self): return []
+
+
 class _FakeSession:
     def begin_nested(self): return _NestedCM()
-    async def execute(self, *a, **kw): return None
+    async def execute(self, *a, **kw): return _FakeResult()
 
 
 def _row(idx, num, name, grade, section):

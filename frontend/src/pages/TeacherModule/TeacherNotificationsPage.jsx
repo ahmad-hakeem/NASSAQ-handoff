@@ -112,7 +112,11 @@ export function TeacherNotificationsPanel({ embedded = false } = {}) {
   useEffect(() => {
     fetchList({ readMode: readTab, category: categoryFilter });
   }, [readTab, categoryFilter, fetchList]);
-  useEffect(() => { fetchUnread(); }, [fetchUnread, items.length]);
+  // Fetch the unread badge once on mount. The old `items.length` dep made
+  // this fire a second /unread-count as soon as the list arrived (and it
+  // never helped mark-read anyway — flipping is_read keeps length constant);
+  // read-state changes now update the badge explicitly in their handlers.
+  useEffect(() => { fetchUnread(); }, [fetchUnread]);
 
   const handleLoadMore = useCallback(() => {
     if (!nextCursor || loadingMore) return;
@@ -124,6 +128,7 @@ export function TeacherNotificationsPanel({ embedded = false } = {}) {
     try {
       await api.post(`/independent-teacher/notifications/${notif.id}/read`);
       setItems((prev) => prev.map((n) => n.id === notif.id ? { ...n, is_read: true } : n));
+      setUnread((prev) => Math.max(0, prev - 1));
     } catch (e) {
       // best-effort UX
     }

@@ -3,16 +3,22 @@
 // Used by AlertsTimeline when an alert arrives without an explicit `route`
 // (e.g. older payloads). Teachers / independent teachers self-scope on
 // /teacher/attendance and /teacher/behavior; the admin attendance/behaviour
-// pages would 403 their data calls. Admin / principal / school-admin keep the
-// admin paths. Kept as a pure function so the role gating is unit-testable
-// independent of the (heavy) page component tree.
+// pages would 403 their data calls. Admin / principal / school-admin use the
+// canonical /principal leadership paths. Kept as a pure function so the role
+// gating is unit-testable independent of the (heavy) page component tree.
+// Principal route audit 2026-07-28: leadership destinations use the canonical
+// /principal namespace (the legacy /admin//school variants are now
+// redirect-aliases in appRoutes.js, so old payload-supplied routes still work).
 export const buildAlertRouteMap = (isTeacher = false) => ({
-  attendance: isTeacher ? '/teacher/attendance' : '/admin/attendance',
-  academic: '/admin/students',
-  behavior: isTeacher ? '/teacher/behavior' : '/admin/behaviour',
-  behaviour: isTeacher ? '/teacher/behavior' : '/admin/behaviour',
-  teacher: '/admin/teacher-attendance',
-  schedule: '/school/schedule',
+  attendance: isTeacher ? '/teacher/attendance' : '/principal/attendance',
+  academic: '/principal/students',
+  // Leadership has no dedicated behaviour page — /admin/behaviour was never
+  // a registered route (catch-all bounced to the homepage). Leadership
+  // reviews conduct from the students page.
+  behavior: isTeacher ? '/teacher/behavior' : '/principal/students',
+  behaviour: isTeacher ? '/teacher/behavior' : '/principal/students',
+  teacher: '/principal/teacher-attendance',
+  schedule: '/principal/schedule',
   performance: '/principal/ai-insights',
 });
 
@@ -35,9 +41,9 @@ export const buildKpiCardRoute = (cardKey, { isTeacher = false, isPlatformAdmin 
     case 'students':
       // Teachers see "my students" (their own roster count) with no
       // roster-management page to open; only school leadership drills in.
-      return isTeacher ? null : '/admin/users-management';
+      return isTeacher ? null : '/principal/users-management';
     case 'teachers':
-      return isTeacher ? null : '/admin/users-management?filter=teachers';
+      return isTeacher ? null : '/principal/users-management?filter=teachers';
     case 'attendance':
       return withAlertAttendanceContext(
         buildAlertRouteMap(isTeacher).attendance,

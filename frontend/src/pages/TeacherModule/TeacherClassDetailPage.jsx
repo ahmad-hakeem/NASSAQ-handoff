@@ -68,7 +68,13 @@ export default function TeacherClassDetailPage() {
   // for the workspace that *owns* the class. A collaborator viewing the
   // shared class must not see the management surface.
   const isHostOfClass = !!(classData?.school_id && user?.tenant_id && classData.school_id === user.tenant_id);
-  const VALID_TABS = isHostOfClass
+  // Product decision 2026-07-29: the "المتعاونون عبر المساحات" section is
+  // temporarily hidden for school teachers and independent teachers.
+  // UI-only — the collaborators feature, its endpoints, and all data stay
+  // intact. Remove the role from this list to bring the tab back.
+  const COLLABORATORS_TAB_HIDDEN_ROLES = ['teacher', 'independent_teacher'];
+  const showCollaboratorsTab = isHostOfClass && !COLLABORATORS_TAB_HIDDEN_ROLES.includes(user?.role);
+  const VALID_TABS = showCollaboratorsTab
     ? ['curriculum', 'records', 'attendance', 'collaborators']
     : ['curriculum', 'records', 'attendance'];
   const tabFromUrl = searchParams.get('tab');
@@ -380,6 +386,13 @@ export default function TeacherClassDetailPage() {
         (gradesRes.data?.grades || []).forEach((g) => {
           stored[`${g.student_id}_${g.column_id}`] = g.score;
         });
+        // check (تحقق) / text (نص) column values never reach the numeric
+        // student_grades aggregation — the server surfaces them raw from the
+        // followup_records blob so the record shows what the teacher entered
+        // during the lesson.
+        (gradesRes.data?.manual_values || []).forEach((m) => {
+          stored[`${m.student_id}_${m.column_id}`] = m.value;
+        });
         // Wholesale replace so no stale scores from the previous subject
         // linger after a switch.
         setStudentGrades(stored);
@@ -451,7 +464,9 @@ export default function TeacherClassDetailPage() {
     group: c.column_type === 'exams' ? 'exams' : 'coursework',
     maxGrade: c.max_grade,
     hidden: c.visible === false,
-    type: 'grade',
+    // Input mode (درجة/تحقق/نص) is server truth — hardcoding 'grade' here
+    // silently reset every saved تحقق/نص column back to numeric on reload.
+    type: ['check', 'text'].includes(c.input_type) ? c.input_type : 'grade',
     _order: c.order ?? 0,
   });
 
@@ -597,6 +612,7 @@ export default function TeacherClassDetailPage() {
         ops.push(api.post(`/class/${classId}/grade-columns`, {
           name: String(col.name || '').trim() || (t('newColumn') || 'عمود جديد'),
           column_type: col.group === 'exams' ? 'exams' : 'coursework',
+          input_type: ['check', 'text'].includes(col.type) ? col.type : 'grade',
           max_grade: Math.max(1, Number(col.maxGrade) || 10),
           order: nextOrder,
         }));
@@ -608,6 +624,14 @@ export default function TeacherClassDetailPage() {
       if (Number(col.maxGrade) !== Number(base.maxGrade)) {
         body.max_grade = Math.max(1, Number(col.maxGrade) || 1);
       }
+      const colType = ['check', 'text'].includes(col.type) ? col.type : 'grade';
+      const baseType = ['check', 'text'].includes(base.type) ? base.type : 'grade';
+      if (colType !== baseType) body.input_type = colType;
+      // Category (أعمال السنة/الاختبارات) is editable in the pattern
+      // editor — diff it like the other fields or the selector is a no-op.
+      const colGroup = col.group === 'exams' ? 'exams' : 'coursework';
+      const baseGroup = base.group === 'exams' ? 'exams' : 'coursework';
+      if (colGroup !== baseGroup) body.column_type = colGroup;
       if (Object.keys(body).length > 0) {
         ops.push(api.put(`/grade-column/${col.id}`, body));
       }
@@ -1006,7 +1030,7 @@ export default function TeacherClassDetailPage() {
             <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" aria-hidden="true" />
             <p className="text-sm text-red-700 dark:text-red-300 font-tajawal">{t('errorLoadingCurriculum')}</p>
           </div>
-          <Button size="sm" variant="outline" className="gap-1.5 border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/30 shrink-0" onClick={fetchCurriculum}>
+          <Button size="sm" variant="outline" className="gap-1.5 border-red-300 text-red-700 hover:bg-red-100 hover:text-red-700 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/30 shrink-0" onClick={fetchCurriculum}>
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
             {t('retry')}
           </Button>
@@ -1317,6 +1341,9 @@ export default function TeacherClassDetailPage() {
                 group: c.column_type === 'exams' ? 'exams' : 'coursework',
                 maxGrade: c.max_grade,
                 hidden: c.visible === false,
+                // Mirror the live-lesson sheet: تحقق/نص columns render their
+                // own control and stay out of the numeric totals.
+                type: ['check', 'text'].includes(c.input_type) ? c.input_type : 'grade',
               }));
               const adaptedGrades = {};
               filteredStudents.forEach(s => {
@@ -1423,12 +1450,30 @@ export default function TeacherClassDetailPage() {
     </Dialog>
   );
 
+  // The inline table records TODAY's present/absent only. The class card in
+  // "فصولي" now lands here, so we keep an explicit way through to the full
+  // attendance workflow (date picker, late/excused, mark-all-present, notes)
+  // on /teacher/attendance — otherwise that surface loses its entry point.
   const renderAttendanceTab = () => (
-    <InlineAttendanceTable
-      classId={classId}
-      students={students}
-      classData={classData}
-    />
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 text-xs"
+          onClick={() => navigate(`/teacher/attendance?class=${classId}`)}
+          data-testid="class-attendance-open-full"
+        >
+          <Calendar className="h-3.5 w-3.5" />
+          {t('attendanceRecordOtherDate')}
+        </Button>
+      </div>
+      <InlineAttendanceTable
+        classId={classId}
+        students={students}
+        classData={classData}
+      />
+    </div>
   );
 
   const renderAddLessonDialog = () => {
@@ -1781,7 +1826,7 @@ export default function TeacherClassDetailPage() {
               { key: 'curriculum', label: t('curriculumPlan'), icon: BookOpen },
               { key: 'records', label: t('studentRecords'), icon: ClipboardCheck },
               { key: 'attendance', label: t('attendanceLog') || 'الحضور والغياب', icon: Calendar },
-              ...(isHostOfClass
+              ...(showCollaboratorsTab
                 ? [{ key: 'collaborators', label: t('collabTabTitle'), icon: Users }]
                 : []),
             ].map(tab => (
@@ -1845,7 +1890,7 @@ export default function TeacherClassDetailPage() {
             {activeTab === 'curriculum' && renderCurriculumTab()}
             {activeTab === 'records' && renderRecordsTab()}
             {activeTab === 'attendance' && renderAttendanceTab()}
-            {activeTab === 'collaborators' && isHostOfClass && <CollaboratorsTab classId={classId} />}
+            {activeTab === 'collaborators' && showCollaboratorsTab && <CollaboratorsTab classId={classId} />}
           </div>
         )}
       </div>

@@ -40,7 +40,7 @@ const DEFAULT_FORM = {
 // relocation (same day) follows the identical Panel/Page split.
 export function LessonPlannerPanel({ embedded = false } = {}) {
   const { api, user } = useAuth();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const { nassaqError, nassaqInfo, nassaqConfirm } = useNassaqAlert();
   const isIndependentTeacher = (user?.role || '').toLowerCase() === 'independent_teacher';
   const topicInputRef = useRef(null);
@@ -50,6 +50,8 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
   const [current, setCurrent] = useState(null);
   const [quota, setQuota] = useState(null);
   const [classes, setClasses] = useState([]);
+  const [subjects, setSubjects] = useState([]);
+  const [subjectsLoaded, setSubjectsLoaded] = useState(false);
   const [classId, setClassId] = useState('');
   const [savedPlans, setSavedPlans] = useState([]);
   // Full view/edit dialog (spec 2026-07-20) — replaces the old 5-field
@@ -68,7 +70,7 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
 
   const refresh = useCallback(async () => {
     try {
-      const [list, cls] = await Promise.all([
+      const [list, cls, subjs] = await Promise.all([
         api.get('/independent-teacher/lesson-plans'),
         // Task #1089 — request the assignment-scoped class list so a
         // regular school teacher only sees their OWN classes in the
@@ -77,13 +79,24 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
         // is byte-for-byte unchanged.
         api.get('/classes', { params: { assigned_only: true } })
           .catch(() => ({ data: { classes: [] } })),
+        // Fetch teacher-scoped subjects for the Subject dropdown.
+        // NOTE the mounted path is /teacher/my-subjects (no /subjects
+        // prefix) — same endpoint the session-settings dropdown uses.
+        // It returns only this teacher's assigned subjects (school
+        // teacher: from teacher_assignments; IT: full workspace).
+        api.get('/teacher/my-subjects')
+          .catch(() => ({ data: [] })),
       ]);
       setSavedPlans(list?.data?.lesson_plans || []);
       if (list?.data?.quota) setQuota(list.data.quota);
       const items = cls?.data?.classes || cls?.data || [];
       setClasses(Array.isArray(items) ? items : []);
+      const subjItems = Array.isArray(subjs?.data) ? subjs.data : [];
+      setSubjects(subjItems);
+      setSubjectsLoaded(true);
     } catch (err) {
       // Silent — list view degrades gracefully if the read fails.
+      setSubjectsLoaded(true);
     }
   }, [api]);
 
@@ -226,6 +239,72 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
     return map;
   }, [classes]);
 
+  // Derive unique grade options from the teacher's assigned classes.
+  // GET /classes now resolves human-readable grade names server-side
+  // (grade_name_ar / grade_name_en) because legacy rows can hold a raw
+  // grade_levels row UUID in BOTH grade_id and grade_level. Rules here:
+  //  - option value  = stable Arabic-canonical name (what gets stored on
+  //    the plan), so switching UI language never orphans the selection;
+  //  - option label  = name in the active platform language;
+  //  - a raw id must NEVER be shown — unresolved rows fall back to the
+  //    class display name, and anything UUID-like is dropped entirely.
+  const grades = useMemo(() => {
+    const uuidLike = (v) => typeof v === 'string'
+      && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(v.trim());
+    const out = [];
+    const seenValues = new Set();
+    for (const c of classes) {
+      const ar = c.grade_name_ar || '';
+      const en = c.grade_name_en || '';
+      let value = ar || en;
+      let label = language === 'en' ? (en || ar) : (ar || en);
+      if (!value) {
+        // Server could not resolve a grade name — use the readable
+        // grade_level if it is not an id, else the class name itself.
+        const fallback = (c.grade_level && !uuidLike(c.grade_level))
+          ? c.grade_level
+          : (c.name_ar || c.name || '');
+        value = fallback;
+        label = fallback;
+      }
+      if (!value || uuidLike(value) || uuidLike(label)) continue;
+      if (seenValues.has(value)) continue;
+      seenValues.add(value);
+      out.push({ key: c.grade_id || c.grade_level || `class:${c.id}`, value, label });
+    }
+    return out;
+  }, [classes, language]);
+
+  // Subject option helpers — /teacher/my-subjects rows carry `name`
+  // (canonical Arabic, backfilled from name_ar server-side) + name_en.
+  // Value stays the canonical name; label follows the active language.
+  const subjectValue = useCallback(
+    (s) => s.name || s.name_en || s.code || '',
+    [],
+  );
+  const subjectLabel = useCallback(
+    (s) => (language === 'en'
+      ? (s.name_en || s.name || s.code || '')
+      : (s.name || s.name_en || s.code || '')),
+    [language],
+  );
+
+  // Auto-select when there is exactly one option — avoid a blank field
+  // for the common case where a teacher has a single subject / grade.
+  useEffect(() => {
+    if (!subjectsLoaded || subjects.length !== 1) return;
+    const only = subjectValue(subjects[0]);
+    if (!only) return;
+    setForm((prev) => (prev.subject ? prev : { ...prev, subject: only }));
+  }, [subjectsLoaded, subjects, subjectValue]);
+
+  useEffect(() => {
+    if (grades.length !== 1) return;
+    const only = grades[0].value;
+    if (!only) return;
+    setForm((prev) => (prev.grade_level ? prev : { ...prev, grade_level: only }));
+  }, [grades]);
+
   const askDelete = useCallback((p) => {
     nassaqConfirm(
       `هل تريد حذف الخطة "${p.topic}"؟ لا يمكن التراجع عن هذه العملية.`,
@@ -344,11 +423,59 @@ export function LessonPlannerPanel({ embedded = false } = {}) {
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700">المادة</label>
-                <Input value={form.subject} onChange={onChange('subject')} placeholder="رياضيات" maxLength={200} />
+                {subjectsLoaded && subjects.length > 0 ? (
+                  <select
+                    className="w-full border rounded-md p-2 text-sm bg-white"
+                    value={form.subject}
+                    onChange={onChange('subject')}
+                    data-testid="lesson-planner-subject-select"
+                  >
+                    <option value="">{language === 'en' ? '— Select subject —' : '— اختر المادة —'}</option>
+                    {subjects.map((s) => {
+                      const value = subjectValue(s);
+                      return (
+                        <option key={s.id || value} value={value}>
+                          {subjectLabel(s)}
+                        </option>
+                      );
+                    })}
+                  </select>
+                ) : (
+                  <Input
+                    value={form.subject}
+                    onChange={onChange('subject')}
+                    placeholder={subjectsLoaded ? (language === 'en' ? 'Mathematics' : 'رياضيات') : '…'}
+                    disabled={!subjectsLoaded}
+                    maxLength={200}
+                    data-testid="lesson-planner-subject-input"
+                  />
+                )}
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700">الصف</label>
-                <Input value={form.grade_level} onChange={onChange('grade_level')} placeholder="الرابع الابتدائي" maxLength={200} />
+                {grades.length > 0 ? (
+                  <select
+                    className="w-full border rounded-md p-2 text-sm bg-white"
+                    value={form.grade_level}
+                    onChange={onChange('grade_level')}
+                    data-testid="lesson-planner-grade-select"
+                  >
+                    <option value="">{language === 'en' ? '— Select grade —' : '— اختر الصف —'}</option>
+                    {grades.map((g) => (
+                      <option key={g.key} value={g.value}>
+                        {g.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    value={form.grade_level}
+                    onChange={onChange('grade_level')}
+                    placeholder={language === 'en' ? 'Grade 4' : 'الرابع الابتدائي'}
+                    maxLength={200}
+                    data-testid="lesson-planner-grade-input"
+                  />
+                )}
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700">المدة (دقيقة)</label>

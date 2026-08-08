@@ -141,8 +141,10 @@ async def test_recipient_resolution_fails_closed_without_tenant():
     Same guarantee at the engine layer.
     """
     # Seed *some* users so an unscoped query would clearly return >0.
-    await _mk_independent_teacher_with_students()
-    await _mk_independent_teacher_with_students()
+    # Two students per workspace so the platform-wide assertion below
+    # (`len(cross) >= 4`) is satisfied by this test's own seeds alone.
+    await _mk_independent_teacher_with_students(n_students=2)
+    await _mk_independent_teacher_with_students(n_students=2)
 
     assert await _resolve_recipient_ids(db, "students", None, []) == []
     assert await _resolve_recipient_ids(db, "parents", None, []) == []

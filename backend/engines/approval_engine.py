@@ -105,11 +105,16 @@ class ApprovalHandler:
     display_name: str
     display_name_ar: str
 
-    async def validate_before_approve(self, request: dict) -> Optional[str]:
-        """Hook: validate business rules before approving a request."""
+    async def validate_before_approve(self, request: dict, context: Optional[dict] = None) -> Optional[str]:
+        """Hook: validate business rules before approving a request.
+
+        `context` carries reviewer-supplied decisions that are NOT part of the
+        original request (e.g. which school an approved teacher joins).
+        """
         return None
 
-    async def create_entities(self, request: dict, approved_by: dict) -> ApprovalResult:
+    async def create_entities(self, request: dict, approved_by: dict,
+                              context: Optional[dict] = None) -> ApprovalResult:
         """Hook: create domain entities after approval is granted."""
         raise NotImplementedError
 
@@ -235,8 +240,14 @@ class ApprovalEngine:
         await session.flush()
         return 1
 
-    async def approve(self, request_id: str, current_user: dict, notes: str = "") -> ApprovalResult:
-        """Approve a pending request and trigger entity creation."""
+    async def approve(self, request_id: str, current_user: dict, notes: str = "",
+                      context: Optional[dict] = None) -> ApprovalResult:
+        """Approve a pending request and trigger entity creation.
+
+        `context` holds decisions the reviewer makes at approval time (see
+        ApprovalHandler.validate_before_approve).
+        """
+        context = context or {}
         database, request = await self._get_request(request_id)
         if not request:
             return ApprovalResult(success=False, message="طلب التسجيل غير موجود", request_type="unknown")
@@ -255,7 +266,7 @@ class ApprovalEngine:
         if not valid:
             return ApprovalResult(success=False, message=err_msg, request_type=request_type)
 
-        validation_error = await handler.validate_before_approve(request)
+        validation_error = await handler.validate_before_approve(request, context)
         if validation_error:
             await _emit_event(database, "approval_request_validation_failed", request_id, request_type,
                               reviewer_id=self._user_id(current_user),
@@ -267,7 +278,7 @@ class ApprovalEngine:
                           reviewer_id=self._user_id(current_user), status_before=current_status)
 
         try:
-            result = await handler.create_entities(request, current_user)
+            result = await handler.create_entities(request, current_user, context)
         except Exception as exc:
             logger.error(f"Activation failed for request {request_id}: {exc}")
             await _emit_event(database, "approval_activation_failed", request_id, request_type,
@@ -299,6 +310,11 @@ class ApprovalEngine:
         now = datetime.now(timezone.utc).isoformat()
         linked_fields = {f"linked_{k}": v for k, v in result.created_entities.items()}
         linked_fields["linked_entity_type"] = request_type
+        # A handler that attached the new entity to an EXISTING school reports it
+        # as "school"; mirror it onto the request's own school_id FK so approved
+        # requests stay queryable/auditable by school.
+        if result.created_entities.get("school"):
+            linked_fields["school_id"] = result.created_entities["school"]
         if result.created_entities.get("school_id"):
             linked_fields["linked_entity_id"] = result.created_entities["school_id"]
         elif result.created_entities.get("user_id"):

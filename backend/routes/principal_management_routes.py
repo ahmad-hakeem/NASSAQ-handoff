@@ -506,13 +506,27 @@ async def get_student_full_profile(
         "created_at", "updated_at",
     }
 
+    # N+1 fix: resolve every guardian's parent row with ONE parents fetch ($in)
+    # plus ONE users fallback fetch ($in), instead of up to two gd_find_one calls
+    # per guardian. Fallback precedence is preserved: parents row first, then
+    # users row (role=parent).
+    _pref_ids = list({(g.get("parent_ref") or g.get("parent_id")) for g in guardians
+                      if (g.get("parent_ref") or g.get("parent_id"))})
+    _parents_by_id = {}
+    _users_by_id = {}
+    if _pref_ids:
+        _parent_rows = await gd_find(db.session, "parents", {"id": {"$in": _pref_ids}, **_entity_tenant_filter(tenant_id)}, limit=len(_pref_ids))
+        _parents_by_id = {p["id"]: p for p in _parent_rows if p.get("id")}
+        _missing_ids = [pid for pid in _pref_ids if pid not in _parents_by_id]
+        if _missing_ids:
+            _user_rows = await gd_find(db.session, "users", {"id": {"$in": _missing_ids}, "tenant_id": tenant_id, "role": "parent"}, limit=len(_missing_ids))
+            _users_by_id = {u["id"]: u for u in _user_rows if u.get("id")}
+
     parent_details = []
     for g in guardians:
         pref = g.get("parent_ref") or g.get("parent_id")
         if pref:
-            p = await gd_find_one(db.session, "parents", {"id": pref, **_entity_tenant_filter(tenant_id)})
-            if not p:
-                p = await gd_find_one(db.session, "users", {"id": pref, "tenant_id": tenant_id, "role": "parent"})
+            p = _parents_by_id.get(pref) or _users_by_id.get(pref)
             if p:
                 safe_p = {k: v for k, v in p.items() if k in _PARENT_SAFE_FIELDS}
                 parent_details.append({
@@ -560,11 +574,16 @@ async def get_student_full_profile(
     parent_refs = [g.get("parent_ref") or g.get("parent_id") for g in guardians if g.get("parent_ref") or g.get("parent_id")]
     if parent_refs:
         sibling_links = await gd_find(db.session, "guardian_links", {**_entity_tenant_filter(tenant_id), "parent_ref": {"$in": parent_refs}, "is_active": True, "student_id": {"$ne": student_id}}, limit=20)
-        sib_ids = list({s["student_id"] for s in sibling_links})
-        for sid in sib_ids[:10]:
-            sib = await gd_find_one(db.session, "students", {"id": sid, "is_active": True, **_entity_tenant_filter(tenant_id)})
-            if sib:
-                siblings.append(sib)
+        sib_ids = list({s["student_id"] for s in sibling_links})[:10]
+        # N+1 fix: fetch all sibling student rows with ONE $in query instead of
+        # one gd_find_one per sibling id, then preserve original ordering.
+        if sib_ids:
+            _sib_rows = await gd_find(db.session, "students", {"id": {"$in": sib_ids}, "is_active": True, **_entity_tenant_filter(tenant_id)}, limit=len(sib_ids))
+            _sib_by_id = {s["id"]: s for s in _sib_rows if s.get("id")}
+            for sid in sib_ids:
+                sib = _sib_by_id.get(sid)
+                if sib:
+                    siblings.append(sib)
 
     return {
         "success": True,

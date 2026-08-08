@@ -46,6 +46,7 @@ from auth_scope import (
 from dependencies import db, get_current_user, require_recent_mfa_403
 from engines.audit_engine import AuditLogEngine
 from engines.sql_utils import gd_find, gd_find_one, model_to_dict
+from services.cpu_offload import run_cpu_bound
 from pg_models import ScheduleSession
 from repositories import Repos
 from utils.it_schedule import compute_it_slot_times
@@ -376,7 +377,11 @@ async def export_schedule_pdf(
         {"school_id": school_id, "teacher_id": teacher_id},
         limit=500,
     )
-    pdf_bytes = _render_schedule_pdf(
+    # ReportLab render is CPU-bound: run it off the event loop so one
+    # teacher's export cannot freeze every other request (cpu_offload.py).
+    pdf_bytes = await run_cpu_bound(
+        _render_schedule_pdf,
+        kind="pdf",
         school_id=school_id,
         teacher_name=current_user.get("full_name") or "",
         working_days=settings["working_days"],

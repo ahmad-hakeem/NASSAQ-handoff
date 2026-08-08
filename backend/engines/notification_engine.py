@@ -21,7 +21,7 @@ from sqlalchemy import select, and_, or_, func, update as sa_update, delete as s
 from pg_models import Notification, User, AuditLog
 from engines.sql_utils import (
     model_to_dict, models_to_dicts,
-    gd_find, gd_find_one, gd_insert, gd_update_one,
+    gd_find, gd_find_one, gd_insert, gd_update_one, gd_iter_rows,
 )
 
 
@@ -152,31 +152,88 @@ class NotificationEngine:
         priority: str = NotificationPriority.MEDIUM.value,
         **kwargs
     ) -> Dict[str, Any]:
-        """Create notifications for multiple recipients"""
+        """Create notifications for multiple recipients.
+
+        Written in bounded chunks (one flush per chunk, objects detached
+        afterwards) so a fan-out to a whole school does not hold one ORM row
+        per recipient in the session for the length of the request.
+        """
+        import logging
+        from engines import sql_utils
+
         results = {
             "created": 0,
             "failed": 0,
             "notification_ids": []
         }
+        logger = logging.getLogger("nassaq.notifications")
+        now = datetime.now(timezone.utc)
 
-        for recipient_id in recipient_ids:
-            try:
-                notification = await self.create_notification(
+        meta_base = dict(kwargs.get("metadata") or {})
+        meta_base.update({
+            "category": category,
+            "action_type": kwargs.get("action_type"),
+            "entity_type": kwargs.get("entity_type"),
+            "entity_id": kwargs.get("entity_id"),
+            "sender_id": kwargs.get("sender_id"),
+            "expires_at": kwargs.get("expires_at"),
+        })
+
+        recipients = list(recipient_ids or [])
+        chunk_size = sql_utils.GD_BATCH_SIZE
+        for start in range(0, len(recipients), chunk_size):
+            chunk = recipients[start:start + chunk_size]
+            objs = []
+            for recipient_id in chunk:
+                notification_id = str(uuid.uuid4())
+                objs.append(Notification(
+                    id=notification_id,
                     tenant_id=tenant_id,
-                    recipient_id=recipient_id,
+                    user_id=recipient_id,
                     title=title,
                     message=message,
-                    notification_type=notification_type,
-                    category=category,
+                    type=notification_type,
                     priority=priority,
-                    **kwargs
-                )
-                results["created"] += 1
-                results["notification_ids"].append(notification["id"])
+                    is_read=False,
+                    read_at=None,
+                    action_url=kwargs.get("action_url"),
+                    extra_data=dict(meta_base),
+                    student_id=kwargs.get("student_id"),
+                    created_at=now,
+                ))
+            # A chunk is written inside a SAVEPOINT: one bad recipient (e.g. a
+            # stale user id failing the FK) must not poison the caller's
+            # transaction, and must not silently drop the other recipients in
+            # its chunk either - those are retried individually.
+            try:
+                async with self.session.begin_nested():
+                    self.session.add_all(objs)
+                    await self.session.flush()
+                written = objs
             except Exception as e:
-                import logging
-                logging.getLogger("nassaq.notifications").error(f"Failed to create notification for {recipient_id}: {e}")
-                results["failed"] += 1
+                logger.warning(
+                    f"Notification chunk of {len(objs)} failed ({e}); retrying per recipient"
+                )
+                written = []
+                for obj in objs:
+                    try:
+                        async with self.session.begin_nested():
+                            self.session.add(obj)
+                            await self.session.flush()
+                        written.append(obj)
+                    except Exception as row_err:
+                        logger.error(
+                            f"Failed to create notification for {obj.user_id}: {row_err}"
+                        )
+                        results["failed"] += 1
+
+            results["created"] += len(written)
+            results["notification_ids"].extend(o.id for o in written)
+            for obj in objs:
+                try:
+                    self.session.expunge(obj)
+                except Exception:
+                    pass
 
         return results
 
@@ -248,12 +305,14 @@ class NotificationEngine:
             student_ids = [row[0] for row in result.all()]
 
             if student_ids:
-                relationships = await gd_find(
+                # Recipient resolution must never be silently truncated by the
+                # unbounded-read ceiling: stream the links instead.
+                student_id_set = set(student_ids)
+                async for r in gd_iter_rows(
                     self.session, "user_relationships",
                     {"tenant_id": tenant_id, "relationship_type": "parent"}
-                )
-                for r in relationships:
-                    if r.get("student_id") in student_ids and r.get("user_id"):
+                ):
+                    if r.get("student_id") in student_id_set and r.get("user_id"):
                         recipient_ids.append(r["user_id"])
 
         recipient_ids = list(set(recipient_ids))

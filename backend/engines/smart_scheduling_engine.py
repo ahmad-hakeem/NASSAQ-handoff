@@ -369,6 +369,20 @@ def _required_periods_per_day(settings: Dict[str, Any]) -> int:
 
 # ============== SMART SCHEDULING ENGINE ==============
 
+async def _run_off_loop(fn, *args, kind: str, **kwargs):
+    """Hand a pure-CPU scheduling phase to the dedicated timetable pool.
+
+    The import is deferred because ``services/__init__`` pulls in
+    ``auth_service`` → ``dependencies`` → this module; importing at module
+    scope closes that cycle whenever the engine is imported first (tests,
+    scripts). ``services.cpu_offload`` itself only depends on ``config``, and
+    Python caches the module, so the repeated import is a dict lookup.
+    """
+    from services.cpu_offload import run_cpu_bound, TIMETABLE_POOL
+
+    return await run_cpu_bound(fn, *args, kind=kind, pool=TIMETABLE_POOL, **kwargs)
+
+
 class SmartSchedulingEngine:
     """
     محرك الجدولة الذكي - النظام الرئيسي
@@ -377,10 +391,34 @@ class SmartSchedulingEngine:
     
     def __init__(self, db):
         self.db = db
+        # Per-run scratch space, keyed by run_id.
+        #
+        # This engine is a process-wide singleton, so anything stashed on
+        # `self` is shared by every concurrent generation. Counters written by
+        # one school's placement loop were being read back into another
+        # school's generation_summary. Now that the CPU phases run in a thread
+        # pool, two generations really can overlap, so run-scoped values must
+        # be keyed by run_id and popped when the run ends. Plain dict item
+        # assignment is atomic under the GIL, which is all the worker threads
+        # need here.
+        self._run_scratch: Dict[str, Dict[str, Any]] = {}
 
     @property
     def session(self):
         return self.db.session
+
+    def _scratch(self, run_id: Optional[str]) -> Dict[str, Any]:
+        """Scratch bucket for one run. Falls back to a shared bucket when a
+        caller has no run_id (legacy/ad-hoc paths) — still isolated per key."""
+        key = run_id or "__no_run__"
+        bucket = self._run_scratch.get(key)
+        if bucket is None:
+            bucket = {}
+            self._run_scratch[key] = bucket
+        return bucket
+
+    def _clear_scratch(self, run_id: Optional[str]) -> None:
+        self._run_scratch.pop(run_id or "__no_run__", None)
         
     # ============== PHASE 1: PRE-VALIDATION ==============
     
@@ -1357,7 +1395,16 @@ class SmartSchedulingEngine:
                 bans.append({"rule_key": rk, "subject_id": None, "period_number": target_period})
         return bans
 
-    async def _build_constraint_context(
+    async def _build_constraint_context(self, *args, **kwargs):
+        """Async facade kept for existing callers — the work is pure CPU.
+
+        Nothing in here touches the database; see
+        :meth:`_build_constraint_context_sync`, which is what the offloaded
+        phases call directly from their worker thread.
+        """
+        return self._build_constraint_context_sync(*args, **kwargs)
+
+    def _build_constraint_context_sync(
         self,
         school_id: str,
         sessions: List[Dict[str, Any]],
@@ -1481,10 +1528,52 @@ class SmartSchedulingEngine:
         settings: Dict[str, Any],
         constraints: List[Dict[str, Any]],
         seed: Optional[int] = None,
+    ):
+        """المرحلة 6 — تُنفَّذ خارج حلقة الأحداث. Phase 6, off the event loop.
+
+        The placement search is the single heaviest thing this platform does:
+        measured at 1.2 s for a 12-class school, 6.0 s for 24 classes and
+        27 s for 40 classes (``scripts/evidence_event_loop_timetable.py``).
+        Run inline it froze every other request for exactly that long, so the
+        pure-CPU body lives in :meth:`_generate_draft_timetable_sync` and is
+        handed to the dedicated timetable pool. Run-log writes are I/O and
+        stay here, on the loop, after the search returns.
+        """
+        (
+            timetable_id, sessions, conflicts, final_unscheduled,
+            underutilized_teachers, log_intents,
+        ) = await _run_off_loop(
+            self._generate_draft_timetable_sync,
+            school_id, run_id, demands, resources, settings, constraints,
+            seed=seed,
+            kind="timetable_draft",
+        )
+        for level, message, context in log_intents:
+            await self._log_run(run_id, level, message, context)
+        return (
+            timetable_id, sessions, conflicts, final_unscheduled,
+            underutilized_teachers,
+        )
+
+    def _generate_draft_timetable_sync(
+        self,
+        school_id: str,
+        run_id: str,
+        demands: List[AcademicDemand],
+        resources: List[ResourceAvailability],
+        settings: Dict[str, Any],
+        constraints: List[Dict[str, Any]],
+        seed: Optional[int] = None,
     ) -> Tuple[str, List[TimetableSession], List[TimetableConflict], List[UnscheduledDemand]]:
         """
         المرحلة 6: إنشاء مسودة الجدول
         Phase 6: Generate Draft Timetable
+
+        CPU-BOUND — never call this directly from an async route handler or
+        from ``generate_timetable``; go through :meth:`generate_draft_timetable`
+        so it runs on the timetable pool. Returns an extra ``log_intents``
+        element (level, message, context) because a worker thread cannot await
+        the run-log writes itself.
 
         Task #141 — Entropy: a deterministic ``Random(seed)`` (or
         non-deterministic when ``seed is None``) shuffles the *equal-tier*
@@ -1495,7 +1584,8 @@ class SmartSchedulingEngine:
         D weekly quota, E max consecutive, F max periods/day).
         """
         rng = random.Random(seed)
-        self._last_seed = seed
+        scratch = self._scratch(run_id)
+        scratch["seed"] = seed
         timetable_id = str(uuid.uuid4())
         sessions = []
         conflicts = []
@@ -1517,8 +1607,8 @@ class SmartSchedulingEngine:
             # from the daily_period_limit (HC-06) validator.
             "max_per_day_exceeded": 0,
         }
-        self._last_rejection_counts = aggregate_rejection_counts
-        
+        scratch["rejection_counts"] = aggregate_rejection_counts
+
         working_days = settings.get("working_days", ["sunday", "monday", "tuesday", "wednesday", "thursday"])
         periods_per_day = _required_periods_per_day(settings)
         time_slots = settings.get("time_slots", [])
@@ -1597,7 +1687,7 @@ class SmartSchedulingEngine:
         # session_dicts is mutated in-place as each TimetableSession is
         # appended below, so validators always see the current partial grid.
         session_dicts: List[Dict[str, Any]] = []
-        ctx = await self._build_constraint_context(
+        ctx = self._build_constraint_context_sync(
             school_id=school_id,
             sessions=session_dicts,
             demands=demands,
@@ -2166,23 +2256,28 @@ class SmartSchedulingEngine:
 
         # Sub-optimal placement summary (Constraints UI tab #2 — soft).
         # Surfaces in the run log as the basis for the future health score.
+        # We cannot await the write from this worker thread, so the intent is
+        # handed back and flushed by the async wrapper.
         if suboptimal_placements:
-            await self._log_run(
-                run_id, "info",
+            log_intents = [(
+                "info",
                 f"Sub-optimal placements: {suboptimal_placements} (basis for future health score)",
                 {
                     "suboptimal_placements": suboptimal_placements,
                     "samples": suboptimal_samples,
                 },
-            )
+            )]
         else:
-            await self._log_run(
-                run_id, "info",
+            log_intents = [(
+                "info",
                 "Sub-optimal placements: 0 (all placements satisfied every active soft constraint)",
                 {"suboptimal_placements": 0},
-            )
+            )]
 
-        return timetable_id, sessions, conflicts, final_unscheduled, underutilized_teachers
+        return (
+            timetable_id, sessions, conflicts, final_unscheduled,
+            underutilized_teachers, log_intents,
+        )
     
     def _detect_underutilized_teachers(
         self,
@@ -2369,7 +2464,19 @@ class SmartSchedulingEngine:
 
     # ============== PHASE 7: DETECT CONFLICTS ==============
     
-    async def detect_conflicts(
+    async def detect_conflicts(self, *args, **kwargs) -> List[TimetableConflict]:
+        """المرحلة 7 — تُنفَّذ خارج حلقة الأحداث. Phase 7, off the event loop.
+
+        Cheap next to the placement search (tens of milliseconds), but it is
+        still a pure in-memory validation sweep over every session, and it
+        grows with the school. It runs on the timetable pool for the same
+        reason Phase 6 does.
+        """
+        return await _run_off_loop(
+            self._detect_conflicts_sync, *args, kind="timetable_conflicts", **kwargs,
+        )
+
+    def _detect_conflicts_sync(
         self,
         sessions: List[TimetableSession],
         resources: List[ResourceAvailability],
@@ -2384,6 +2491,8 @@ class SmartSchedulingEngine:
         """
         المرحلة 7: اكتشاف التعارضات
         Phase 7: Detect Conflicts — delegates to HardConstraintRegistry.
+
+        CPU-BOUND — call :meth:`detect_conflicts` instead.
         """
         from engines.hard_constraints import validate_full, validate_placement
 
@@ -2414,7 +2523,7 @@ class SmartSchedulingEngine:
                 d["room_id"] = getattr(s, "room_id", None)
             session_dicts.append(d)
 
-        ctx = await self._build_constraint_context(
+        ctx = self._build_constraint_context_sync(
             school_id=school_id,
             sessions=session_dicts,
             demands=demands or [],
@@ -2469,7 +2578,18 @@ class SmartSchedulingEngine:
     
     # ============== PHASE 8: OPTIMIZATION ==============
     
-    async def optimize_timetable(
+    async def optimize_timetable(self, *args, **kwargs) -> Tuple[List[TimetableSession], float]:
+        """المرحلة 8 — تُنفَّذ خارج حلقة الأحداث. Phase 8, off the event loop.
+
+        Hill climbing with random restarts: hundreds of iterations of
+        deep-copying and rescoring the whole grid, with no ``await`` anywhere
+        (measured 0.1-0.4 s). Runs on the timetable pool.
+        """
+        return await _run_off_loop(
+            self._optimize_timetable_sync, *args, kind="timetable_optimize", **kwargs,
+        )
+
+    def _optimize_timetable_sync(
         self,
         sessions: List[TimetableSession],
         conflicts: List[TimetableConflict],
@@ -2479,6 +2599,8 @@ class SmartSchedulingEngine:
         """
         المرحلة 8: تحسين الجدول بخوارزمية Hill Climbing مع إعادة تشغيل عشوائية
         Phase 8: Optimize Timetable using Hill Climbing with random restarts
+
+        CPU-BOUND — call :meth:`optimize_timetable` instead.
         """
         import copy as _copy
         import random as _random
@@ -2892,6 +3014,7 @@ class SmartSchedulingEngine:
         calling_user: Optional[dict] = None,
         class_ids: Optional[List[str]] = None,
         context_payload: Optional[Dict[str, Any]] = None,
+        run_id: Optional[str] = None,
     ) -> GenerationResult:
         """
         التوليد الرئيسي للجدول
@@ -2913,7 +3036,7 @@ class SmartSchedulingEngine:
         # generation_summary timer — captured here so elapsed_ms reflects the
         # full run (validation, hydration, generation, optimization, persist).
         _summary_start_ms = int(_time.monotonic() * 1000)
-        self._last_rejection_counts = {
+        self._scratch(run_id)["rejection_counts"] = {
             "class_busy": 0,
             "teacher_unavailable": 0,
             "teacher_busy": 0,
@@ -3022,7 +3145,10 @@ class SmartSchedulingEngine:
             except Exception:
                 pass
 
-        run_id = str(uuid.uuid4())
+        # ``run_id`` may be supplied by the caller when the run was queued as a
+        # background job: the job endpoint needs an id to hand the principal
+        # *before* the work starts, and that id is the row this method fills in.
+        run_id = run_id or str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         target_class_ids: List[str] = [str(c) for c in (class_ids or []) if c]
         is_per_class = bool(target_class_ids)
@@ -3043,7 +3169,20 @@ class SmartSchedulingEngine:
             "unscheduled_count": 0,
             "notes": ""
         }
-        await gd_insert(self.session, "timetable_runs", run_doc)
+        # A queued job already inserted this row (status "pending") so the
+        # principal could start polling immediately — fill it in rather than
+        # inserting a duplicate id.
+        existing_run = (
+            await gd_find_one(self.session, "timetable_runs", {"id": run_id})
+            if run_id else None
+        )
+        if existing_run:
+            await gd_update_one(
+                self.session, "timetable_runs", {"id": run_id},
+                {k: v for k, v in run_doc.items() if k != "id"},
+            )
+        else:
+            await gd_insert(self.session, "timetable_runs", run_doc)
         
         try:
             # Phase 1: Validate
@@ -3421,7 +3560,9 @@ class SmartSchedulingEngine:
             # collapse unscheduled demands into one row per (class, subject).
             # Schema is defined in
             # docs/superpowers/specs/2026-05-03-hakeem-engine-audit-design.md §6.
-            agg = getattr(self, "_last_rejection_counts", {}) or {}
+            # Run-scoped, not instance-scoped: two schools generating at the
+            # same time must not read each other's counters.
+            agg = self._scratch(run_id).get("rejection_counts") or {}
             rejection_counters = RejectionCounters(
                 teacher_busy=int(agg.get("teacher_busy", 0)),
                 class_busy=int(agg.get("class_busy", 0)),
@@ -3556,6 +3697,11 @@ class SmartSchedulingEngine:
                 message_ar=f"فشل توليد الجدول: {str(e)}",
                 message_en=f"Timetable generation failed: {str(e)}"
             )
+        finally:
+            # Run-scoped state must not outlive the run: this engine is a
+            # process-wide singleton and generations can now overlap.
+            self._clear_scratch(run_id)
+
     
     async def _load_school_constraints(
         self,

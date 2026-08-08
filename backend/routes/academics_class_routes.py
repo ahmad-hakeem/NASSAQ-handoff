@@ -513,6 +513,74 @@ async def get_classes(
             logger.warning(f"Failed to aggregate student counts for classes: {_agg_err}")
             counts_map = {}
 
+    # Grade display-name enrichment: class rows persist grade_id (a
+    # grade_levels row id) and grade_level (historically the canonical
+    # Arabic label, a bare number "1".."12", or — in legacy IT workspaces —
+    # the same row UUID as grade_id). Resolve a human-readable localizable
+    # pair (grade_name_ar / grade_name_en) server-side so no raw id ever
+    # has to be rendered by the UI (lesson-planner grade dropdown et al.).
+    from utils.canonical_grades import normalize_canonical_grade as _norm_grade
+    _grade_ref_ids = {
+        v
+        for c in classes
+        for v in (c.get("grade_id"), c.get("grade_level"))
+        if v and isinstance(v, str)
+    }
+    _grade_rows_by_id: Dict[str, dict] = {}
+    if _grade_ref_ids:
+        try:
+            # Tenant guard: the ids come from tenant-scoped class rows, but
+            # legacy data could reference a foreign row — scope the batch
+            # fetch to the class query's school when it is a plain id, and
+            # keep the post-filter as a fail-closed backstop (display-only
+            # lookup, fail closed on mismatch).
+            _scope_school = query.get("school_id")
+            _grade_filter: dict = {"id": {"$in": list(_grade_ref_ids)}}
+            if isinstance(_scope_school, str) and _scope_school:
+                _grade_filter["school_id"] = _scope_school
+            _grade_rows = await gd_find(
+                db.session,
+                "grade_levels",
+                _grade_filter,
+                limit=500,
+            )
+            _grade_rows_by_id = {
+                g.get("id"): g
+                for g in _grade_rows
+                if g.get("id") and (not _scope_school or g.get("school_id") == _scope_school)
+            }
+        except Exception as _grade_err:
+            logger.warning(f"Failed to resolve grade names for classes: {_grade_err}")
+            _grade_rows_by_id = {}
+
+    _uuid_re = re.compile(
+        r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    )
+
+    def _grade_display_names(c: dict):
+        """(grade_name_ar, grade_name_en) for a class row — never a raw id."""
+        canon = _norm_grade(c.get("grade_level"))
+        row = (
+            _grade_rows_by_id.get(c.get("grade_id"))
+            or _grade_rows_by_id.get(c.get("grade_level"))
+        )
+        if not canon and row:
+            canon = (
+                _norm_grade(row.get("name_ar") or row.get("name"))
+                or _norm_grade(row.get("code"))
+            )
+        if canon:
+            return canon["label_ar"], canon["label_en"]
+        if row:
+            _ar = row.get("name_ar") or row.get("name")
+            _en = row.get("name_en")
+            if _ar or _en:
+                return _ar, _en
+        lvl = c.get("grade_level")
+        if lvl and isinstance(lvl, str) and not _uuid_re.match(lvl.strip()):
+            return lvl, None
+        return None, None
+
     result = []
     for c in classes:
         c["homeroom_teacher_name"] = teacher_map.get(c.get("homeroom_teacher_id"))
@@ -528,6 +596,7 @@ async def get_classes(
         live_count = counts_map.get((c.get("school_id"), c.get("id")), 0)
         c["student_count"] = live_count
         c["current_students"] = live_count
+        c["grade_name_ar"], c["grade_name_en"] = _grade_display_names(c)
         result.append(ClassResponse(**c))
     
     return result

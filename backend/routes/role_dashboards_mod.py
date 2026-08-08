@@ -5,7 +5,7 @@ Auto-consolidated during Phase 8 modularization.
 from fastapi import APIRouter, HTTPException, Depends, Query, Body, Request
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone
-from sqlalchemy import text as sa_text
+from sqlalchemy import bindparam, text as sa_text
 import uuid
 
 # Task #473 — Audit of role_dashboards_mod.py:
@@ -26,6 +26,7 @@ from dependencies import (
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, _gd_aggregate
 from auth_scope import is_independent_workspace_id
 from utils.it_schedule import compute_it_slot_times, normalize_it_day
+from utils.subject_display import subject_display_name
 from utils.session_settings import (
     sanitize_homework_view_mode as ss_sanitize_homework_view_mode,
     sanitize_recitation_attempts as ss_sanitize_recitation_attempts,
@@ -310,7 +311,8 @@ async def _resolve_teacher_sessions(school_id: str, resolved_teacher_id: str, da
 
 
 async def _reconcile_teacher_assignments_from_schedule(
-    school_id: str, resolved_teacher_id: str, teacher_name: Optional[str] = None
+    school_id: str, resolved_teacher_id: str, teacher_name: Optional[str] = None,
+    sessions: Optional[List[Dict[str, Any]]] = None,
 ) -> int:
     """Additively materialize active ``teacher_assignments`` from a teacher's
     REAL published-schedule lessons.
@@ -342,7 +344,8 @@ async def _reconcile_teacher_assignments_from_schedule(
     if is_independent_workspace_id(school_id):
         return 0
 
-    sessions = await _resolve_teacher_sessions(school_id, resolved_teacher_id)
+    if sessions is None:
+        sessions = await _resolve_teacher_sessions(school_id, resolved_teacher_id)
     # subject_id is NOT NULL on teacher_assignments, so only (class, subject)
     # pairs with both present can be materialized.
     pairs = {
@@ -760,10 +763,21 @@ async def get_teacher_dashboard(
 
     classes = await gd_find(db.session, "classes", {"id": {"$in": class_ids}, "is_active": {"$ne": False}}, limit=500) if class_ids else []
     total_students = 0
-    for cls_item in classes:
-        count = await gd_count(db.session, "students", {"class_id": cls_item.get("id"), "is_active": True})
-        cls_item["student_count"] = count
-        total_students += count
+    if classes:
+        # One grouped count instead of a COUNT per class (N+1).
+        _cls_ids = [c.get("id") for c in classes if c.get("id")]
+        _cnt_rows = (await db.session.execute(
+            sa_text(
+                "SELECT class_id, COUNT(id) AS cnt FROM students "
+                "WHERE class_id IN :cids AND is_active = true GROUP BY class_id"
+            ).bindparams(bindparam("cids", expanding=True)),
+            {"cids": _cls_ids},
+        )).all()
+        _cnt_by_class = {r[0]: int(r[1]) for r in _cnt_rows}
+        for cls_item in classes:
+            count = _cnt_by_class.get(cls_item.get("id"), 0)
+            cls_item["student_count"] = count
+            total_students += count
     
     # Get subjects
     subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=50)
@@ -846,9 +860,6 @@ async def get_teacher_dashboard(
             for a in recent_activities
         ]
     }
-
-
-
 
 
 # ============== STUDENT DASHBOARD APIs ==============
@@ -993,7 +1004,7 @@ async def get_student_dashboard(
             subject_name = ""
             if assessment and assessment.get("subject_id"):
                 subj = await gd_find_one(db.session, "subjects", {"id": assessment["subject_id"]})
-                subject_name = subj.get("name_ar", subj.get("name", "")) if subj else assessment.get("title", "")
+                subject_name = subject_display_name(subj) if subj else assessment.get("title", "")
             elif assessment:
                 subject_name = assessment.get("title", "")
             grade_val = sub.get("grade", sub.get("score", 0))
@@ -1033,9 +1044,6 @@ async def get_student_dashboard(
             for n in notifications
         ]
     }
-
-
-
 
 
 # ============== PARENT DASHBOARD APIs ==============
@@ -1191,7 +1199,7 @@ async def get_parent_dashboard(
             "id": student.get("id"),
             "name": student.get("full_name"),
             "class_name": class_info.get("name") if class_info else "غير محدد",
-            "avatar": student.get("avatar_url"),
+            "avatar": student.get("avatar_url"),  # students table has no avatar_url column — always None
             "stats": {
                 "attendance_rate": attendance_rate,
                 "average_grade": round(average_grade, 1),
@@ -1226,9 +1234,6 @@ async def get_parent_dashboard(
             for n in notifications
         ]
     }
-
-
-
 
 
 # ============== CONTACT TEACHER API ==============
@@ -1295,9 +1300,6 @@ async def parent_contact_teacher(
         "message_ar": "تم إرسال الرسالة بنجاح",
         "message_en": "Message sent successfully"
     }
-
-
-
 
 
 # ============== TEACHER MODULE APIs ==============
@@ -1376,97 +1378,179 @@ async def get_teacher_classes(
     Get all classes assigned to a teacher with enriched data
     جلب جميع الفصول المسندة للمعلم مع بيانات مُثرَاة
     """
-    teacher = await _resolve_teacher_record(teacher_id)
-    await _assert_teacher_identity(teacher, current_user, teacher_id)
-    _check_teacher_tenant(teacher, current_user)
+    if current_user.get("role") == "independent_teacher":
+        # Independent teachers have no ``teachers``/``teacher_assignments``
+        # rows: they OWN every class in their own workspace (classes are
+        # pinned to school_id == the workspace tenant id). Resolving them
+        # through the school-teacher path returned 404, and the callers'
+        # .catch() turned that into an EMPTY class dropdown ("اختر الفصل"
+        # with no options) on the behaviour-tracking page.
+        if teacher_id not in {current_user.get("id"), current_user.get("teacher_id")}:
+            raise HTTPException(status_code=403, detail="ليس لديك صلاحية للوصول لبيانات هذا المعلم")
+        school_id = current_user.get("tenant_id")
+        if not school_id:
+            # Pre-bootstrap workspace — no classes to show yet.
+            return []
+        resolved_teacher_id = current_user.get("teacher_id") or current_user.get("id")
+        assignments = []
+        classes = await gd_find(db.session, "classes", {
+            "school_id": school_id, "is_active": {"$ne": False}
+        }, limit=100)
+        if not classes:
+            return []
+        teacher_sessions = await _resolve_teacher_sessions(school_id, resolved_teacher_id)
+    else:
+        teacher = await _resolve_teacher_record(teacher_id)
+        await _assert_teacher_identity(teacher, current_user, teacher_id)
+        _check_teacher_tenant(teacher, current_user)
 
-    if teacher is None and current_user.get("role") not in TEACHER_ADMIN_ROLES:
-        raise HTTPException(status_code=404, detail="المعلم غير موجود")
+        if teacher is None and current_user.get("role") not in TEACHER_ADMIN_ROLES:
+            raise HTTPException(status_code=404, detail="المعلم غير موجود")
 
-    school_id = teacher.get("school_id") if teacher else None
-    # Use the actual teachers.id for queries — admin-side assignments are
-    # stored against teachers.id, not users.id.
-    resolved_teacher_id = teacher.get("id") if teacher else teacher_id
+        school_id = teacher.get("school_id") if teacher else None
+        # Use the actual teachers.id for queries — admin-side assignments are
+        # stored against teachers.id, not users.id.
+        resolved_teacher_id = teacher.get("id") if teacher else teacher_id
 
-    # First-touch initialization: if this school has never had teacher-class
-    # assignments populated, run the one-shot auto-populate so newly created
-    # teachers see their default classes without waiting for the principal to
-    # open the assignments settings tab.
-    if school_id:
-        try:
-            from routes.school_settings_mod import _auto_populate_teacher_class_assignments
-            await _auto_populate_teacher_class_assignments(school_id)
-        except Exception as e:
-            logger.warning(f"teacher classes initial populate failed for school {school_id}: {e}")
+        _assignments_filter = {"teacher_id": resolved_teacher_id, "is_active": True}
+        assignments = await gd_find(db.session, "teacher_assignments", _assignments_filter, limit=200)
 
-    # Source-of-truth reconciliation: a teacher with REAL scheduled lessons in
-    # the published timetable but no explicit assignment row would otherwise see
-    # an empty page (and be denied class access). Materialize the missing
-    # assignments additively so "My Classes", permissions, and the grid agree.
-    if school_id:
-        try:
-            await _reconcile_teacher_assignments_from_schedule(
-                school_id, resolved_teacher_id,
-                teacher.get("full_name") if teacher else None,
-            )
-        except Exception as e:
-            logger.warning(f"teacher assignment reconcile failed for school {school_id}: {e}")
+        # First-touch initialization, scoped to THIS teacher: if they have no
+        # class assignment yet, run the auto-populate so a newly created teacher
+        # sees their default classes without waiting for the principal to open
+        # the assignments settings tab. (The whole-school pass used to run on
+        # EVERY page view; the principal's settings tab still triggers it, and
+        # every other teacher triggers their own scoped pass on their own page.)
+        if school_id and not any(a.get("class_id") for a in assignments):
+            try:
+                from utils.teacher_assignment_sync import materialize_default_class_assignments
+                await materialize_default_class_assignments(school_id, teacher_ids=[resolved_teacher_id])
+                assignments = await gd_find(db.session, "teacher_assignments", _assignments_filter, limit=200)
+            except Exception as e:
+                logger.warning(f"teacher classes initial populate failed for school {school_id}: {e}")
 
-    assignments = await gd_find(db.session, "teacher_assignments", {
-        "teacher_id": resolved_teacher_id,
-        "is_active": True
-    }, limit=200)
+        # Schedule rows are needed both for the reconcile below and for the
+        # per-class enrichment later — resolve them ONCE.
+        teacher_sessions = await _resolve_teacher_sessions(school_id, resolved_teacher_id) if school_id else []
 
-    class_ids_from_assignments = set(a.get("class_id") for a in assignments if a.get("class_id"))
+        # Source-of-truth reconciliation: a teacher with REAL scheduled lessons in
+        # the published timetable but no explicit assignment row would otherwise see
+        # an empty page (and be denied class access). Materialize the missing
+        # assignments additively so "My Classes", permissions, and the grid agree.
+        # Fast path: skip entirely when every scheduled (class, subject) pair
+        # already has an active assignment row — the reconcile would be a no-op.
+        _assigned_pairs = {(a.get("class_id"), a.get("subject_id")) for a in assignments}
+        _scheduled_pairs = {
+            (s.get("class_id"), s.get("subject_id"))
+            for s in teacher_sessions
+            if s.get("class_id") and s.get("subject_id")
+        }
+        if school_id and (_scheduled_pairs - _assigned_pairs):
+            try:
+                created = await _reconcile_teacher_assignments_from_schedule(
+                    school_id, resolved_teacher_id,
+                    teacher.get("full_name") if teacher else None,
+                    sessions=teacher_sessions,
+                )
+                if created:
+                    assignments = await gd_find(db.session, "teacher_assignments", _assignments_filter, limit=200)
+            except Exception as e:
+                logger.warning(f"teacher assignment reconcile failed for school {school_id}: {e}")
 
-    # teacher_class_assignments is a scheduling-convenience table that is
-    # auto-populated to link every teacher to every class, so it must NOT
-    # widen the teacher's visible class set (it surfaced the whole school as
-    # "My Classes"). Visibility is the ACTIVE teacher_assignments set only —
-    # the same source of truth as utils.tenant_scope.get_teacher_allowed_class_ids.
-    all_class_ids = list(class_ids_from_assignments)
-    if not all_class_ids:
-        return []
+        class_ids_from_assignments = set(a.get("class_id") for a in assignments if a.get("class_id"))
 
-    classes = await gd_find(db.session, "classes", {"id": {"$in": all_class_ids}, "is_active": {"$ne": False}}, limit=100)
+        # teacher_class_assignments is a scheduling-convenience table that is
+        # auto-populated to link every teacher to every class, so it must NOT
+        # widen the teacher's visible class set (it surfaced the whole school as
+        # "My Classes"). Visibility is the ACTIVE teacher_assignments set only —
+        # the same source of truth as utils.tenant_scope.get_teacher_allowed_class_ids.
+        all_class_ids = list(class_ids_from_assignments)
+        if not all_class_ids:
+            return []
 
-    # Schedule/status source-of-truth: use the SAME resolver the teacher's
-    # timetable view uses (_resolve_teacher_sessions) so a class's lesson
-    # status ("بدون حصة") can never contradict the timetable. The previous
-    # inline read hit ONLY the legacy `schedule_sessions` table and returned
-    # nothing for schools on the modern `timetable_sessions` engine, which
-    # mislabelled every card as "no_upcoming" even with a full timetable.
-    # The resolver already enriches each row with start_time/subject_name, so
-    # no separate time_slots lookup is needed here.
-    teacher_sessions = await _resolve_teacher_sessions(school_id, resolved_teacher_id) if school_id else []
+        classes = await gd_find(db.session, "classes", {"id": {"$in": all_class_ids}, "is_active": {"$ne": False}}, limit=100)
+
+    # Schedule/status source-of-truth: ``teacher_sessions`` comes from the SAME
+    # resolver the teacher's timetable view uses (_resolve_teacher_sessions), so
+    # a class's lesson status ("بدون حصة") can never contradict the timetable.
+    # It is resolved exactly once per request (in each branch above); the
+    # resolver already enriches each row with start_time/subject_name, so no
+    # separate time_slots lookup is needed here.
 
     now = datetime.now()
     js_day_map = {6: "sunday", 0: "monday", 1: "tuesday", 2: "wednesday", 3: "thursday"}
     today_key = js_day_map.get(now.weekday())
     day_order = ["sunday", "monday", "tuesday", "wednesday", "thursday"]
 
+    # ------------------------------------------------------------------
+    # Batched enrichment (was a textbook N+1: one student COUNT + one
+    # subjects fetch + up to one assignment fallback PER CLASS, ~60 queries
+    # for a 19-class teacher — the dominant share of the 7.6 s production
+    # latency, which is round-trips x RTT, not row volume).
+    # ------------------------------------------------------------------
+    class_id_list = [c.get("id") for c in classes if c.get("id")]
+
+    # One grouped count replaces a COUNT per class.
+    student_count_by_class: Dict[str, int] = {}
+    if class_id_list:
+        _cnt_rows = (await db.session.execute(
+            sa_text(
+                "SELECT class_id, COUNT(id) AS cnt FROM students "
+                "WHERE class_id IN :cids AND is_active = true GROUP BY class_id"
+            ).bindparams(bindparam("cids", expanding=True)),
+            {"cids": class_id_list},
+        )).all()
+        student_count_by_class = {r[0]: int(r[1]) for r in _cnt_rows}
+
+    # Resolve each class's subject ids first (own assignments -> schedule),
+    # then bulk-fetch the school-wide assignment fallback ONCE for only the
+    # classes that still have none — same precedence as the old per-class code.
+    subject_ids_by_class: Dict[str, List[str]] = {}
+    _need_ta_fallback: List[str] = []
+    for cls in classes:
+        cls_id = cls.get("id")
+        sids = list(set(
+            a.get("subject_id") for a in assignments
+            if a.get("class_id") == cls_id and a.get("subject_id")
+        ))
+        if not sids and teacher_sessions:
+            sids = list(set(
+                s.get("subject_id") for s in teacher_sessions
+                if s.get("class_id") == cls_id and s.get("subject_id")
+            ))
+        if not sids:
+            _need_ta_fallback.append(cls_id)
+        subject_ids_by_class[cls_id] = sids
+
+    if _need_ta_fallback:
+        _ta_rows = await gd_find(db.session, "teacher_assignments", {
+            "class_id": {"$in": _need_ta_fallback}, "is_active": True,
+        }, limit=2000)
+        _ta_by_class: Dict[str, set] = {}
+        for a in _ta_rows:
+            if a.get("subject_id") and a.get("class_id"):
+                _ta_by_class.setdefault(a["class_id"], set()).add(a["subject_id"])
+        _own_subject_ids = list(set(a.get("subject_id") for a in assignments if a.get("subject_id")))
+        for cls_id in _need_ta_fallback:
+            subject_ids_by_class[cls_id] = list(_ta_by_class.get(cls_id) or _own_subject_ids)
+
+    # One subjects fetch for the union of every class's subject ids.
+    _all_subject_ids = list({sid for sids in subject_ids_by_class.values() for sid in sids})
+    _subject_by_id: Dict[str, dict] = {}
+    if _all_subject_ids:
+        for s in await gd_find(db.session, "subjects", {"id": {"$in": _all_subject_ids}}, limit=500):
+            if s.get("id"):
+                _subject_by_id[s["id"]] = s
+
     enriched_classes = []
     for cls in classes:
         cls_id = cls.get("id")
         class_assignments = [a for a in assignments if a.get("class_id") == cls_id]
 
-        student_count = await gd_count(db.session, "students", {"class_id": cls_id, "is_active": True})
+        student_count = student_count_by_class.get(cls_id, 0)
 
-        subject_ids = list(set(a.get("subject_id") for a in class_assignments if a.get("subject_id")))
-        if not subject_ids and teacher_sessions:
-            subject_ids = list(set(
-                s.get("subject_id") for s in teacher_sessions
-                if s.get("class_id") == cls_id and s.get("subject_id")
-            ))
-        if not subject_ids:
-            ta_for_class = await gd_find(db.session, "teacher_assignments", {"class_id": cls_id, "is_active": True}, limit=20)
-            subject_ids = list(set(a.get("subject_id") for a in ta_for_class if a.get("subject_id")))
-        if not subject_ids:
-            subject_ids = list(set(a.get("subject_id") for a in assignments if a.get("subject_id")))
-
-        subjects = []
-        if subject_ids:
-            subjects = await gd_find(db.session, "subjects", {"id": {"$in": subject_ids}}, limit=20)
+        subject_ids = subject_ids_by_class.get(cls_id, [])
+        subjects = [_subject_by_id[sid] for sid in subject_ids if sid in _subject_by_id]
         subject_names = [s.get("name_ar") or s.get("name_en") or "مادة" for s in subjects]
         subjects_data = [
             {"id": s.get("id"), "name": s.get("name_ar") or s.get("name_en") or "مادة"}
@@ -1477,7 +1561,10 @@ async def get_teacher_classes(
         weekly_periods = len(class_schedule) or sum(a.get("weekly_sessions", 0) for a in class_assignments)
 
         next_session_info = None
-        if class_schedule and today_key:
+        # today_key is None on Friday/Saturday (weekend): still compute the
+        # next session — today_idx=-1 makes every school day "upcoming", so
+        # the earliest Sunday session wins instead of returning None.
+        if class_schedule:
             today_idx = day_order.index(today_key) if today_key in day_order else -1
             now_minutes = now.hour * 60 + now.minute
             best = None
@@ -1779,18 +1866,58 @@ async def get_student_attendance_stats(
     }
 
 
+def _behaviour_record_to_legacy(rec: dict) -> dict:
+    """Map a canonical ``behaviour_records`` row to the legacy shape the
+    behaviour tracking page (المتابعة السلوكية) renders: it reads
+    ``note`` (column is ``description``), ``date`` (live-session rows
+    have NULL ``date`` — fall back to ``created_at``), and styles/counts
+    strictly on ``type`` being ``positive``/``negative`` (older rows may
+    carry other legacy ``type`` values; derive from category, then the
+    points sign)."""
+    rec_type = rec.get("type")
+    if rec_type not in ("positive", "negative"):
+        cat = rec.get("category")
+        if cat in ("positive", "negative"):
+            rec_type = cat
+        else:
+            rec_type = "negative" if (rec.get("points") or 0) < 0 else "positive"
+    return {
+        "id": rec.get("id"),
+        "student_id": rec.get("student_id"),
+        "class_id": rec.get("class_id"),
+        "type": rec_type,
+        "points": rec.get("points") or 0,
+        "note": rec.get("description"),
+        "date": rec.get("date") or rec.get("created_at"),
+        "created_at": rec.get("created_at"),
+        "created_by": rec.get("created_by"),
+    }
+
+
+# Roles allowed on the behaviour tracking endpoints. Independent teachers
+# run the SAME page (/teacher/behavior is TEACHER_ROLES) — excluding them
+# used to 403 and the page's .catch() silently rendered "no behaviours".
+_BEH_TEACHING_ROLES = {"teacher", "independent_teacher"}
+_BEH_ADMIN_ROLES = {"platform_admin", "admin", "super_admin", "school_principal", "school_admin", "school_sub_admin"}
+
+
 @router.get("/behavior")
 async def get_behavior_records(
     class_id: str = Query(None),
     student_id: str = Query(None),
     current_user: dict = Depends(get_current_user)
 ):
-    """Get behavior records"""
+    """Get behaviour records for the tracking page (المتابعة السلوكية).
+
+    Reads the canonical ``behaviour_records`` table — the same store the
+    live-lesson engine and the behaviour-incident routes write to. (The
+    page previously read an orphan ``behavior`` collection that nothing
+    else wrote, so every student showed 0 points.)
+    """
     _beh_role = current_user.get("role", "")
     _beh_tenant = current_user.get("tenant_id")
-    _BEH_ADMIN_ROLES = {"platform_admin", "admin", "super_admin", "school_principal", "school_admin", "school_sub_admin"}
 
-    if _beh_role not in _BEH_ADMIN_ROLES and _beh_role != "teacher":
+    if _beh_role not in _BEH_ADMIN_ROLES and _beh_role not in _BEH_TEACHING_ROLES:
         raise HTTPException(status_code=403, detail="غير مصرح بالوصول لسجلات السلوك")
 
     query = {}
@@ -1799,11 +1926,19 @@ async def get_behavior_records(
     if student_id:
         query["student_id"] = student_id
 
-    if _beh_role != "platform_admin" and _beh_tenant:
+    if _beh_role != "platform_admin":
+        if not _beh_tenant:
+            # Fail closed: a tenant-less non-platform caller must never
+            # see the unscoped table.
+            return []
         query["school_id"] = _beh_tenant
 
-    records = await gd_find(db.session, "behavior", query, order_by="date", desc_order=True, limit=200)
-    return records
+    # Order by created_at: live-session rows have NULL ``date`` (the
+    # engine writes ``incident_date`` which is not a column), so sorting
+    # on ``date`` would strand them.
+    records = await gd_find(db.session, "behaviour_records", query,
+                            order_by="created_at", desc_order=True, limit=200)
+    return [_behaviour_record_to_legacy(r) for r in records]
 
 
 @router.post("/behavior")
@@ -1813,10 +1948,7 @@ async def create_behavior_record(
 ):
     """Create behavior record - تسجيل ملاحظة سلوكية"""
     _create_beh_role = current_user.get("role", "")
-    _CREATE_BEH_ALLOWED = {
-        "platform_admin", "admin", "super_admin",
-        "school_principal", "school_admin", "school_sub_admin", "teacher"
-    }
+    _CREATE_BEH_ALLOWED = _BEH_ADMIN_ROLES | _BEH_TEACHING_ROLES
     if _create_beh_role not in _CREATE_BEH_ALLOWED:
         raise HTTPException(status_code=403, detail="غير مصرح بإضافة سجلات السلوك")
 
@@ -1847,26 +1979,43 @@ async def create_behavior_record(
     if client_class_id and student_class_id and client_class_id != student_class_id:
         raise HTTPException(status_code=422, detail="class_id لا يتطابق مع فصل الطالب")
 
-    # Pull only the safe, expected fields from the request body;
-    # never trust client-supplied school_id, tenant_id, or created_by.
-    allowed_fields = {"student_id", "class_id", "type", "description", "points", "date"}
-    safe_data = {k: v for k, v in data.items() if k in allowed_fields}
-
-    # Server-side pin: school_id is always derived from the canonical student record.
-    if canonical_school_id:
-        safe_data["school_id"] = canonical_school_id
+    # Persist into the canonical ``behaviour_records`` table (real table —
+    # gd_insert silently drops non-column keys, so write ONLY real columns:
+    # id, school_id, student_id, class_id, teacher_id, type, category,
+    # severity, points, description, date, action_taken, parent_notified,
+    # created_by, created_at, updated_at). The page previously wrote an
+    # orphan ``behavior`` collection nothing else read.
+    raw_type = data.get("type")
+    try:
+        points = int(data.get("points") or 0)
+    except (TypeError, ValueError):
+        points = 0
+    rec_type = raw_type if raw_type in ("positive", "negative") else (
+        "negative" if points < 0 else "positive"
+    )
+    # The quick-registration UI sends the behaviour label as ``note``;
+    # the custom-note dialog may send ``description``. Accept both.
+    note = data.get("note") or data.get("description")
 
     record = {
         "id": str(uuid.uuid4()),
-        **safe_data,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "created_by": current_user["id"]
+        # Server-side pin: school scope always derives from the canonical
+        # student record — never trust client-supplied school_id/tenant_id.
+        "school_id": canonical_school_id,
+        "student_id": student_id,
+        "class_id": client_class_id or student_class_id,
+        "type": rec_type,
+        "category": rec_type,
+        "points": points,
+        "description": note,
+        "date": data.get("date"),  # ISO string — coerced to DateTime by gd_insert
+        "created_by": current_user["id"],
     }
 
-    await gd_insert(db.session, "behavior", record)
+    await gd_insert(db.session, "behaviour_records", record)
     record.pop("_id", None)
 
-    return {"message": "تم تسجيل الملاحظة السلوكية", "record": record}
+    return {"message": "تم تسجيل الملاحظة السلوكية", "record": _behaviour_record_to_legacy(record)}
 
 
 # ----- Student-profile overview metrics (سجل الطلاب → نظرة عامة) ------------
@@ -1894,13 +2043,9 @@ def _interaction_is_reversed(it: dict) -> bool:
     return bool(it.get("reversed"))
 
 
-def _interaction_is_participatory(it: dict) -> bool:
-    itype = it.get("interaction_type") or it.get("type")
-    if itype == "question":
-        return it.get("answer_result") in ("correct", "wrong")
-    if itype == "participation":
-        return it.get("participation_type") not in ("inactive", "refused")
-    return itype in ("evaluation", "recitation")
+# Single source of truth for the participatory classification — the session
+# summary (review preview / end session) and these analytics must never drift.
+from engines.session_engine import interaction_is_participatory as _interaction_is_participatory
 
 
 def _behaviour_signed_points(it: dict) -> Optional[int]:
@@ -1947,6 +2092,67 @@ def _doc_points_number(r: dict) -> float:
         return float(r.get("points") or 0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _is_session_mirror_behaviour(rec: dict) -> bool:
+    """True for ``behaviour_records`` rows that MIRROR a live-session
+    behaviour interaction (``commit_session_scores`` writes them with a
+    deterministic ``si:<interaction_id>:br`` id).
+
+    Callers that already sum ``session_interactions`` behaviour points must
+    skip these, or every committed live-lesson behaviour is counted twice.
+    """
+    return str(rec.get("id") or "").startswith("si:")
+
+
+async def _manual_behaviour_records(student_ids, school_id: str = None, limit: int = 50000):
+    """Load canonical ``behaviour_records`` rows for the given students,
+    excluding live-session mirrors.
+
+    The behaviour tracking page (المتابعة السلوكية) and the behaviour
+    incident routes write here; the orphan ``behavior`` generic-document
+    collection these consumers used to read was never written by anything,
+    so manually recorded behaviours were invisible in the student profile
+    and the class student-record list.
+    """
+    ids = [s for s in (student_ids or []) if s]
+    if not ids:
+        return []
+    query: dict = {"student_id": {"$in": ids}}
+    if school_id:
+        query["school_id"] = school_id
+    rows = await gd_find(db.session, "behaviour_records", query, limit=limit)
+    return [r for r in rows if not _is_session_mirror_behaviour(r)]
+
+
+def _behaviour_record_display(rec: dict) -> dict:
+    """Shape a canonical behaviour row for the student-profile consumers,
+    which render ``name_ar``/``name_en``/``note`` and ``points``/``date``."""
+    note = rec.get("description") or rec.get("note") or ""
+    if note:
+        # Manual rows carry the teacher-written label (e.g. "مشاركة فعالة")
+        # in ``description`` — show it verbatim rather than collapsing it to
+        # the generic category name.
+        name_ar = name_en = note
+    else:
+        localized = _localize_behaviour_type(rec.get("type") or "",
+                                             category=rec.get("category") or "")
+        name_ar = localized.get("name_ar") or "سلوك"
+        name_en = localized.get("name_en") or "Behaviour"
+        note = name_ar
+    return {
+        "id": rec.get("id"),
+        "student_id": rec.get("student_id"),
+        "class_id": rec.get("class_id"),
+        "type": rec.get("type"),
+        "category": rec.get("category"),
+        "note": note,
+        "name_ar": name_ar,
+        "name_en": name_en,
+        "points": _as_clean_number(_doc_points_number(rec)),
+        "date": rec.get("date") or rec.get("created_at"),
+        "created_at": rec.get("created_at"),
+    }
 
 
 def _as_clean_number(value: float):
@@ -2058,7 +2264,11 @@ async def get_class_student_stats(
     attendance_rows = await gd_find(db.session, "attendance", {"student_id": {"$in": student_ids}}, limit=_CAP)
     session_att_rows = await gd_find(db.session, "session_attendance", {"student_id": {"$in": student_ids}, "is_draft": {"$ne": True}}, limit=_CAP)
     grade_rows = await gd_find(db.session, "grades", {"student_id": {"$in": student_ids}}, limit=_CAP)
-    behavior_docs = await gd_find(db.session, "behavior", {"student_id": {"$in": student_ids}}, limit=_CAP)
+    # Canonical store: behaviour_records (the orphan "behavior" collection
+    # this used to read was never written, so manually recorded behaviours
+    # scored 0 here). Live-session mirrors are skipped — their points are
+    # already summed from session_interactions below.
+    behavior_docs = await _manual_behaviour_records(student_ids, limit=_CAP)
     interaction_rows = await gd_find(db.session, "session_interactions", {"student_id": {"$in": student_ids}}, limit=_CAP)
 
     per = {sid: {
@@ -2157,6 +2367,11 @@ async def get_student_analytics(
         if _ana_role != "platform_admin" and _ana_tenant:
             if student.get("school_id") and student["school_id"] != _ana_tenant:
                 raise HTTPException(status_code=403, detail="لا يمكنك الوصول لبيانات طالب من مدرسة أخرى")
+    elif _ana_role == "independent_teacher" and _ana_tenant and student.get("school_id") == _ana_tenant:
+        # Independent teachers own every student in their own workspace and
+        # have no teacher_assignments rows — the school-teacher checks below
+        # would 403 them out of their own students' profiles.
+        pass
     else:
         teacher_id = current_user.get("teacher_id") or current_user.get("id")
         if student:
@@ -2299,11 +2514,19 @@ async def get_student_analytics(
             _seen_skill_types[_btype]["count"] += 1
     skills = list(_seen_skill_types.values())
 
-    behavior_records = await gd_find(db.session, "behavior", {"student_id": student_id}, order_by="date", desc_order=True, limit=200)
+    # Canonical store: behaviour_records. This used to read the orphan
+    # "behavior" generic-document collection that nothing writes, so every
+    # behaviour recorded on المتابعة السلوكية (and by the incident routes)
+    # was invisible in the student profile opened from فصولي. Live-session
+    # mirrors (``si:*`` ids) are skipped — their points come from the
+    # session_interactions pass below.
+    behavior_rows = await _manual_behaviour_records([student_id], limit=200)
     if student_class_id:
-        behavior_records = [b for b in behavior_records if not b.get("class_id") or b.get("class_id") == student_class_id]
+        behavior_rows = [b for b in behavior_rows if not b.get("class_id") or b.get("class_id") == student_class_id]
+    behavior_rows.sort(key=lambda b: str(b.get("date") or b.get("created_at") or ""), reverse=True)
+    behavior_records = [_behaviour_record_display(b) for b in behavior_rows]
 
-    total_behavior = sum(_doc_points_number(r) for r in behavior_records)
+    total_behavior = sum(_doc_points_number(r) for r in behavior_rows)
 
     session_beh_records = []
     for b in behavior_interactions:
@@ -2657,7 +2880,6 @@ async def get_teacher_activity_log(
         })
 
     return {"activities": formatted, "total": len(formatted)}
-
 
 
 # ============== TEACHER SESSION ENGINE APIs ==============
@@ -3292,12 +3514,23 @@ async def get_teacher_class_metrics(
     _check_teacher_tenant(teacher, current_user)
     resolved_teacher_id = teacher.get("id") if teacher else teacher_id
     # Task #919: canonical teacher_assignments is the single source of truth.
-    assignments = await gd_find(db.session, "teacher_assignments", {"teacher_id": resolved_teacher_id, "is_active": True}, limit=200)
-    all_class_ids = list({a.get("class_id") for a in assignments if a.get("class_id")})
-    metrics = {}
-    for class_id in all_class_ids:
-        metrics[class_id] = await session_engine.get_class_metrics(resolved_teacher_id, class_id)
-    return metrics
+    # Read only the ids: loading full TeacherAssignment ORM rows drags in the
+    # lazy="selectin" teacher/school/class/subject relationships (and School's
+    # own settings), which cost ~15 extra queries here for data this endpoint
+    # never looks at.
+    class_rows = await db.session.execute(sa_text("""
+        SELECT DISTINCT class_id
+        FROM teacher_assignments
+        WHERE teacher_id = :teacher_id
+          AND is_active = true
+          AND class_id IS NOT NULL
+        LIMIT 200
+    """), {"teacher_id": resolved_teacher_id})
+    all_class_ids = [row[0] for row in class_rows]
+    # One set-based pass for every class. Looping here (one call per class,
+    # each of which then queried per session) cost 187 round-trips for a
+    # 14-class teacher and made this the slowest call on the dashboard.
+    return await session_engine.get_class_metrics_bulk(resolved_teacher_id, all_class_ids)
 
 
 @router.get("/skills-types")
@@ -4022,14 +4255,15 @@ async def undo_last_session_action(
 
 
 @router.delete("/session/{session_id}/note/{note_id}")
-async def delete_session_note(
+async def delete_session_note_route(
     session_id: str,
     note_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    await _verify_session_owner(session_id, current_user)
-    teacher_id = current_user.get("teacher_id") or current_user["id"]
-    result = await session_engine.delete_note(note_id, teacher_id)
+    # Owner-only: deleting a teacher's note is a write on their own session —
+    # neither platform nor school admins may prune another teacher's notes.
+    await _verify_session_owner(session_id, current_user, allow_admin=False)
+    result = await session_engine.delete_note(note_id, session_id)
     return result
 
 

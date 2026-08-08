@@ -15,6 +15,16 @@ from datetime import datetime
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
+# Live-server integration script: it drives a RUNNING backend over HTTP via
+# REACT_APP_BACKEND_URL and depends on pre-seeded workspace data and
+# credentials. In the CI gate there is no running server and no seeded data,
+# so skip unless an absolute base URL is provided. See docs/ci/quarantine.md.
+pytestmark = pytest.mark.skipif(
+    not BASE_URL.startswith(("http://", "https://")),
+    reason="live-server integration script: requires REACT_APP_BACKEND_URL "
+           "pointing at a running, seeded backend (docs/ci/quarantine.md)",
+)
+
 # Test credentials
 ADMIN_EMAIL = "info@nassaqapp.com"
 ADMIN_PASSWORD = "NassaqAdmin2026!##$$HBJ"

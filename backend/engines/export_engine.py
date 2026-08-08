@@ -25,6 +25,18 @@ from sqlalchemy import select, and_
 from pg_models import Student, Attendance, GenericDocument
 from engines.sql_utils import model_to_dict
 
+
+def _chunked(items, size: int = 500):
+    """Split an id list into bounded chunks.
+
+    An ``IN (...)`` list built from a whole export is itself an unbounded
+    query: tens of thousands of bind parameters in one statement. Enrichment
+    lookups walk the ids in chunks instead.
+    """
+    seq = list(items or [])
+    for start in range(0, len(seq), size):
+        yield seq[start:start + size]
+
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -219,16 +231,30 @@ class ExportEngine:
         period = report.get("period", {})
         generated = report.get("generated_at", datetime.now(timezone.utc).isoformat())
 
+        # Imported here, not at module scope: services/__init__ pulls in
+        # auth_service -> dependencies -> this module, so a top-level import
+        # would make export_engine unimportable on its own (tools, scripts).
+        from services.cpu_offload import run_cpu_bound
+
+        # Rendering is CPU-bound and never awaits, so it must not run on the
+        # event loop: an inline Arabic PDF build froze every other request for
+        # the whole build (1.5 s at 200 rows, 3.4 s at 500). See
+        # services/cpu_offload.py.
         if fmt == "pdf":
-            buf = self._to_pdf(report_type, data, period, generated, school_id)
+            buf = await run_cpu_bound(
+                self._to_pdf, report_type, data, period, generated, school_id,
+                kind="pdf",
+            )
             media = "application/pdf"
             ext = "pdf"
         elif fmt == "csv":
-            buf = self._to_csv(report_type, data)
+            buf = await run_cpu_bound(self._to_csv, report_type, data, kind="csv")
             media = "text/csv; charset=utf-8"
             ext = "csv"
         elif fmt == "xlsx":
-            buf = self._to_xlsx(report_type, data, period, generated)
+            buf = await run_cpu_bound(
+                self._to_xlsx, report_type, data, period, generated, kind="xlsx",
+            )
             media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             ext = "xlsx"
         else:
@@ -749,26 +775,25 @@ class ExportEngine:
 
     async def export_students(self, school_id: str, class_id: Optional[str] = None, fmt: str = "csv") -> Dict[str, Any]:
         """Export student records for a school."""
+        from engines.sql_utils import gd_iter_batches
         session = self.db.session
-        conditions = [Student.school_id == school_id, Student.is_active == True]
+        filters: Dict[str, Any] = {"school_id": school_id, "is_active": True}
         if class_id:
-            conditions.append(Student.class_id == class_id)
-        stmt = select(Student).where(and_(*conditions))
-        result = await session.execute(stmt)
+            filters["class_id"] = class_id
         students = []
-        for s in result.scalars().all():
-            d = model_to_dict(s)
-            students.append({
-                "id": d.get("id"), "full_name": d.get("full_name"),
-                "student_number": d.get("student_number"),
-                "class_id": d.get("class_id"), "class_name": d.get("class_name"),
-                "grade_level": d.get("grade_level"),
-                "date_of_birth": d.get("date_of_birth"),
-                "national_id": d.get("national_id"), "gender": d.get("gender"),
-                "parent_name": d.get("parent_name"),
-                "parent_phone": d.get("parent_phone"),
-                "enrollment_date": d.get("enrollment_date"),
-            })
+        async for batch in gd_iter_batches(session, "students", filters):
+            for d in batch:
+                students.append({
+                    "id": d.get("id"), "full_name": d.get("full_name"),
+                    "student_number": d.get("student_number"),
+                    "class_id": d.get("class_id"), "class_name": d.get("class_name"),
+                    "grade_level": d.get("grade_level"),
+                    "date_of_birth": d.get("date_of_birth"),
+                    "national_id": d.get("national_id"), "gender": d.get("gender"),
+                    "parent_name": d.get("parent_name"),
+                    "parent_phone": d.get("parent_phone"),
+                    "enrollment_date": d.get("enrollment_date"),
+                })
 
         if fmt == "json":
             return self.export_to_json(students, "students")
@@ -779,32 +804,30 @@ class ExportEngine:
         class_id: Optional[str] = None, fmt: str = "csv"
     ) -> Dict[str, Any]:
         """Export attendance records for a date range."""
+        from engines.sql_utils import gd_iter_batches
         session = self.db.session
-        conditions = [
-            Attendance.school_id == school_id,
-            Attendance.date >= start_date,
-            Attendance.date <= end_date,
-        ]
+        filters: Dict[str, Any] = {
+            "school_id": school_id,
+            "date": {"$gte": start_date, "$lte": end_date},
+        }
         if class_id:
-            conditions.append(Attendance.class_id == class_id)
+            filters["class_id"] = class_id
 
-        stmt = select(Attendance).where(and_(*conditions))
-        result = await session.execute(stmt)
         records = []
-        for r in result.scalars().all():
-            d = model_to_dict(r)
-            records.append({
-                "student_id": d.get("student_id"), "class_id": d.get("class_id"),
-                "date": d.get("date"), "status": d.get("status"),
-                "teacher_id": d.get("recorded_by"),
-            })
+        async for batch in gd_iter_batches(session, "attendance", filters):
+            for d in batch:
+                records.append({
+                    "student_id": d.get("student_id"), "class_id": d.get("class_id"),
+                    "date": d.get("date"), "status": d.get("status"),
+                    "teacher_id": d.get("recorded_by"),
+                })
 
         student_ids = list(set(r.get("student_id") for r in records if r.get("student_id")))
         name_map = {}
         number_map = {}
-        if student_ids:
+        for chunk in _chunked(student_ids):
             stmt2 = select(Student).where(
-                and_(Student.id.in_(student_ids), Student.school_id == school_id)
+                and_(Student.id.in_(chunk), Student.school_id == school_id)
             )
             result2 = await session.execute(stmt2)
             for s in result2.scalars().all():
@@ -823,27 +846,27 @@ class ExportEngine:
         self, school_id: str, class_id: Optional[str] = None, fmt: str = "csv"
     ) -> Dict[str, Any]:
         """Export grade records with optional subject filter."""
-        from engines.sql_utils import gd_find
+        from engines.sql_utils import gd_iter_batches
         session = self.db.session
-        raw = await gd_find(session, "student_grades", {"tenant_id": school_id})
         grades = []
-        for d in raw:
-            grades.append({
-                "student_id": d.get("student_id"),
-                "assessment_id": d.get("assessment_id"),
-                "subject_id": d.get("subject_id"),
-                "score": d.get("score"), "max_score": d.get("max_score"),
-                "percentage": d.get("percentage"),
-                "is_passing": d.get("is_passing"),
-                "graded_at": d.get("graded_at"),
-            })
+        async for batch in gd_iter_batches(session, "student_grades", {"tenant_id": school_id}):
+            for d in batch:
+                grades.append({
+                    "student_id": d.get("student_id"),
+                    "assessment_id": d.get("assessment_id"),
+                    "subject_id": d.get("subject_id"),
+                    "score": d.get("score"), "max_score": d.get("max_score"),
+                    "percentage": d.get("percentage"),
+                    "is_passing": d.get("is_passing"),
+                    "graded_at": d.get("graded_at"),
+                })
 
         student_ids = list(set(g.get("student_id") for g in grades if g.get("student_id")))
         name_map = {}
         class_map_data = {}
-        if student_ids:
+        for chunk in _chunked(student_ids):
             stmt = select(Student).where(
-                and_(Student.id.in_(student_ids), Student.school_id == school_id)
+                and_(Student.id.in_(chunk), Student.school_id == school_id)
             )
             result = await session.execute(stmt)
             for s in result.scalars().all():

@@ -4,18 +4,18 @@ from dataclasses import replace
 
 import pytest
 
-from backend.engines.hard_constraints import (
+from engines.hard_constraints import (
     VALIDATION_REGISTRY,
     validate_full,
     validate_placement,
 )
-from backend.engines.hard_constraints.types import (
+from engines.hard_constraints.types import (
     ConstraintContext,
     ConstraintViolation,
     ValidatorMeta,
 )
-from backend.engines.smart_scheduling_engine import ConflictSeverity
-from backend.seeds.timetable_hard_constraints import TIMETABLE_HARD_CONSTRAINTS as HARD_CONSTRAINTS
+from engines.smart_scheduling_engine import ConflictSeverity
+from seeds.timetable_hard_constraints import TIMETABLE_HARD_CONSTRAINTS as HARD_CONSTRAINTS
 
 
 def _empty_ctx(active_keys=None):
@@ -76,7 +76,7 @@ def test_validate_full_collects_violations_from_all_active_validators(monkeypatc
     stub_registry[key_b] = replace(stub_registry[key_b], fn=make_stub(key_b, "HC-09"), tier="full")
 
     monkeypatch.setattr(
-        "backend.engines.hard_constraints.VALIDATION_REGISTRY",
+        "engines.hard_constraints.VALIDATION_REGISTRY",
         stub_registry,
     )
 
@@ -117,7 +117,7 @@ def test_inactive_constraint_is_not_dispatched(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "backend.engines.hard_constraints.VALIDATION_REGISTRY",
+        "engines.hard_constraints.VALIDATION_REGISTRY",
         stub_registry,
     )
 
