@@ -1,4 +1,4 @@
-import { SETTINGS_TABS } from '../platformSettingsTabs';
+import { SETTINGS_TABS } from '@/features/platform/pages/platformSettingsTabs';
 
 describe('PlatformSettingsPage SETTINGS_TABS (T&C unification regression)', () => {
   it('does not expose a "terms" tab — T&C is unified at the public /terms route', () => {

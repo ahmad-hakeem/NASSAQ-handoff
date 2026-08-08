@@ -13,7 +13,7 @@ import {
   TARGET_WIDTHS,
   setViewport,
   fingerprintContainer,
-} from '../../../../testUtils/mobileViewportFingerprint';
+} from '@/testUtils/mobileViewportFingerprint';
 
 jest.mock('react-dom', () => {
   const actual = jest.requireActual('react-dom');

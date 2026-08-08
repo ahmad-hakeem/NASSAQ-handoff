@@ -19,11 +19,11 @@ jest.mock('react-router-dom', () => ({
   useParams: () => ({ classId: 'c1' }),
 }), { virtual: true });
 
-jest.mock('../../../components/layout/Sidebar', () => ({
+jest.mock('@/shared/components/layout/Sidebar', () => ({
   Sidebar: ({ children }) => <div data-testid="sidebar">{children}</div>,
 }));
 
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({
     nassaqError: jest.fn(),
     nassaqWarning: jest.fn(),
@@ -45,17 +45,17 @@ jest.mock('@/shared/contexts/ThemeContext', () => ({
   useTranslation: () => mockStableTranslation,
 }));
 
-jest.mock('../../../components/hakim/HakimAssistant', () => ({
+jest.mock('@/features/hakim/components/hakim/HakimAssistant', () => ({
   HakimAssistant: () => <div />,
 }));
-jest.mock('../../../components/hakim/HakimPresence', () => ({ __esModule: true, default: () => <div /> }));
-jest.mock('../../../components/teacher/FollowupGradesTable', () => ({ __esModule: true, default: () => <div /> }));
-jest.mock('../../../components/teacher/SidebarSettingsDialog', () => ({ __esModule: true, default: () => <div /> }));
-jest.mock('../../../components/teacher/InlineAttendanceTable', () => ({
+jest.mock('@/features/hakim/components/hakim/HakimPresence', () => ({ __esModule: true, default: () => <div /> }));
+jest.mock('@/features/teachers/components/teacher/FollowupGradesTable', () => ({ __esModule: true, default: () => <div /> }));
+jest.mock('@/features/teachers/components/teacher/SidebarSettingsDialog', () => ({ __esModule: true, default: () => <div /> }));
+jest.mock('@/features/teachers/components/teacher/InlineAttendanceTable', () => ({
   __esModule: true,
   default: () => <div data-testid="inline-attendance" />,
 }));
-jest.mock('../../../components/teacher/CollaboratorsTab', () => ({ __esModule: true, default: () => <div /> }));
+jest.mock('@/features/teachers/components/teacher/CollaboratorsTab', () => ({ __esModule: true, default: () => <div /> }));
 jest.mock('@/shared/models/utils/apiError', () => ({
   getApiErrorMessage: (err) => err?.response?.data?.detail?.message || 'error',
 }));

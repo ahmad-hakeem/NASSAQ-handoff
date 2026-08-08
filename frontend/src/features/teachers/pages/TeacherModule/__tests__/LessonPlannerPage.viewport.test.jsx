@@ -15,17 +15,17 @@ import {
   TARGET_WIDTHS,
   setViewport,
   fingerprintContainer,
-} from '../../../testUtils/mobileViewportFingerprint';
+} from '@/testUtils/mobileViewportFingerprint';
 
 jest.mock('react-router-dom', () => ({
   useLocation: () => ({ pathname: '/teacher/lesson-planner', search: '' }),
   useNavigate: () => jest.fn(),
 }), { virtual: true });
 
-jest.mock('../../../components/layout/Sidebar', () => ({
+jest.mock('@/shared/components/layout/Sidebar', () => ({
   Sidebar: () => <div data-testid="sidebar" />,
 }));
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({
     nassaqError: jest.fn(),
     nassaqInfo: jest.fn(),

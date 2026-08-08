@@ -43,7 +43,7 @@ jest.mock('@/shared/models/utils/hijriDate', () => ({
 }));
 
 const axios = require('axios').default;
-const ParentInvitationAcceptPage = require('../ParentInvitationAcceptPage').default;
+const ParentInvitationAcceptPage = require('@/features/communication/pages/ParentInvitationAcceptPage').default;
 
 describe('ParentInvitationAcceptPage — landing snapshot (#277)', () => {
   beforeEach(() => {

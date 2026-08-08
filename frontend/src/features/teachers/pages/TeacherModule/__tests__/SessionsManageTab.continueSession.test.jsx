@@ -29,7 +29,7 @@ jest.mock('react-router-dom', () => ({
 }), { virtual: true });
 
 const mockAlert = { nassaqError: jest.fn(), nassaqInfo: jest.fn(), nassaqConfirm: jest.fn() };
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => mockAlert,
 }));
 

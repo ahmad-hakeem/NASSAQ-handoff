@@ -37,7 +37,7 @@ jest.mock('sonner', () => ({
 
 // Lightweight Dialog: render children when open, and expose a trigger that calls
 // onOpenChange(false) to emulate Radix Escape / backdrop-click.
-jest.mock('../../../components/ui/dialog', () => {
+jest.mock('@/shared/components/ui/dialog', () => {
   const React = require('react');
   const Dialog = ({ open, onOpenChange, children }) =>
     open
@@ -66,7 +66,7 @@ jest.mock('../../../components/ui/dialog', () => {
 // Native <select> stand-in: collect <SelectItem> values + the trigger testid so
 // the multi-step flow can be driven deterministically (Radix Select relies on
 // pointer events that jsdom does not implement).
-jest.mock('../../../components/ui/select', () => {
+jest.mock('@/shared/components/ui/select', () => {
   const React = require('react');
   const SelectItem = () => null;
   const SelectTrigger = () => null;

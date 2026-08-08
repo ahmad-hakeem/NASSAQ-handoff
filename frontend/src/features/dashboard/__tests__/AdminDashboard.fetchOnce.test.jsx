@@ -86,7 +86,7 @@ jest.mock('@/shared/components/ui/badge', () => ({
   Badge: ({ children, ...r }) => <span {...r}>{children}</span>,
 }));
 
-const { AdminDashboard } = require('../AdminDashboard');
+const { AdminDashboard } = require('@/features/dashboard/pages/AdminDashboard');
 const QuickAIOperationsPanel = require('@/features/hakim/components/ai/QuickAIOperationsPanel').default;
 
 const STATS_URL = '/admin/command-center/stats';

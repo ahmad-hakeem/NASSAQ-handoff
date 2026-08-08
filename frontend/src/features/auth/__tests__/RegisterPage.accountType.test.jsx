@@ -87,7 +87,7 @@ jest.mock('@/shared/components/ui/badge', () => ({
 }));
 
 // Import after mocks.
-const { RegisterPage } = require('../RegisterPage');
+const { RegisterPage } = require('@/features/auth/pages/RegisterPage');
 
 const next = () => fireEvent.click(screen.getByTestId('next-step-btn'));
 

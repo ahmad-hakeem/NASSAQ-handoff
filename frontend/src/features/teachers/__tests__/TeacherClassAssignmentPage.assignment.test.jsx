@@ -11,7 +11,7 @@
  */
 import React from 'react';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
-import TeacherClassAssignmentPage from '../TeacherClassAssignmentPage';
+import TeacherClassAssignmentPage from '@/features/teachers/pages/TeacherClassAssignmentPage';
 
 // ── captured dnd-kit handlers ────────────────────────────────────────
 let capturedOnDragEnd = null;

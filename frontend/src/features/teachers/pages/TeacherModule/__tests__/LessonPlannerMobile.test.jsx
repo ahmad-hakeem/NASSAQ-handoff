@@ -13,11 +13,11 @@ jest.mock('react-router-dom', () => ({
   useLocation: () => ({ search: '', pathname: '/teacher/lesson-planner' }),
 }), { virtual: true });
 
-jest.mock('../../../components/layout/Sidebar', () => ({
+jest.mock('@/shared/components/layout/Sidebar', () => ({
   Sidebar: () => <div data-testid="sidebar" />,
 }));
 
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({
     nassaqError: jest.fn(),
     nassaqInfo: jest.fn(),

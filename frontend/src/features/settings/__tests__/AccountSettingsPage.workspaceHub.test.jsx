@@ -204,7 +204,7 @@ jest.mock('@/shared/components/ui/alert-dialog', () => ({
   AlertDialogCancel: ({ children, ...rest }) => <button {...rest}>{children}</button>,
 }));
 
-const { AccountSettingsPage } = require('../AccountSettingsPage');
+const { AccountSettingsPage } = require('@/features/settings/pages/AccountSettingsPage');
 
 // Hub fixture state — individual tests can override before render() to
 // flip lifecycle status, change collaborator rows, etc.

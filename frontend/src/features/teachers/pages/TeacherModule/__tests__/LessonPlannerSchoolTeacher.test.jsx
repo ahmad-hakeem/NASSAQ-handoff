@@ -23,7 +23,7 @@ jest.mock('react-router-dom', () => {
   };
 }, { virtual: true });
 
-jest.mock('../../../components/layout/Sidebar', () => ({
+jest.mock('@/shared/components/layout/Sidebar', () => ({
   Sidebar: ({ children }) => <div data-testid="sidebar">{children}</div>,
 }));
 
@@ -33,7 +33,7 @@ const mockAlert = {
   nassaqConfirm: jest.fn(),
   nassaqInfo: jest.fn(),
 };
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => mockAlert,
 }));
 
@@ -48,7 +48,7 @@ jest.mock('@/shared/contexts/ThemeContext', () => ({
 
 jest.mock('../SessionsManageTab', () => ({ __esModule: true, default: () => <div /> }));
 jest.mock('../StandbyTab', () => ({ __esModule: true, default: () => <div /> }));
-jest.mock('../../../components/teacher/SidebarSettingsDialog', () => ({
+jest.mock('@/features/teachers/components/teacher/SidebarSettingsDialog', () => ({
   __esModule: true, default: () => <div />,
 }));
 // TeacherStudentsPanel / ITParentsPanel / BulkImportPanel pull the Hakim

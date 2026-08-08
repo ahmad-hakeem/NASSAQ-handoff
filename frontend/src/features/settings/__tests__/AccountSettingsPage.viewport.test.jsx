@@ -15,7 +15,7 @@ import {
   TARGET_WIDTHS,
   setViewport,
   fingerprintContainer,
-} from '../../testUtils/mobileViewportFingerprint';
+} from '@/testUtils/mobileViewportFingerprint';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -163,7 +163,7 @@ jest.mock('@/shared/components/ui/alert-dialog', () => ({
   AlertDialogCancel: ({ children, ...rest }) => <button {...rest}>{children}</button>,
 }));
 
-const { AccountSettingsPage } = require('../AccountSettingsPage');
+const { AccountSettingsPage } = require('@/features/settings/pages/AccountSettingsPage');
 
 beforeEach(() => {
   mockApiGet.mockReset();

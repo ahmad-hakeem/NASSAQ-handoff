@@ -160,7 +160,7 @@ jest.mock('@/shared/components/ui/select', () => ({
   SelectValue: ({ placeholder }) => <span>{placeholder}</span>,
 }));
 
-const UsersClassesManagement = require('../UsersClassesManagement').default;
+const UsersClassesManagement = require('@/features/academics/pages/UsersClassesManagement').default;
 
 const DIRECTORY_URLS = ['/students', '/teachers', '/classes', '/reference/grades', '/parents'];
 

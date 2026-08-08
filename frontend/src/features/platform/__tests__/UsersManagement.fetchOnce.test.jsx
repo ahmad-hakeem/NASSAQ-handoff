@@ -121,7 +121,7 @@ jest.mock('@/shared/components/ui/sheet', () => ({
   SheetTitle: ({ children }) => <div>{children}</div>,
 }));
 
-const UsersManagement = require('../UsersManagement').default;
+const UsersManagement = require('@/features/platform/pages/UsersManagement').default;
 
 const PLATFORM_USERS_URL = '/users/platform-users';
 

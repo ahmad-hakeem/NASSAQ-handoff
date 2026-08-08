@@ -41,17 +41,17 @@ jest.mock('@/shared/contexts/ParentActiveStudentContext', () => ({
   }),
 }));
 
-jest.mock('../../../components/portal/PortalLayout', () => ({
+jest.mock('@/features/student-portal/components/portal/PortalLayout', () => ({
   __esModule: true,
   default: ({ children }) => <div data-testid="portal-layout">{children}</div>,
 }));
-jest.mock('../../../components/parent/CumulativeAnalytics', () => ({
+jest.mock('@/features/parent-portal/components/parent/CumulativeAnalytics', () => ({
   __esModule: true, default: () => <div />,
 }));
-jest.mock('../../../components/parent/BackgroundRefreshChip', () => ({
+jest.mock('@/features/parent-portal/components/parent/BackgroundRefreshChip', () => ({
   __esModule: true, default: () => <div />,
 }));
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({ nassaqError: jest.fn(), nassaqWarning: jest.fn() }),
 }));
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn() } }));

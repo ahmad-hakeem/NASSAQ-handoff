@@ -184,7 +184,7 @@ jest.mock('recharts', () => ({
   YAxis: () => null,
 }));
 
-const { AccountSettingsPage } = require('../AccountSettingsPage');
+const { AccountSettingsPage } = require('@/features/settings/pages/AccountSettingsPage');
 
 beforeEach(() => {
   mockNavigate.mockReset();

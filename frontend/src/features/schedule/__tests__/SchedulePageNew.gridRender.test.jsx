@@ -39,7 +39,7 @@ jest.mock('@/features/schedule/components/schedule/BulkSubstitutionPanel', () =>
 jest.mock('@/features/schedule/components/schedule/ScheduleSettingsTabContent', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/features/schedule/components/schedule/MobileScheduleAgenda', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/features/schedule/components/schedule/SessionEditDrawer', () => ({ __esModule: true, default: () => null }));
-jest.mock('../StandbyRosterPage', () => ({ StandbyRosterContent: () => null }));
+jest.mock('@/features/schedule/pages/StandbyRosterPage', () => ({ StandbyRosterContent: () => null }));
 
 // Stable module-level context mocks: `t`, `api`, and `user` are effect /
 // useCallback deps in the page — fresh objects per call loop the fetch
@@ -145,7 +145,7 @@ beforeEach(() => {
 });
 
 test('renders session cells from a generation payload (no empty-grid fallback)', async () => {
-  const { default: SchedulePageNew } = require('../SchedulePageNew');
+  const { default: SchedulePageNew } = require('@/features/schedule/pages/SchedulePageNew');
   render(<SchedulePageNew />);
 
   await waitFor(() => {

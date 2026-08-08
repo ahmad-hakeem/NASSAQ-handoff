@@ -165,7 +165,7 @@ jest.mock('@/shared/components/ui/input', () => {
   return { Input: R.forwardRef((props, ref) => R.createElement('input', { ref, ...props })) };
 });
 
-import AccountSettingsPage from '../AccountSettingsPage';
+import AccountSettingsPage from '@/features/settings/pages/AccountSettingsPage';
 
 beforeEach(() => {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 360 });

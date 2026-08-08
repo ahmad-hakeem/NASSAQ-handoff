@@ -52,7 +52,7 @@ jest.mock('@/shared/contexts/ThemeContext', () => ({
   useTheme: () => ({ isDark: false, toggleTheme: jest.fn() }),
 }));
 
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({ nassaqError: mockNassaqError, nassaqInfo: mockNassaqInfo, nassaqConfirm: jest.fn() }),
   NassaqAlertDialog: () => null,
 }));

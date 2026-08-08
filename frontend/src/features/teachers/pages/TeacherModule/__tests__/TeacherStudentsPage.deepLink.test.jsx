@@ -26,7 +26,7 @@ jest.mock('react-router-dom', () => ({
   useLocation: () => ({ search: '?student_id=stu-amir', pathname: '/teacher/students' }),
 }), { virtual: true });
 
-jest.mock('../../../components/layout/Sidebar', () => ({
+jest.mock('@/shared/components/layout/Sidebar', () => ({
   Sidebar: ({ children }) => <div data-testid="sidebar">{children}</div>,
 }));
 
@@ -36,7 +36,7 @@ const mockAlert = {
   nassaqConfirm: jest.fn(),
   nassaqInfo: jest.fn(),
 };
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => mockAlert,
 }));
 
@@ -48,8 +48,8 @@ jest.mock('@/shared/contexts/ThemeContext', () => ({
   useTranslation: () => mockTranslation,
 }));
 
-jest.mock('../../../components/hakim/HakimAssistant', () => ({ HakimAssistant: () => <div /> }));
-jest.mock('../../../components/wizards/AddStudentWizard', () => ({ __esModule: true, default: () => <div /> }));
+jest.mock('@/features/hakim/components/hakim/HakimAssistant', () => ({ HakimAssistant: () => <div /> }));
+jest.mock('@/features/teachers/components/wizards/AddStudentWizard', () => ({ __esModule: true, default: () => <div /> }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
 const mockApiGet = jest.fn();

@@ -35,7 +35,7 @@ jest.mock('react-router-dom', () => {
   };
 }, { virtual: true });
 
-jest.mock('../../../components/layout/Sidebar', () => ({
+jest.mock('@/shared/components/layout/Sidebar', () => ({
   Sidebar: ({ children }) => <div>{children}</div>,
 }));
 
@@ -53,7 +53,7 @@ jest.mock('@/shared/contexts/AuthContext', () => ({
   }),
 }));
 
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({
     nassaqError: jest.fn(),
     nassaqInfo: jest.fn(),

@@ -63,23 +63,23 @@ jest.mock('@/shared/hooks/useParentDashboard', () => ({
 }));
 
 // --- Heavy / ESM subtrees — passthrough stubs -------------------------------
-jest.mock('../../../components/portal/PortalLayout', () => ({
+jest.mock('@/features/student-portal/components/portal/PortalLayout', () => ({
   __esModule: true,
   default: ({ children }) => <div data-testid="portal-layout">{children}</div>,
 }));
-jest.mock('../../../components/parent/CurrentClassCard', () => ({
+jest.mock('@/features/parent-portal/components/parent/CurrentClassCard', () => ({
   __esModule: true, default: () => <div />,
 }));
-jest.mock('../../../components/parent/UpcomingClasses', () => ({
+jest.mock('@/features/parent-portal/components/parent/UpcomingClasses', () => ({
   __esModule: true, default: () => <div />,
 }));
-jest.mock('../../../components/parent/WeeklyStory', () => ({
+jest.mock('@/features/parent-portal/components/parent/WeeklyStory', () => ({
   __esModule: true, default: () => <div />,
 }));
-jest.mock('../../../components/parent/HakimChatWidget', () => ({
+jest.mock('@/features/parent-portal/components/parent/HakimChatWidget', () => ({
   __esModule: true, default: () => <div />,
 }));
-jest.mock('../../../components/parent/BackgroundRefreshChip', () => ({
+jest.mock('@/features/parent-portal/components/parent/BackgroundRefreshChip', () => ({
   __esModule: true, default: () => <div />,
 }));
 

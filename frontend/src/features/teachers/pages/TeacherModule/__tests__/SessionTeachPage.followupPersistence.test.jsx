@@ -234,7 +234,7 @@ const mockAlert = {
   nassaqConfirm: jest.fn(),
   nassaqInfo: jest.fn(),
 };
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => mockAlert,
   NassaqAlertDialog: () => null,
 }));
@@ -246,11 +246,11 @@ jest.mock('@/shared/components/SectionErrorBoundary', () => ({
 }));
 
 // Stub heavy child components we don't drive.
-jest.mock('../../../components/teacher/SidebarSettingsDialog', () => ({
+jest.mock('@/features/teachers/components/teacher/SidebarSettingsDialog', () => ({
   __esModule: true,
   default: () => <div data-testid="sidebar-settings" />,
 }));
-jest.mock('../../../components/teacher/InlineAttendanceTable', () => ({
+jest.mock('@/features/teachers/components/teacher/InlineAttendanceTable', () => ({
   __esModule: true,
   default: () => <div />,
 }));
@@ -258,7 +258,7 @@ jest.mock('../../../components/teacher/InlineAttendanceTable', () => ({
 // FollowupGradesTable test double: one editable input per student × visible
 // column, wired to onGradeChange and reflecting gradesData so a reopen shows
 // the persisted value.
-jest.mock('../../../components/teacher/FollowupGradesTable', () => ({
+jest.mock('@/features/teachers/components/teacher/FollowupGradesTable', () => ({
   __esModule: true,
   default: ({ students = [], columns = [], gradesData = {}, onGradeChange }) => (
     <div data-testid="followup-grades-table">
@@ -278,28 +278,28 @@ jest.mock('../../../components/teacher/FollowupGradesTable', () => ({
 
 // UI primitives — Dialog GATES its children on `open` (mirrors the real modal)
 // so only the open follow-up dialog renders, keeping queries unambiguous.
-jest.mock('../../../components/ui/card', () => ({
+jest.mock('@/shared/components/ui/card', () => ({
   Card: ({ children, ...p }) => <div {...p}>{children}</div>,
   CardContent: ({ children, ...p }) => <div {...p}>{children}</div>,
 }));
-jest.mock('../../../components/ui/button', () => ({
+jest.mock('@/shared/components/ui/button', () => ({
   Button: ({ children, onClick, ...p }) => <button onClick={onClick} {...p}>{children}</button>,
 }));
-jest.mock('../../../components/ui/badge', () => ({
+jest.mock('@/shared/components/ui/badge', () => ({
   Badge: ({ children, ...p }) => <span {...p}>{children}</span>,
 }));
-jest.mock('../../../components/ui/avatar', () => ({
+jest.mock('@/shared/components/ui/avatar', () => ({
   Avatar: ({ children }) => <div>{children}</div>,
   AvatarFallback: ({ children }) => <div>{children}</div>,
   AvatarImage: () => <img alt="" />,
 }));
-jest.mock('../../../components/ui/dialog', () => ({
+jest.mock('@/shared/components/ui/dialog', () => ({
   Dialog: ({ open, children }) => (open ? <div>{children}</div> : null),
   DialogContent: ({ children }) => <div>{children}</div>,
   DialogHeader: ({ children }) => <div>{children}</div>,
   DialogTitle: ({ children }) => <div>{children}</div>,
 }));
-jest.mock('../../../components/ui/textarea', () => ({
+jest.mock('@/shared/components/ui/textarea', () => ({
   Textarea: (p) => <textarea {...p} />,
 }));
 jest.mock('canvas-confetti', () => jest.fn());

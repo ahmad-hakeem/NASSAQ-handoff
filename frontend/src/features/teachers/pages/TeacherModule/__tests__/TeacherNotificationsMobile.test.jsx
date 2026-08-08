@@ -15,11 +15,11 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => jest.fn(),
 }), { virtual: true });
 
-jest.mock('../../../components/layout/Sidebar', () => ({
+jest.mock('@/shared/components/layout/Sidebar', () => ({
   Sidebar: () => <div data-testid="sidebar" />,
 }));
 
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({ nassaqError: jest.fn(), nassaqInfo: jest.fn() }),
 }));
 
@@ -27,7 +27,7 @@ jest.mock('@/shared/models/utils/hijriDate', () => ({
   formatHijriDate: () => 'hijri',
 }));
 
-jest.mock('../../../components/ui/tabs', () => {
+jest.mock('@/shared/components/ui/tabs', () => {
   const React2 = require('react');
   const Ctx = React2.createContext({ value: undefined, onValueChange: () => {} });
   return {

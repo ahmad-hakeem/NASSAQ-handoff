@@ -15,20 +15,20 @@ import {
   TARGET_WIDTHS,
   setViewport,
   fingerprintContainer,
-} from '../../../testUtils/mobileViewportFingerprint';
+} from '@/testUtils/mobileViewportFingerprint';
 
 jest.mock('react-router-dom', () => ({
   useNavigate: () => jest.fn(),
 }), { virtual: true });
 
-jest.mock('../../../components/layout/Sidebar', () => ({
+jest.mock('@/shared/components/layout/Sidebar', () => ({
   Sidebar: () => <div data-testid="sidebar" />,
 }));
 const mockNassaq = Object.freeze({
   nassaqError: jest.fn(),
   nassaqInfo: jest.fn(),
 });
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => mockNassaq,
 }));
 const mockTheme = Object.freeze({ isRTL: true, isDark: false, language: 'ar', theme: 'light', toggleTheme: () => {}, toggleLanguage: () => {} });
@@ -40,7 +40,7 @@ jest.mock('@/shared/contexts/ThemeContext', () => ({
 jest.mock('@/shared/models/utils/hijriDate', () => ({
   formatHijriDate: () => 'hijri',
 }));
-jest.mock('../../../components/ui/tabs', () => {
+jest.mock('@/shared/components/ui/tabs', () => {
   const React2 = require('react');
   const Ctx = React2.createContext({ value: undefined, onValueChange: () => {} });
   return {

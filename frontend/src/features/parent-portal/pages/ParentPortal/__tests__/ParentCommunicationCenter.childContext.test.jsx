@@ -58,12 +58,12 @@ jest.mock('@/shared/contexts/AuthContext', () => ({
 
 // --- Alert dialog shim ---------------------------------------------------------
 const mockNassaqError = jest.fn();
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({ nassaqError: mockNassaqError }),
 }));
 
 // --- Heavy subtrees — passthrough stubs ---------------------------------------
-jest.mock('../../../components/portal/PortalLayout', () => ({
+jest.mock('@/features/student-portal/components/portal/PortalLayout', () => ({
   __esModule: true,
   default: ({ children }) => <div data-testid="portal-layout">{children}</div>,
 }));
@@ -76,7 +76,7 @@ jest.mock('../ParentAbsenceExcusePage', () => ({
 }));
 
 // --- Radix Select → native <select> shim --------------------------------------
-jest.mock('../../../components/ui/select', () => ({
+jest.mock('@/shared/components/ui/select', () => ({
   Select: ({ value, onValueChange, children }) => (
     <select
       data-testid="teacher-select"

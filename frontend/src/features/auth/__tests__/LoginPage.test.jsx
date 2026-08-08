@@ -92,7 +92,7 @@ jest.mock('@/shared/components/ui/checkbox', () => ({
 }));
 
 // Import after mocks.
-const { LoginPage } = require('../LoginPage');
+const { LoginPage } = require('@/features/auth/pages/LoginPage');
 
 const fillCredentials = (email = 'a@b.com', password = 'secret123') => {
   fireEvent.change(screen.getByTestId('login-email-input'), { target: { value: email } });

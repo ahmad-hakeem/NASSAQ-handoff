@@ -16,9 +16,9 @@ import {
   TARGET_WIDTHS,
   setViewport,
   fingerprintContainer,
-} from '../../../testUtils/mobileViewportFingerprint';
+} from '@/testUtils/mobileViewportFingerprint';
 
-jest.mock('../../../components/layout/Sidebar', () => ({
+jest.mock('@/shared/components/layout/Sidebar', () => ({
   Sidebar: () => <div data-testid="sidebar" />,
 }));
 const mockNassaq = Object.freeze({
@@ -26,7 +26,7 @@ const mockNassaq = Object.freeze({
   nassaqInfo: jest.fn(),
   nassaqConfirm: jest.fn(),
 });
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => mockNassaq,
 }));
 jest.mock('@/shared/models/utils/hijriDate', () => ({

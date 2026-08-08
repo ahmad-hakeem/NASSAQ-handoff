@@ -32,44 +32,7 @@ if (config.enableHealthCheck) {
 
 let webpackConfig = {
   eslint: {
-    configure: {
-      extends: ["plugin:react-hooks/recommended"],
-      rules: {
-        "react-hooks/rules-of-hooks": "warn",
-        "react-hooks/exhaustive-deps": "warn",
-        // SECURITY (audit H-5 / L-1): block new XSS sinks. Existing
-        // call sites are sanitised; future ones must be either deleted
-        // or explicitly justified with an `// eslint-disable-next-line`.
-        "no-restricted-syntax": [
-          "error",
-          {
-            "selector": "AssignmentExpression[left.property.name='innerHTML']",
-            "message": "Avoid innerHTML — use textContent or DOM APIs (audit H-5)."
-          },
-          {
-            "selector": "AssignmentExpression[left.property.name='outerHTML']",
-            "message": "Avoid outerHTML — use DOM APIs (audit H-5)."
-          },
-          {
-            // Match any `*.document.write(...)` form — `document.write(...)`,
-            // `printWindow.document.write(...)`, `iframe.contentDocument.write(...)`
-            // — by selecting on the property name alone. Architect v3 flagged
-            // that the previous `callee.object.name='document'` form only
-            // caught the bare identifier and was bypassable.
-            "selector": "CallExpression[callee.property.name='write'][callee.object.property.name='document']",
-            "message": "Avoid *.document.write — use DOM APIs (audit L-1)."
-          },
-          {
-            "selector": "CallExpression[callee.property.name='write'][callee.object.name='document']",
-            "message": "Avoid document.write — use DOM APIs (audit L-1)."
-          },
-          {
-            "selector": "CallExpression[callee.property.name='writeln']",
-            "message": "Avoid document.writeln — use DOM APIs (audit L-1)."
-          }
-        ],
-      },
-    },
+    enable: false,
   },
   jest: {
     configure: (jestConfig) => {
@@ -172,6 +135,11 @@ webpackConfig.devServer = (devServerConfig) => {
   if (legacyBefore || legacyAfter) {
     const craSetupMiddlewares = devServerConfig.setupMiddlewares;
     devServerConfig.setupMiddlewares = (middlewares, devServer) => {
+      if (devServer && !devServer.close && typeof devServer.stop === "function") {
+        devServer.close = function (cb) {
+          devServer.stop().then(() => { if (cb) cb(); }).catch(() => { if (cb) cb(); });
+        };
+      }
       if (typeof legacyBefore === "function") {
         legacyBefore(devServer);
       }

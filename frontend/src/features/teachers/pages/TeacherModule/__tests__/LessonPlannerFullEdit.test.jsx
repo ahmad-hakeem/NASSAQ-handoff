@@ -25,7 +25,7 @@ jest.mock('react-router-dom', () => {
   };
 }, { virtual: true });
 
-jest.mock('../../../components/layout/Sidebar', () => ({
+jest.mock('@/shared/components/layout/Sidebar', () => ({
   Sidebar: ({ children }) => <div data-testid="sidebar">{children}</div>,
 }));
 
@@ -35,7 +35,7 @@ const mockAlert = {
   nassaqConfirm: jest.fn(),
   nassaqInfo: jest.fn(),
 };
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => mockAlert,
 }));
 

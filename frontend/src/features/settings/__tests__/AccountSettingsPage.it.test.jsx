@@ -193,7 +193,7 @@ jest.mock('@/shared/components/ui/alert-dialog', () => ({
   AlertDialogCancel: ({ children, ...rest }) => <button {...rest}>{children}</button>,
 }));
 
-const { AccountSettingsPage } = require('../AccountSettingsPage');
+const { AccountSettingsPage } = require('@/features/settings/pages/AccountSettingsPage');
 
 const wireDefaultGetResponses = () => {
   mockApiGet.mockImplementation((path) => {

@@ -24,14 +24,14 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => jest.fn(),
 }), { virtual: true });
 
-jest.mock('../../../components/layout/Sidebar', () => ({
+jest.mock('@/shared/components/layout/Sidebar', () => ({
   Sidebar: ({ children }) => <div data-testid="sidebar">{children}</div>,
 }));
 
-jest.mock('../../../components/teacher/ReactivationBanner', () => ({
+jest.mock('@/features/teachers/components/teacher/ReactivationBanner', () => ({
   __esModule: true, default: () => <div />,
 }));
-jest.mock('../../../components/teacher/OnboardingTour/OnboardingTrigger', () => ({
+jest.mock('@/features/teachers/components/teacher/OnboardingTour/OnboardingTrigger', () => ({
   __esModule: true, default: () => <div />,
 }));
 

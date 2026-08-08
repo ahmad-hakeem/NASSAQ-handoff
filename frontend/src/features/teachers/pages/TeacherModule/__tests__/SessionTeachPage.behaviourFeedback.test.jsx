@@ -88,17 +88,17 @@ jest.mock('@/shared/contexts/ThemeContext', () => ({
   useTheme: () => ({ isDark: false, toggleTheme: jest.fn() }),
 }));
 
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({ nassaqError: jest.fn(), nassaqConfirm: jest.fn() }),
   NassaqAlertDialog: () => null,
 }));
 
 jest.mock('@/shared/components/SectionErrorBoundary', () => ({ children }) => <>{children}</>);
-jest.mock('../../../components/teacher/FollowupGradesTable', () => () => null);
-jest.mock('../../../components/teacher/InlineAttendanceTable', () => () => null);
-jest.mock('../../../components/teacher/SidebarSettingsDialog', () => () => null);
+jest.mock('@/features/teachers/components/teacher/FollowupGradesTable', () => () => null);
+jest.mock('@/features/teachers/components/teacher/InlineAttendanceTable', () => () => null);
+jest.mock('@/features/teachers/components/teacher/SidebarSettingsDialog', () => () => null);
 
-jest.mock('../../../components/ui/dialog', () => {
+jest.mock('@/shared/components/ui/dialog', () => {
   const Passthrough = ({ children }) => <div>{children}</div>;
   return {
     Dialog: ({ open, children }) => (open ? <div>{children}</div> : null),

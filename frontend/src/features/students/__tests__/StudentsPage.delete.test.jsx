@@ -115,7 +115,7 @@ jest.mock('@/shared/components/ui/dialog', () => ({
   DialogTrigger: ({ children }) => <div>{children}</div>,
 }));
 
-const { StudentsPage } = require('../StudentsPage');
+const { StudentsPage } = require('@/features/students/pages/StudentsPage');
 
 const BASE_STUDENTS = [
   {

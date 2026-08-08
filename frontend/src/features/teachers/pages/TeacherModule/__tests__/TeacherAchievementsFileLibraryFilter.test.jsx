@@ -13,11 +13,11 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
-jest.mock('../../../components/layout/Sidebar', () => ({
+jest.mock('@/shared/components/layout/Sidebar', () => ({
   Sidebar: ({ children }) => <div data-testid="sidebar">{children}</div>,
 }));
 
-jest.mock('../../../components/ui/NassaqAlertDialog', () => ({
+jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({ showAlert: jest.fn(), nassaqError: jest.fn() }),
 }));
 
@@ -29,7 +29,7 @@ jest.mock('@/shared/hooks/useCanViewInternalIds', () => ({
 
 // Closed dialogs must stay out of the DOM so their type <SelectItem>s don't
 // duplicate the library filter's options.
-jest.mock('../../../components/ui/dialog', () => ({
+jest.mock('@/shared/components/ui/dialog', () => ({
   Dialog: ({ open, children }) => (open ? <div>{children}</div> : null),
   DialogContent: ({ children }) => <div>{children}</div>,
   DialogHeader: ({ children }) => <div>{children}</div>,
@@ -37,7 +37,7 @@ jest.mock('../../../components/ui/dialog', () => ({
   DialogFooter: ({ children }) => <div>{children}</div>,
 }));
 
-jest.mock('../../../components/ui/dropdown-menu', () => ({
+jest.mock('@/shared/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }) => <div>{children}</div>,
   DropdownMenuContent: ({ children }) => <div>{children}</div>,
@@ -48,7 +48,7 @@ jest.mock('../../../components/ui/dropdown-menu', () => ({
 
 // Radix Select never opens in jsdom; render every option inline and wire
 // clicks back to the owning Select's onValueChange.
-jest.mock('../../../components/ui/select', () => {
+jest.mock('@/shared/components/ui/select', () => {
   const R = require('react');
   const Ctx = R.createContext({ onValueChange: () => {} });
   return {
