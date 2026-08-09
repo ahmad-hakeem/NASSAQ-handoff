@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { usePlatformAdminSchoolPreview } from '@/shared/hooks/usePlatformAdminSchoolPreview';
@@ -113,17 +113,27 @@ export const PlatformSchoolsPage = () => {
     student_capacity: 500,
   });
 
+  const fetchInFlightRef = useRef(null);
+
   const fetchSchools = async () => {
-    try {
-      setLoading(true);
-      const response = await api.get('/schools');
-      setSchools(response.data);
-    } catch (error) {
-      console.error('Failed to fetch schools:', error);
-      nassaqError(t('failedToLoadSchools'));
-    } finally {
-      setLoading(false);
-    }
+    if (fetchInFlightRef.current) return fetchInFlightRef.current;
+    setLoading(true);
+
+    const task = (async () => {
+      try {
+        const response = await api.get('/schools');
+        setSchools(response.data);
+      } catch (error) {
+        console.error('Failed to fetch schools:', error);
+        nassaqError(t('failedToLoadSchools'));
+      } finally {
+        setLoading(false);
+        fetchInFlightRef.current = null;
+      }
+    })();
+
+    fetchInFlightRef.current = task;
+    return task;
   };
 
   useEffect(() => {

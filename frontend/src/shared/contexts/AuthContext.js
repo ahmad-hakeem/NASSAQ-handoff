@@ -494,6 +494,8 @@ export const AuthProvider = ({ children }) => {
   };
   }, [api]);
 
+  const fetchUserInFlightRef = useRef(null);
+
   const fetchUser = useCallback(async () => {
     if (!token) {
       setLoading(false);
@@ -502,6 +504,9 @@ export const AuthProvider = ({ children }) => {
     if (user) {
       setLoading(false);
       return;
+    }
+    if (fetchUserInFlightRef.current) {
+      return fetchUserInFlightRef.current;
     }
 
     const PUBLIC_PATHS = ['/', '/login', '/register', '/about', '/contact', '/pricing', '/forgot-password'];
@@ -517,55 +522,55 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
-    try {
-      let response;
+    const task = (async () => {
       try {
-        response = await fetchWithTimeout(20000);
-      } catch (firstErr) {
-        const isTimeout = firstErr.name === 'CanceledError' || firstErr.code === 'ERR_CANCELED';
-        if (isTimeout) {
-          console.warn('fetchUser timed out after 20s, retrying once...');
+        let response;
+        try {
           response = await fetchWithTimeout(20000);
+        } catch (firstErr) {
+          const isTimeout = firstErr.name === 'CanceledError' || firstErr.code === 'ERR_CANCELED';
+          if (isTimeout) {
+            console.warn('fetchUser timed out after 20s, retrying once...');
+            response = await fetchWithTimeout(20000);
+          } else {
+            throw firstErr;
+          }
+        }
+        setUser(response.data);
+      } catch (error) {
+        if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
+          console.error('fetchUser timed out after retry');
+          if (!isPublicPath) {
+            toast.error('انتهت مهلة الاتصال — يرجى تحديث الصفحة');
+          }
+        } else if (error.response?.status === 401) {
+          const newAccess = await attemptTokenRefresh();
+          if (newAccess) {
+            setToken(newAccess);
+            try {
+              const retryResponse = await api.get('/auth/me');
+              setUser(retryResponse.data);
+              return;
+            } catch {}
+          }
+          clearAllAuthTokens();
+          setToken(null);
+          setUser(null);
         } else {
-          throw firstErr;
+          console.error('Failed to fetch user:', error);
+          if (!isPublicPath) {
+            toast.error('تعذر تحميل بيانات المستخدم');
+          }
         }
+      } finally {
+        setLoading(false);
+        fetchUserInFlightRef.current = null;
       }
-      setUser(response.data);
-    } catch (error) {
-      if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
-        console.error('fetchUser timed out after retry');
-        if (!isPublicPath) {
-          toast.error('انتهت مهلة الاتصال — يرجى تحديث الصفحة');
-        }
-      } else if (error.response?.status === 401) {
-        const newAccess = await attemptTokenRefresh();
-        if (newAccess) {
-          setToken(newAccess);
-          try {
-            const retryResponse = await api.get('/auth/me');
-            setUser(retryResponse.data);
-            return;
-          } catch {}
-        }
-        clearAllAuthTokens();
-        setToken(null);
-        setUser(null);
-      } else {
-        console.error('Failed to fetch user:', error);
-        // Task #196 — suppress the bootstrap toast on public/auth surfaces
-        // (login, forgot-password, etc.) so it cannot double-fire alongside
-        // the LoginPage's own inline error banner during the login → /auth/me
-        // race, and so a user who navigates away from /login mid-bootstrap
-        // doesn't see a stale "failed to load profile" message. Protected
-        // routes still surface a single Arabic message here.
-        if (!isPublicPath) {
-          toast.error('تعذر تحميل بيانات المستخدم');
-        }
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [token, api]);
+    })();
+
+    fetchUserInFlightRef.current = task;
+    return task;
+  }, [token, api, user]);
 
   useEffect(() => {
     fetchUser();

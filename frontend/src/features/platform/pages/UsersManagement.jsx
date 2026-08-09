@@ -130,46 +130,71 @@ export default function UsersManagement() {
 
   const { api } = useAuth();
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await api.get('/users/platform-users', {
-        params: {
-          search: searchQuery || undefined,
-          role: selectedRole !== 'all' ? selectedRole : undefined,
-          status: selectedStatus !== 'all' ? selectedStatus : undefined,
-          ai_status: selectedAIStatus !== 'all' ? selectedAIStatus : undefined,
-          account_type: selectedAccountType !== 'all' ? selectedAccountType : undefined,
-          skip: (currentPage - 1) * USERS_PER_PAGE,
-          limit: USERS_PER_PAGE,
-        }
-      });
+  const fetchUsersInFlightRef = useRef(null);
+  const lastUsersFetchKeyRef = useRef('');
 
-      const fetchedUsers = response.data.users || [];
-      const serverTotal = response.data.total || 0;
-
-      setUsers(fetchedUsers);
-      setTotalUsers(serverTotal);
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      nassaqError(t('failedToLoadUsers'));
-      setUsers([]);
-      setTotalUsers(0);
-    } finally {
-      setLoading(false);
+  const fetchUsers = useCallback(async (force = false) => {
+    const fetchKey = `users:${searchQuery}:${selectedRole}:${selectedStatus}:${selectedAIStatus}:${selectedAccountType}:${currentPage}`;
+    if (!force && (lastUsersFetchKeyRef.current === fetchKey || fetchUsersInFlightRef.current)) {
+      return fetchUsersInFlightRef.current;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType, currentPage]);
+    lastUsersFetchKeyRef.current = fetchKey;
+    setLoading(true);
+
+    const task = (async () => {
+      try {
+        const response = await api.get('/users/platform-users', {
+          params: {
+            search: searchQuery || undefined,
+            role: selectedRole !== 'all' ? selectedRole : undefined,
+            status: selectedStatus !== 'all' ? selectedStatus : undefined,
+            ai_status: selectedAIStatus !== 'all' ? selectedAIStatus : undefined,
+            account_type: selectedAccountType !== 'all' ? selectedAccountType : undefined,
+            skip: (currentPage - 1) * USERS_PER_PAGE,
+            limit: USERS_PER_PAGE,
+          }
+        });
+
+        const fetchedUsers = response.data.users || [];
+        const serverTotal = response.data.total || 0;
+
+        setUsers(fetchedUsers);
+        setTotalUsers(serverTotal);
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        nassaqError(t('failedToLoadUsers'));
+        setUsers([]);
+        setTotalUsers(0);
+      } finally {
+        setLoading(false);
+        fetchUsersInFlightRef.current = null;
+      }
+    })();
+
+    fetchUsersInFlightRef.current = task;
+    return task;
+  }, [api, searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType, currentPage, nassaqError, t]);
+
+  const fetchRequestsInFlightRef = useRef({});
 
   const fetchRequestsByType = useCallback(async (requestType) => {
-    try {
-      const response = await api.get('/registration-requests', { params: { account_type: requestType } });
-      const requests = response.data?.requests || response.data || [];
-      setRequestsByType(prev => ({ ...prev, [requestType]: requests }));
-    } catch (error) {
-      console.error(`Failed to fetch ${requestType} requests:`, error);
-      setRequestsByType(prev => ({ ...prev, [requestType]: [] }));
-    }
+    if (fetchRequestsInFlightRef.current[requestType]) return fetchRequestsInFlightRef.current[requestType];
+
+    const task = (async () => {
+      try {
+        const response = await api.get('/registration-requests', { params: { account_type: requestType } });
+        const requests = response.data?.requests || response.data || [];
+        setRequestsByType(prev => ({ ...prev, [requestType]: requests }));
+      } catch (error) {
+        console.error(`Failed to fetch ${requestType} requests:`, error);
+        setRequestsByType(prev => ({ ...prev, [requestType]: [] }));
+      } finally {
+        fetchRequestsInFlightRef.current[requestType] = null;
+      }
+    })();
+
+    fetchRequestsInFlightRef.current[requestType] = task;
+    return task;
   }, [api]);
 
   const fetchAllRequests = useCallback(async () => {
@@ -193,95 +218,131 @@ export default function UsersManagement() {
     return (requestsByType[requestType] || []).filter(r => PENDING_STATUSES.includes(r.status)).length;
   }, [requestsByType]);
 
-  const fetchSchoolUsers = useCallback(async () => {
-    try {
-      const [schoolsResponse, usersBySchoolResponse] = await Promise.all([
-        api.get('/schools'),
-        api.get('/users/by-school'),
-      ]);
-      const schoolsList = schoolsResponse.data || [];
-      setSchools(schoolsList);
+  const fetchSchoolUsersInFlightRef = useRef(null);
 
-      const usersBySchool = usersBySchoolResponse.data || {};
-      const schoolUsersMap = {};
-      for (const school of schoolsList) {
-        schoolUsersMap[school.id] = {
-          school,
-          users: usersBySchool[school.id] || [],
-        };
+  const fetchSchoolUsers = useCallback(async () => {
+    if (fetchSchoolUsersInFlightRef.current) return fetchSchoolUsersInFlightRef.current;
+
+    const task = (async () => {
+      try {
+        const [schoolsResponse, usersBySchoolResponse] = await Promise.all([
+          api.get('/schools'),
+          api.get('/users/by-school'),
+        ]);
+        const schoolsList = schoolsResponse.data || [];
+        setSchools(schoolsList);
+
+        const usersBySchool = usersBySchoolResponse.data || {};
+        const schoolUsersMap = {};
+        for (const school of schoolsList) {
+          schoolUsersMap[school.id] = {
+            school,
+            users: usersBySchool[school.id] || [],
+          };
+        }
+        setSchoolUsers(schoolUsersMap);
+      } catch (error) {
+        console.error('Error fetching school users:', error);
+        setSchools([]);
+        setSchoolUsers({});
+      } finally {
+        fetchSchoolUsersInFlightRef.current = null;
       }
-      setSchoolUsers(schoolUsersMap);
-    } catch (error) {
-      console.error('Error fetching school users:', error);
-      setSchools([]);
-      setSchoolUsers({});
-    }
+    })();
+
+    fetchSchoolUsersInFlightRef.current = task;
+    return task;
   }, [api]);
+
+  const fetchMismatchesInFlightRef = useRef(null);
 
   const fetchMismatches = useCallback(async () => {
+    if (fetchMismatchesInFlightRef.current) return fetchMismatchesInFlightRef.current;
     setMismatchesLoading(true);
-    try {
-      const response = await api.get('/users/teacher-school-mismatches');
-      const list = response.data?.mismatches || [];
-      setMismatches(list);
-      setMismatchesTotal(response.data?.total ?? list.length);
-    } catch (error) {
-      console.error('Error fetching teacher mismatches:', error);
-      setMismatches([]);
-      setMismatchesTotal(0);
-    } finally {
-      setMismatchesLoading(false);
-    }
+
+    const task = (async () => {
+      try {
+        const response = await api.get('/users/teacher-school-mismatches');
+        const list = response.data?.mismatches || [];
+        setMismatches(list);
+        setMismatchesTotal(response.data?.total ?? list.length);
+      } catch (error) {
+        console.error('Error fetching teacher mismatches:', error);
+        setMismatches([]);
+        setMismatchesTotal(0);
+      } finally {
+        setMismatchesLoading(false);
+        fetchMismatchesInFlightRef.current = null;
+      }
+    })();
+
+    fetchMismatchesInFlightRef.current = task;
+    return task;
   }, [api]);
+
+  const fetchManagementStatsInFlightRef = useRef(null);
 
   const fetchManagementStats = useCallback(async () => {
-    try {
-      const response = await api.get('/users/management-stats');
-      const d = response.data;
-      setStats({
-        totalUsers: d.total_users || 0,
-        activeUsers: d.active_users || 0,
-        suspendedUsers: d.suspended_users || 0,
-        platformAdmins: d.platform_admins || 0,
-        schoolAdmins: d.school_admins || 0,
-        teachers: d.teachers || 0,
-        students: d.students || 0,
-        parents: d.parents || 0,
-        pendingRequests: d.pending_requests || 0,
-      });
-    } catch (error) {
-      console.error('Error fetching management stats:', error);
-    }
+    if (fetchManagementStatsInFlightRef.current) return fetchManagementStatsInFlightRef.current;
+
+    const task = (async () => {
+      try {
+        const response = await api.get('/users/management-stats');
+        const d = response.data;
+        setStats({
+          totalUsers: d.total_users || 0,
+          activeUsers: d.active_users || 0,
+          suspendedUsers: d.suspended_users || 0,
+          platformAdmins: d.platform_admins || 0,
+          schoolAdmins: d.school_admins || 0,
+          teachers: d.teachers || 0,
+          students: d.students || 0,
+          parents: d.parents || 0,
+          pendingRequests: d.pending_requests || 0,
+        });
+      } catch (error) {
+        console.error('Error fetching management stats:', error);
+      } finally {
+        fetchManagementStatsInFlightRef.current = null;
+      }
+    })();
+
+    fetchManagementStatsInFlightRef.current = task;
+    return task;
   }, [api]);
 
+  // General initial metrics & badges
+  const hasMountedRef = useRef(false);
   useEffect(() => {
-    fetchUsers();
-    fetchAllRequests();
-    fetchSchoolUsers();
+    if (hasMountedRef.current) return;
+    hasMountedRef.current = true;
     fetchManagementStats();
+    fetchAllRequests();
     fetchMismatches();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchManagementStats, fetchAllRequests, fetchMismatches]);
 
-  // Two independent refs — one per filter effect — so effect #2 cannot read
-  // the false written by effect #1 on the same mount cycle (which caused a
-  // duplicate fetchUsers() call on every page load).
+  // Lazy tab data loading
+  useEffect(() => {
+    if (activeTab === 'users') {
+      fetchUsers();
+    } else if (activeTab === 'school-users') {
+      fetchSchoolUsers();
+    } else if (activeTab === 'mismatches') {
+      fetchMismatches();
+    } else {
+      const entry = visibleApprovalEntries.find(([, c]) => c.tabValue === activeTab);
+      if (entry) {
+        fetchRequestsByType(entry[0]);
+      }
+    }
+  }, [activeTab, fetchUsers, fetchSchoolUsers, fetchMismatches, fetchRequestsByType, visibleApprovalEntries]);
+
+  // Filter resets page number
   const isFirstRender = useRef(true);
-  const isFirstFetchRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     setCurrentPage(1);
   }, [searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType]);
-
-  // Filter/pagination refetch. Uses `isFirstFetchRender`, NOT `isFirstRender`:
-  // the effect above already flipped that one during the same mount pass, so
-  // sharing a single ref let this effect fire on load and request
-  // /users/platform-users a second time on every page open.
-  useEffect(() => {
-    if (isFirstFetchRender.current) { isFirstFetchRender.current = false; return; }
-    fetchUsers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery, selectedRole, selectedStatus, selectedAIStatus, selectedAccountType]);
 
   const handleViewUser = (user) => navigate(`/admin/users/${user.id}`);
 

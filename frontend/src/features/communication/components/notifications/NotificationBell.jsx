@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
@@ -60,25 +60,32 @@ export const NotificationBell = ({ triggerClassName = '' }) => {
   // the popover closes and would take the dialog down with it.
   const [detailNotification, setDetailNotification] = useState(null);
 
+  const fetchInFlightRef = useRef(null);
+
   const fetchUnreadCount = useCallback(async () => {
     if (!user) return;
-    try {
-      // Task #249 — for Independent Teachers the workspace-pinned IT
-      // inbox IS the source of truth; the global /notifications stream
-      // already counts the same rows by user_id, so we'd double-count
-      // if we summed both. Use only the IT endpoint for IT users.
-      let total = 0;
-      if (user.role === 'independent_teacher') {
-        const itRes = await api.get('/independent-teacher/notifications/unread-count');
-        total = Number(itRes.data?.unread_count) || 0;
-      } else {
-        const response = await api.get('/notifications/unread-count');
-        total = Number(response.data?.unread_count) || 0;
+    if (fetchInFlightRef.current) return fetchInFlightRef.current;
+
+    const task = (async () => {
+      try {
+        let total = 0;
+        if (user.role === 'independent_teacher') {
+          const itRes = await api.get('/independent-teacher/notifications/unread-count');
+          total = Number(itRes.data?.unread_count) || 0;
+        } else {
+          const response = await api.get('/notifications/unread-count');
+          total = Number(response.data?.unread_count) || 0;
+        }
+        setUnreadCount(total);
+      } catch (error) {
+        // Soft-fail; the badge simply won't update on this tick.
+      } finally {
+        fetchInFlightRef.current = null;
       }
-      setUnreadCount(total);
-    } catch (error) {
-      // Soft-fail; the badge simply won't update on this tick.
-    }
+    })();
+
+    fetchInFlightRef.current = task;
+    return task;
   }, [api, user]);
 
   const fetchRecentNotifications = useCallback(async () => {

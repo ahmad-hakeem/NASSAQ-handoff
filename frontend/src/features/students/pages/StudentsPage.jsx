@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
@@ -95,39 +95,46 @@ export const StudentsPage = () => {
     parent_name: '',
   });
 
+  const fetchInFlightRef = useRef(null);
+
   const fetchData = async () => {
-    try {
-      // For school-level users, only fetch students and classes (tenant-scoped by backend)
-      // For platform admins, also fetch schools for filtering
-      const [studentsRes, classesRes, gradesRes] = await Promise.all([
-        api.get('/students'),
-        api.get('/classes'),
-        api.get('/reference/grades').catch(() => ({ data: [] })),
-      ]);
-      // The /students endpoint returns { students: [...], total: N } in its
-      // paginated shape, or a plain array in some legacy paths. Extract the
-      // array either way so students state is always Array.isArray() === true.
-      const studentsRaw = studentsRes.data;
-      setStudents(Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.students || []));
-      setClasses(classesRes.data);
-      setGrades(gradesRes.data || []);
-      
-      // Only fetch schools list for platform admins
-      if (!isSchoolLevel) {
-        try {
-          const schoolsRes = await api.get('/schools');
-          setSchools(schoolsRes.data);
-        } catch (e) {
-          console.error('Error fetching schools list:', e);
-          setSchools([]);
+    if (fetchInFlightRef.current) return fetchInFlightRef.current;
+
+    const task = (async () => {
+      try {
+        // For school-level users, only fetch students and classes (tenant-scoped by backend)
+        // For platform admins, also fetch schools for filtering
+        const [studentsRes, classesRes, gradesRes] = await Promise.all([
+          api.get('/students'),
+          api.get('/classes'),
+          api.get('/reference/grades').catch(() => ({ data: [] })),
+        ]);
+        const studentsRaw = studentsRes.data;
+        setStudents(Array.isArray(studentsRaw) ? studentsRaw : (studentsRaw?.students || []));
+        setClasses(classesRes.data);
+        setGrades(gradesRes.data || []);
+        
+        // Only fetch schools list for platform admins
+        if (!isSchoolLevel) {
+          try {
+            const schoolsRes = await api.get('/schools');
+            setSchools(schoolsRes.data);
+          } catch (e) {
+            console.error('Error fetching schools list:', e);
+            setSchools([]);
+          }
         }
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+        nassaqError(t('failedToLoadData'));
+      } finally {
+        setLoading(false);
+        fetchInFlightRef.current = null;
       }
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
-      nassaqError(t('failedToLoadData'));
-    } finally {
-      setLoading(false);
-    }
+    })();
+
+    fetchInFlightRef.current = task;
+    return task;
   };
 
   useEffect(() => {

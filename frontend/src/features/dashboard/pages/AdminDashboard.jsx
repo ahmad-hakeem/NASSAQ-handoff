@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme, useTranslation } from '@/shared/contexts/ThemeContext';
@@ -29,8 +29,12 @@ const AdminAnalyticsSummary = ({ isRTL, navigate }) => {
   const { api } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+
     const fetchData = async () => {
       try {
         const [platformRes, overviewRes, behaviorRes] = await Promise.all([
@@ -174,37 +178,47 @@ export const AdminDashboard = () => {
   const [showAddSchoolWizard, setShowAddSchoolWizard] = useState(false);
   const [hakimInsights, setHakimInsights] = useState([]);
 
+  const fetchInFlightRef = useRef(null);
+
   const fetchAllData = useCallback(async (showToast = false) => {
-    try {
-      if (showToast) setRefreshing(true);
-      const [ccRes, saRes, schoolsRes, healthRes] = await Promise.allSettled([
-        api.get('/admin/command-center/stats'),
-        api.get('/super-admin/dashboard-stats'),
-        api.get('/admin/command-center/schools-overview'),
-        api.get('/admin/command-center/system-health'),
-      ]);
+    if (!showToast && fetchInFlightRef.current) return fetchInFlightRef.current;
+    if (showToast) setRefreshing(true);
 
-      const cc = ccRes.status === 'fulfilled' ? ccRes.value.data : {};
-      const sa = saRes.status === 'fulfilled' ? saRes.value.data : {};
+    const task = (async () => {
+      try {
+        const [ccRes, saRes, schoolsRes, healthRes] = await Promise.allSettled([
+          api.get('/admin/command-center/stats'),
+          api.get('/super-admin/dashboard-stats'),
+          api.get('/admin/command-center/schools-overview'),
+          api.get('/admin/command-center/system-health'),
+        ]);
 
-      setStats({ ...sa, ...cc });
+        const cc = ccRes.status === 'fulfilled' ? ccRes.value.data : {};
+        const sa = saRes.status === 'fulfilled' ? saRes.value.data : {};
 
-      if (schoolsRes.status === 'fulfilled') {
-        setSchoolsOverview(schoolsRes.value.data?.schools || []);
+        setStats({ ...sa, ...cc });
+
+        if (schoolsRes.status === 'fulfilled') {
+          setSchoolsOverview(schoolsRes.value.data?.schools || []);
+        }
+        if (healthRes.status === 'fulfilled') {
+          setSystemHealth(healthRes.value.data);
+        }
+
+        generateHakimInsights(cc, schoolsRes.status === 'fulfilled' ? schoolsRes.value.data?.schools : []);
+
+        if (showToast) toast.success(t('dataRefreshed'));
+      } catch (error) {
+        console.error('Dashboard fetch error:', error);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        fetchInFlightRef.current = null;
       }
-      if (healthRes.status === 'fulfilled') {
-        setSystemHealth(healthRes.value.data);
-      }
+    })();
 
-      generateHakimInsights(cc, schoolsRes.status === 'fulfilled' ? schoolsRes.value.data?.schools : []);
-
-      if (showToast) toast.success(t('dataRefreshed'));
-    } catch (error) {
-      console.error('Dashboard fetch error:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+    fetchInFlightRef.current = task;
+    return task;
   }, [api, isRTL]);
 
   const generateHakimInsights = (cc, schools) => {

@@ -77,49 +77,59 @@ export default function TenantsManagement() {
     status: 'all',
     city: 'all',
   });
+  
+  const fetchSchoolsInFlightRef = useRef(null);
 
   const fetchSchools = useCallback(async (showToast = false) => {
+    if (!showToast && fetchSchoolsInFlightRef.current) return fetchSchoolsInFlightRef.current;
     if (showToast) setRefreshing(true);
-    try {
-      const [overviewRes, schoolsRes] = await Promise.allSettled([
-        api.get('/admin/command-center/schools-overview'),
-        api.get('/schools'),
-      ]);
 
-      let schoolsData = [];
-      if (overviewRes.status === 'fulfilled' && overviewRes.value.data?.schools?.length > 0) {
-        schoolsData = overviewRes.value.data.schools;
-      } else if (schoolsRes.status === 'fulfilled') {
-        const rawSchools = Array.isArray(schoolsRes.value.data) ? schoolsRes.value.data : (schoolsRes.value.data?.schools || []);
-        schoolsData = rawSchools.map(s => ({
-          id: s.id,
-          name: s.name,
-          name_en: s.name_en,
-          status: s.status || 'active',
-          city: s.city || '',
-          region: s.region || '',
-          school_type: s.type || s.school_type || '',
-          stage: s.stage || '',
-          student_count: s.student_count || s.current_students || 0,
-          teacher_count: s.teacher_count || s.current_teachers || 0,
-          class_count: s.class_count || 0,
-          parent_count: s.parent_count || 0,
-          sessions_today: 0,
-          setup_score: 50,
-          has_timetable: false,
-          created_at: s.created_at || '',
-          last_activity: s.updated_at || s.created_at || '',
-        }));
+    const task = (async () => {
+      try {
+        const [overviewRes, schoolsRes] = await Promise.allSettled([
+          api.get('/admin/command-center/schools-overview'),
+          api.get('/schools'),
+        ]);
+
+        let schoolsData = [];
+        if (overviewRes.status === 'fulfilled' && overviewRes.value.data?.schools?.length > 0) {
+          schoolsData = overviewRes.value.data.schools;
+        } else if (schoolsRes.status === 'fulfilled') {
+          const rawSchools = Array.isArray(schoolsRes.value.data) ? schoolsRes.value.data : (schoolsRes.value.data?.schools || []);
+          schoolsData = rawSchools.map(s => ({
+            id: s.id,
+            name: s.name,
+            name_en: s.name_en,
+            status: s.status || 'active',
+            city: s.city || '',
+            region: s.region || '',
+            school_type: s.type || s.school_type || '',
+            stage: s.stage || '',
+            student_count: s.student_count || s.current_students || 0,
+            teacher_count: s.teacher_count || s.current_teachers || 0,
+            class_count: s.class_count || 0,
+            parent_count: s.parent_count || 0,
+            sessions_today: 0,
+            setup_score: 50,
+            has_timetable: false,
+            created_at: s.created_at || '',
+            last_activity: s.updated_at || s.created_at || '',
+          }));
+        }
+        setSchools(schoolsData);
+        if (showToast) toast.success(t('dataRefreshed'));
+      } catch (error) {
+        console.error('Error fetching schools:', error);
+        nassaqError(t('errorLoadingSchools'));
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        fetchSchoolsInFlightRef.current = null;
       }
-      setSchools(schoolsData);
-      if (showToast) toast.success(t('dataRefreshed'));
-    } catch (error) {
-      console.error('Error fetching schools:', error);
-      nassaqError(t('errorLoadingSchools'));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+    })();
+
+    fetchSchoolsInFlightRef.current = task;
+    return task;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, isRTL]);
 

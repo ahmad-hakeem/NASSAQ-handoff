@@ -113,41 +113,51 @@ export default function QuickAIOperationsPanel({ api: apiProp, isRTL = true, ini
   const [isProcessing, setIsProcessing] = useState(false);
   const [operationResult, setOperationResult] = useState(null);
 
+  const loadAllInFlightRef = useRef(null);
+
   const loadAll = useCallback(async (silent = false) => {
     if (!api) return;
+    if (!silent && loadAllInFlightRef.current) return loadAllInFlightRef.current;
     if (!silent) setLoading(true);
-    try {
-      // Skip the stats fetch ONCE when the parent already provided them
-      // (deduplication of the /admin page's duplicate GET). Any subsequent
-      // load — manual refresh, post-operation refresh, poll — re-fetches.
-      const reuseProvidedStats = reuseInitialStatsRef.current;
-      reuseInitialStatsRef.current = false;
-      const requests = [
-        reuseProvidedStats ? Promise.resolve(null) : api.get('/admin/command-center/stats'),
-        api.get('/admin/notifications/stats'),
-        api.get('/admin/ai-suggested-actions'),
-        api.get('/admin/ai-operations/history?limit=5'),
-      ];
-      const [statsRes, notifRes, suggRes, histRes] = await Promise.allSettled(requests);
-      if (statsRes.status === 'fulfilled' && statsRes.value !== null) {
-        setStats(statsRes.value.data || statsRes.value);
+
+    const task = (async () => {
+      try {
+        // Skip the stats fetch ONCE when the parent already provided them
+        // (deduplication of the /admin page's duplicate GET). Any subsequent
+        // load — manual refresh, post-operation refresh, poll — re-fetches.
+        const reuseProvidedStats = reuseInitialStatsRef.current;
+        reuseInitialStatsRef.current = false;
+        const requests = [
+          reuseProvidedStats ? Promise.resolve(null) : api.get('/admin/command-center/stats'),
+          api.get('/admin/notifications/stats'),
+          api.get('/admin/ai-suggested-actions'),
+          api.get('/admin/ai-operations/history?limit=5'),
+        ];
+        const [statsRes, notifRes, suggRes, histRes] = await Promise.allSettled(requests);
+        if (statsRes.status === 'fulfilled' && statsRes.value !== null) {
+          setStats(statsRes.value.data || statsRes.value);
+        }
+        if (notifRes.status === 'fulfilled') setNotifStats(notifRes.value.data || notifRes.value);
+        if (suggRes.status === 'fulfilled') {
+          const data = suggRes.value.data || suggRes.value;
+          setSuggestedActions(data.actions || []);
+        }
+        if (histRes.status === 'fulfilled') {
+          const data = histRes.value.data || histRes.value;
+          setRecentOps(data.history || []);
+          setOpsToday(data.operations_today || 0);
+        }
+        setLastUpdate(new Date());
+      } catch (e) {
+        console.error('AI panel load failed', e);
+      } finally {
+        if (!silent) setLoading(false);
+        loadAllInFlightRef.current = null;
       }
-      if (notifRes.status === 'fulfilled') setNotifStats(notifRes.value.data || notifRes.value);
-      if (suggRes.status === 'fulfilled') {
-        const data = suggRes.value.data || suggRes.value;
-        setSuggestedActions(data.actions || []);
-      }
-      if (histRes.status === 'fulfilled') {
-        const data = histRes.value.data || histRes.value;
-        setRecentOps(data.history || []);
-        setOpsToday(data.operations_today || 0);
-      }
-      setLastUpdate(new Date());
-    } catch (e) {
-      console.error('AI panel load failed', e);
-    } finally {
-      if (!silent) setLoading(false);
-    }
+    })();
+
+    loadAllInFlightRef.current = task;
+    return task;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
 

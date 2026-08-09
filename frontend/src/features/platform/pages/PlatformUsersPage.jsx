@@ -93,21 +93,31 @@ export const PlatformUsersPage = () => {
   const { nassaqError, nassaqWarning } = useNassaqAlert();
   const itemsPerPage = 15;
 
+  const fetchInFlightRef = useRef(null);
+
   const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [usersRes, schoolsRes] = await Promise.all([
-        api.get('/users'),
-        api.get('/schools'),
-      ]);
-      setUsers(usersRes.data);
-      setSchools(schoolsRes.data);
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
-      nassaqError(t('failedToLoadData'));
-    } finally {
-      setLoading(false);
-    }
+    if (fetchInFlightRef.current) return fetchInFlightRef.current;
+    setLoading(true);
+
+    const task = (async () => {
+      try {
+        const [usersRes, schoolsRes] = await Promise.all([
+          api.get('/users'),
+          api.get('/schools'),
+        ]);
+        setUsers(usersRes.data);
+        setSchools(schoolsRes.data);
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+        nassaqError(t('failedToLoadData'));
+      } finally {
+        setLoading(false);
+        fetchInFlightRef.current = null;
+      }
+    })();
+
+    fetchInFlightRef.current = task;
+    return task;
   };
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { formatTimeStr } from '@/shared/models/utils/timeFormat';
@@ -88,6 +88,8 @@ export const TimeSlotsPage = () => {
   const isSchoolLevel = user?.role && !user.role.startsWith('platform_');
   const userSchoolId = user?.tenant_id;
 
+  const fetchSchoolsInFlightRef = useRef(null);
+
   const fetchSchools = async () => {
     // School-level users (school_admin/principal) can't list /schools
     // (platform-admin only). Use their own tenant_id directly.
@@ -99,15 +101,24 @@ export const TimeSlotsPage = () => {
       }
       return;
     }
-    try {
-      const res = await api.get('/schools');
-      setSchools(res.data);
-      if (res.data.length > 0 && !selectedSchool) {
-        setSelectedSchool(res.data[0].id);
+    if (fetchSchoolsInFlightRef.current) return fetchSchoolsInFlightRef.current;
+
+    const task = (async () => {
+      try {
+        const res = await api.get('/schools');
+        setSchools(res.data);
+        if (res.data.length > 0 && !selectedSchool) {
+          setSelectedSchool(res.data[0].id);
+        }
+      } catch (error) {
+        console.error('Failed to fetch schools:', error);
+      } finally {
+        fetchSchoolsInFlightRef.current = null;
       }
-    } catch (error) {
-      console.error('Failed to fetch schools:', error);
-    }
+    })();
+
+    fetchSchoolsInFlightRef.current = task;
+    return task;
   };
 
   const fetchTimeSlots = async () => {
