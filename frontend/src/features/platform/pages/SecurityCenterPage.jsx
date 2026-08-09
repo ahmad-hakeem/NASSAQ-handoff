@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sidebar } from '@/shared/components/layout/Sidebar';
-import { PageHeader } from '@/shared/components/layout/PageHeader';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/components/ui/card';
@@ -10,7 +8,6 @@ import { Badge } from '@/shared/components/ui/badge';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
-import { ScrollArea } from '@/shared/components/ui/scroll-area';
 import { Progress } from '@/shared/components/ui/progress';
 import { Switch } from '@/shared/components/ui/switch';
 import { toast } from 'sonner';
@@ -40,17 +37,12 @@ import {
   Shield,
   ShieldCheck,
   ShieldAlert,
-  ShieldX,
   Lock,
   Unlock,
   Key,
-  UserCheck,
-  UserX,
   Users,
   AlertTriangle,
-  AlertCircle,
   CheckCircle2,
-  XCircle,
   Clock,
   RefreshCw,
   Download,
@@ -58,21 +50,13 @@ import {
   EyeOff,
   Activity,
   Server,
-  Database,
-  HardDrive,
   FileText,
   Search,
   Filter,
-  RotateCcw,
   Zap,
-  Brain,
   Loader2,
   ChevronRight,
-  TrendingUp,
-  TrendingDown,
   LogIn,
-  LogOut,
-  KeyRound,
   Fingerprint,
   Settings,
   History,

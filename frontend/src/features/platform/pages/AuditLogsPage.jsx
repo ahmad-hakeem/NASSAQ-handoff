@@ -7,11 +7,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import {
-  Shield, Search, Download, Clock, User, AlertTriangle,
-  CheckCircle, XCircle, Activity, FileText, RefreshCw,
-  Calendar, Monitor, Smartphone, Tablet, Globe, Cpu,
-  LogIn, LogOut, Settings, Trash2, Edit, Plus, ChevronDown,
-  ChevronRight, Eye, Lock, Unlock, Database,
+  Search, Download, Clock, User, AlertTriangle,
+  CheckCircle, Activity, FileText, RefreshCw,
+  Calendar, Monitor, Smartphone, Globe,
+  LogIn, ChevronDown, Eye,
 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';

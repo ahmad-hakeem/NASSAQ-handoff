@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
-import { PageHeader } from '@/shared/components/layout/PageHeader';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { DEFAULT_PLATFORM_ADDRESS_AR } from '@/shared/models/constants/platformContact';
@@ -13,8 +12,6 @@ import { Label } from '@/shared/components/ui/label';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { Switch } from '@/shared/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
-import { ScrollArea } from '@/shared/components/ui/scroll-area';
-import { Separator } from '@/shared/components/ui/separator';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import {
@@ -33,22 +30,11 @@ import {
   DialogFooter,
 } from '@/shared/components/ui/dialog';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/shared/components/ui/alert-dialog';
-import {
   Settings,
   Save,
   RefreshCw,
   User,
   Building2,
-  Palette,
   FileText,
   Shield,
   Mail,
@@ -56,43 +42,23 @@ import {
   Globe,
   Lock,
   Key,
-  Eye,
-  EyeOff,
-  LogOut,
   Users,
-  Clock,
-  Calendar,
   MapPin,
   Loader2,
   CheckCircle2,
   AlertTriangle,
   Info,
   Camera,
-  Upload,
   Edit,
-  Languages,
-  Sun,
-  Moon,
   Bell,
   Smartphone,
   History,
-  Monitor,
   ChevronRight,
   X,
   Copy,
   Check,
   ExternalLink,
-  Twitter,
-  Facebook,
-  Instagram,
-  Linkedin,
-  Youtube,
-  Link2,
-  Hash,
-  AtSign,
-  Server,
   Database,
-  HardDrive,
   Activity,
   Zap,
   Trash2,

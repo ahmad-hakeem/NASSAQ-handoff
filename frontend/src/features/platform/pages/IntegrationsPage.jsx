@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
-import { PageHeader } from '@/shared/components/layout/PageHeader';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/components/ui/card';
@@ -9,12 +8,9 @@ import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
-import { Textarea } from '@/shared/components/ui/textarea';
 import { Switch } from '@/shared/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
-import { Progress } from '@/shared/components/ui/progress';
 import { ScrollArea } from '@/shared/components/ui/scroll-area';
-import { Separator } from '@/shared/components/ui/separator';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
@@ -61,17 +57,13 @@ import {
   Edit,
   Eye,
   Power,
-  PowerOff,
   FileText,
-  Key,
   Globe,
-  Server,
   Database,
   Mail,
   MessageSquare,
   CreditCard,
   Cloud,
-  Brain,
   Shield,
   Building2,
   Webhook,
@@ -83,14 +75,10 @@ import {
   Copy,
   Check,
   Zap,
-  PlugZap,
   History,
   Loader2,
   Smartphone,
-  Share2,
-  Lock,
   Terminal,
-  Hash,
   LayoutGrid,
   List,
   X,

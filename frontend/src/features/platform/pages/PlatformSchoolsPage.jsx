@@ -6,7 +6,7 @@ import { isIndependentTeacherWorkspaceRow } from '@/shared/models/utils/platform
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { Button } from '@/shared/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Input } from '@/shared/components/ui/input';
 import { Badge } from '@/shared/components/ui/badge';
 import { toast } from 'sonner';
@@ -15,14 +15,9 @@ import {
   Building2,
   Users,
   GraduationCap,
-  UserCheck,
   Plus,
   Search,
   MoreHorizontal,
-  Sun,
-  Moon,
-  Globe,
-  Bell,
   CheckCircle,
   XCircle,
   RefreshCw,
@@ -36,7 +31,6 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
-  ChevronsLeft,
   ChevronsRight,
   LogIn,
   ExternalLink,
@@ -45,7 +39,6 @@ import {
   PlayCircle,
   LayoutGrid,
   LayoutList,
-  Brain,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -61,7 +54,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/shared/components/ui/dialog';
 import { Label } from '@/shared/components/ui/label';
 import {
@@ -87,7 +79,7 @@ export const PlatformSchoolsPage = () => {
   const navigate = useNavigate();
   const { user, api } = useAuth();
   const { openPrincipalDashboard, canOpenPrincipalDashboard } = usePlatformAdminSchoolPreview();
-  const { isRTL, toggleTheme, toggleLanguage, isDark } = useTheme();
+  const { isRTL } = useTheme();
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -178,18 +170,18 @@ export const PlatformSchoolsPage = () => {
     setSelectedSchool(school);
     setViewDialogOpen(true);
   };
-  
+
   const handleEnterSchoolDashboard = (school) => openPrincipalDashboard(school);
 
   const filteredSchools = schools.filter(school => {
-    const matchesSearch = 
+    const matchesSearch =
       school.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       school.name_en?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       school.code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       school.city?.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesStatus = statusFilter === 'all' || school.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
 
@@ -207,7 +199,7 @@ export const PlatformSchoolsPage = () => {
         ai_enabled: !currentAIStatus
       });
       toast.success(
-        isRTL 
+        isRTL
           ? (!currentAIStatus ? 'تم تفعيل الذكاء الاصطناعي' : 'تم إيقاف الذكاء الاصطناعي')
           : (!currentAIStatus ? 'AI enabled successfully' : 'AI disabled successfully')
       );
@@ -224,7 +216,7 @@ export const PlatformSchoolsPage = () => {
     try {
       await api.patch(`/schools/${schoolId}`, { status: newStatus });
       toast.success(
-        isRTL 
+        isRTL
           ? (newStatus === 'suspended' ? 'تم تعليق المدرسة' : 'تم تفعيل المدرسة')
           : (newStatus === 'suspended' ? 'School suspended' : 'School activated')
       );
@@ -281,7 +273,7 @@ export const PlatformSchoolsPage = () => {
                 {t('manageAllSchoolsOnThePlatform')}
               </p>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="icon" onClick={toggleLanguage} className="rounded-xl">
                 <Globe className="h-5 w-5" />
@@ -312,7 +304,7 @@ export const PlatformSchoolsPage = () => {
                 </div>
               </CardContent>
             </Card>
-            
+
             <Card className="card-nassaq">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -326,7 +318,7 @@ export const PlatformSchoolsPage = () => {
                 </div>
               </CardContent>
             </Card>
-            
+
             <Card className="card-nassaq">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -340,7 +332,7 @@ export const PlatformSchoolsPage = () => {
                 </div>
               </CardContent>
             </Card>
-            
+
             <Card className="card-nassaq">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -354,7 +346,7 @@ export const PlatformSchoolsPage = () => {
                 </div>
               </CardContent>
             </Card>
-            
+
             <Card className="card-nassaq">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -368,7 +360,7 @@ export const PlatformSchoolsPage = () => {
                 </div>
               </CardContent>
             </Card>
-            
+
             <Card className="card-nassaq">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -392,7 +384,7 @@ export const PlatformSchoolsPage = () => {
                   <CardTitle className="font-cairo">{t('schoolsList')}</CardTitle>
                   <CardDescription>{isRTL ? `${filteredSchools.length} مدرسة` : `${filteredSchools.length} schools`}</CardDescription>
                 </div>
-                
+
                 <div className="flex items-center gap-3">
                   <div className="relative">
                     <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -404,7 +396,7 @@ export const PlatformSchoolsPage = () => {
                       data-testid="search-schools-input"
                     />
                   </div>
-                  
+
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger className="w-[140px] rounded-xl">
                       <Filter className="h-4 w-4 me-2" />
@@ -417,7 +409,7 @@ export const PlatformSchoolsPage = () => {
                       <SelectItem value="suspended">{t('suspended')}</SelectItem>
                     </SelectContent>
                   </Select>
-                  
+
                   {/* View Mode Toggle */}
                   <div className="flex items-center border rounded-xl overflow-hidden">
                     <Button
@@ -437,7 +429,7 @@ export const PlatformSchoolsPage = () => {
                       <LayoutList className="h-4 w-4" />
                     </Button>
                   </div>
-                  
+
                   <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                     <DialogTrigger asChild>
                       <Button className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl" data-testid="add-school-btn">
@@ -450,7 +442,7 @@ export const PlatformSchoolsPage = () => {
                         <DialogTitle className="font-cairo">{t('addNewSchool')}</DialogTitle>
                         <DialogDescription>{t('enterTheNewSchoolDetails')}</DialogDescription>
                       </DialogHeader>
-                      
+
                       <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
@@ -473,7 +465,7 @@ export const PlatformSchoolsPage = () => {
                             />
                           </div>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label>{t('schoolCode')}</Label>
@@ -497,7 +489,7 @@ export const PlatformSchoolsPage = () => {
                             />
                           </div>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label>{t('phone2')}</Label>
@@ -518,7 +510,7 @@ export const PlatformSchoolsPage = () => {
                             />
                           </div>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label>{t('region2')}</Label>
@@ -539,7 +531,7 @@ export const PlatformSchoolsPage = () => {
                             />
                           </div>
                         </div>
-                        
+
                         <div className="space-y-2">
                           <Label>{t('address')}</Label>
                           <Input
@@ -550,7 +542,7 @@ export const PlatformSchoolsPage = () => {
                           />
                         </div>
                       </div>
-                      
+
                       <DialogFooter>
                         <Button variant="outline" onClick={() => setCreateDialogOpen(false)} className="rounded-xl">
                           {t('cancel')}
@@ -564,7 +556,7 @@ export const PlatformSchoolsPage = () => {
                 </div>
               </div>
             </CardHeader>
-            
+
             <CardContent>
               {/* Grid View - Cards */}
               {viewMode === 'grid' ? (
@@ -579,17 +571,16 @@ export const PlatformSchoolsPage = () => {
                     </div>
                   ) : (
                     paginatedSchools.map((school) => (
-                      <Card 
-                        key={school.id} 
+                      <Card
+                        key={school.id}
                         className="card-nassaq relative overflow-hidden group"
                         data-testid={`school-card-${school.id}`}
                       >
                         {/* Status indicator */}
-                        <div className={`absolute top-0 left-0 right-0 h-1 ${
-                          school.status === 'active' ? 'bg-green-500' :
-                          school.status === 'suspended' ? 'bg-red-500' : 'bg-yellow-500'
-                        }`} />
-                        
+                        <div className={`absolute top-0 left-0 right-0 h-1 ${school.status === 'active' ? 'bg-green-500' :
+                            school.status === 'suspended' ? 'bg-red-500' : 'bg-yellow-500'
+                          }`} />
+
                         <CardContent className="p-5">
                           {/* Header - School Info */}
                           <div className="flex items-start justify-between mb-4">
@@ -604,7 +595,7 @@ export const PlatformSchoolsPage = () => {
                             </div>
                             {getStatusBadge(school.status)}
                           </div>
-                          
+
                           {/* Stats */}
                           <div className="grid grid-cols-2 gap-3 mb-4">
                             <div className="flex items-center gap-2 text-sm">
@@ -620,7 +611,7 @@ export const PlatformSchoolsPage = () => {
                               <span className="text-muted-foreground truncate">{school.city || '-'}, {school.region || '-'}</span>
                             </div>
                           </div>
-                          
+
                           {/* Action Toggles - Suspend & AI - Large and Clear */}
                           <div className="flex items-center gap-2 mb-4 p-3 bg-muted/30 rounded-xl border">
                             {/* Suspend Toggle */}
@@ -628,11 +619,10 @@ export const PlatformSchoolsPage = () => {
                               variant={school.status === 'suspended' ? 'destructive' : 'outline'}
                               size="sm"
                               onClick={(e) => { e.stopPropagation(); handleToggleSuspend(school.id, school.status); }}
-                              className={`flex-1 rounded-lg h-10 font-bold ${
-                                school.status === 'suspended' 
-                                  ? 'bg-red-500 hover:bg-red-600 text-white' 
+                              className={`flex-1 rounded-lg h-10 font-bold ${school.status === 'suspended'
+                                  ? 'bg-red-500 hover:bg-red-600 text-white'
                                   : 'border-red-300 text-red-600 hover:bg-red-50'
-                              }`}
+                                }`}
                               data-testid={`toggle-suspend-${school.id}`}
                             >
                               {school.status === 'suspended' ? (
@@ -647,17 +637,16 @@ export const PlatformSchoolsPage = () => {
                                 </>
                               )}
                             </Button>
-                            
+
                             {/* AI Toggle */}
                             <Button
                               variant={school.ai_enabled ? 'default' : 'outline'}
                               size="sm"
                               onClick={(e) => { e.stopPropagation(); handleToggleAI(school.id, school.ai_enabled); }}
-                              className={`flex-1 rounded-lg h-10 font-bold ${
-                                school.ai_enabled 
-                                  ? 'bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white' 
+                              className={`flex-1 rounded-lg h-10 font-bold ${school.ai_enabled
+                                  ? 'bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white'
                                   : 'border-purple-300 text-purple-600 hover:bg-purple-50'
-                              }`}
+                                }`}
                               data-testid={`toggle-ai-${school.id}`}
                             >
                               <Brain className="h-4 w-4 me-2" />
@@ -668,14 +657,14 @@ export const PlatformSchoolsPage = () => {
                               )}
                             </Button>
                           </div>
-                          
+
                           {isIndependentTeacherWorkspaceRow(school) && (
                             <p className="text-xs text-muted-foreground mb-2 text-center">
                               {t('schoolRowIndependentTeacherWorkspace')}
                             </p>
                           )}
                           {/* Primary Action - Open Dashboard */}
-                          <Button 
+                          <Button
                             className="w-full bg-brand-turquoise hover:bg-brand-turquoise-light rounded-xl h-11 font-bold disabled:opacity-50"
                             onClick={() => handleEnterSchoolDashboard(school)}
                             disabled={!canOpenPrincipalDashboard(school)}
@@ -693,125 +682,125 @@ export const PlatformSchoolsPage = () => {
               ) : (
                 /* Table View */
                 <div className="rounded-xl border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('school')}</TableHead>
-                      <TableHead>{t('code')}</TableHead>
-                      <TableHead>{t('cityRegion')}</TableHead>
-                      <TableHead>{t('status2')}</TableHead>
-                      <TableHead>{t('students')}</TableHead>
-                      <TableHead>{t('teachers2')}</TableHead>
-                      <TableHead>{t('actions2')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading ? (
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                          {t('loading')}
-                        </TableCell>
+                        <TableHead>{t('school')}</TableHead>
+                        <TableHead>{t('code')}</TableHead>
+                        <TableHead>{t('cityRegion')}</TableHead>
+                        <TableHead>{t('status2')}</TableHead>
+                        <TableHead>{t('students')}</TableHead>
+                        <TableHead>{t('teachers2')}</TableHead>
+                        <TableHead>{t('actions2')}</TableHead>
                       </TableRow>
-                    ) : paginatedSchools.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                          {t('noSchoolsFound')}
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      paginatedSchools.map((school) => (
-                        <TableRow key={school.id} data-testid={`school-row-${school.id}`}>
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-brand-navy/10 flex items-center justify-center">
-                                <Building2 className="h-5 w-5 text-brand-navy" />
-                              </div>
-                              <div>
-                                <div className="font-medium">{school.name}</div>
-                                <div className="text-sm text-muted-foreground">{school.email}</div>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-mono">{school.code}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <MapPin className="h-4 w-4 text-muted-foreground" />
-                              <span>{school.city || '-'}</span>
-                              {school.region && <span className="text-muted-foreground">/ {school.region}</span>}
-                            </div>
-                          </TableCell>
-                          <TableCell>{getStatusBadge(school.status)}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <GraduationCap className="h-4 w-4 text-brand-turquoise" />
-                              <span>{school.current_students || 0}</span>
-                              <span className="text-muted-foreground">/ {school.student_capacity}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <UserCheck className="h-4 w-4 text-brand-purple" />
-                              <span>{school.current_teachers || 0}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              {/* Enter Dashboard Button - Primary Action */}
-                              <Button 
-                                size="sm" 
-                                className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-lg disabled:opacity-50"
-                                onClick={() => handleEnterSchoolDashboard(school)}
-                                disabled={!canOpenPrincipalDashboard(school)}
-                                data-testid={`enter-dashboard-${school.id}`}
-                              >
-                                <LogIn className="h-4 w-4 me-1" />
-                                {isRTL ? 'الدخول' : 'Enter'}
-                              </Button>
-                              
-                              {/* More Actions Dropdown */}
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem
-                                    onClick={() => handleEnterSchoolDashboard(school)}
-                                    disabled={!canOpenPrincipalDashboard(school)}
-                                  >
-                                    <ExternalLink className="h-4 w-4 me-2" />
-                                    {t('enterDashboard')}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleViewSchoolContext(school)}>
-                                    <Eye className="h-4 w-4 me-2" />
-                                    {t('viewDetails2')}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => { setSelectedSchool(school); setEditDialogOpen(true); }}>
-                                    <Edit className="h-4 w-4 me-2" />
-                                    {t('edit')}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => handleStatusChange(school.id, 'active')}>
-                                    <CheckCircle className="h-4 w-4 me-2 text-green-600" />
-                                    {t('activate')}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleStatusChange(school.id, 'suspended')}>
-                                    <XCircle className="h-4 w-4 me-2 text-red-600" />
-                                    {t('suspend2')}
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {loading ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                            {t('loading')}
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                      ) : paginatedSchools.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                            {t('noSchoolsFound')}
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        paginatedSchools.map((school) => (
+                          <TableRow key={school.id} data-testid={`school-row-${school.id}`}>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-brand-navy/10 flex items-center justify-center">
+                                  <Building2 className="h-5 w-5 text-brand-navy" />
+                                </div>
+                                <div>
+                                  <div className="font-medium">{school.name}</div>
+                                  <div className="text-sm text-muted-foreground">{school.email}</div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-mono">{school.code}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <MapPin className="h-4 w-4 text-muted-foreground" />
+                                <span>{school.city || '-'}</span>
+                                {school.region && <span className="text-muted-foreground">/ {school.region}</span>}
+                              </div>
+                            </TableCell>
+                            <TableCell>{getStatusBadge(school.status)}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <GraduationCap className="h-4 w-4 text-brand-turquoise" />
+                                <span>{school.current_students || 0}</span>
+                                <span className="text-muted-foreground">/ {school.student_capacity}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <UserCheck className="h-4 w-4 text-brand-purple" />
+                                <span>{school.current_teachers || 0}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {/* Enter Dashboard Button - Primary Action */}
+                                <Button
+                                  size="sm"
+                                  className="bg-brand-turquoise hover:bg-brand-turquoise-light rounded-lg disabled:opacity-50"
+                                  onClick={() => handleEnterSchoolDashboard(school)}
+                                  disabled={!canOpenPrincipalDashboard(school)}
+                                  data-testid={`enter-dashboard-${school.id}`}
+                                >
+                                  <LogIn className="h-4 w-4 me-1" />
+                                  {isRTL ? 'الدخول' : 'Enter'}
+                                </Button>
+
+                                {/* More Actions Dropdown */}
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onClick={() => handleEnterSchoolDashboard(school)}
+                                      disabled={!canOpenPrincipalDashboard(school)}
+                                    >
+                                      <ExternalLink className="h-4 w-4 me-2" />
+                                      {t('enterDashboard')}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleViewSchoolContext(school)}>
+                                      <Eye className="h-4 w-4 me-2" />
+                                      {t('viewDetails2')}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => { setSelectedSchool(school); setEditDialogOpen(true); }}>
+                                      <Edit className="h-4 w-4 me-2" />
+                                      {t('edit')}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => handleStatusChange(school.id, 'active')}>
+                                      <CheckCircle className="h-4 w-4 me-2 text-green-600" />
+                                      {t('activate')}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleStatusChange(school.id, 'suspended')}>
+                                      <XCircle className="h-4 w-4 me-2 text-red-600" />
+                                      {t('suspend2')}
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
-              
+
               {/* Pagination */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-center gap-2 pt-6">
@@ -890,7 +879,7 @@ export const PlatformSchoolsPage = () => {
               <DialogTitle className="font-cairo">{selectedSchool?.name}</DialogTitle>
               <DialogDescription>{t('viewSchoolDataReadonly')}</DialogDescription>
             </DialogHeader>
-            
+
             {selectedSchool && (
               <div className="space-y-6 py-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -917,7 +906,7 @@ export const PlatformSchoolsPage = () => {
                     </CardContent>
                   </Card>
                 </div>
-                
+
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-sm">
                     <Mail className="h-4 w-4 text-muted-foreground" />
@@ -932,7 +921,7 @@ export const PlatformSchoolsPage = () => {
                     <span>{selectedSchool.city || '-'}, {selectedSchool.region || '-'}</span>
                   </div>
                 </div>
-                
+
                 <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4">
                   <p className="text-sm text-yellow-800 dark:text-yellow-200">
                     {t('noteAsPlatformAdminYouCanOnlyViewSchoolDataEditing')}
@@ -940,7 +929,7 @@ export const PlatformSchoolsPage = () => {
                 </div>
               </div>
             )}
-            
+
             <DialogFooter>
               <Button variant="outline" onClick={() => setViewDialogOpen(false)} className="rounded-xl">
                 {t('close')}

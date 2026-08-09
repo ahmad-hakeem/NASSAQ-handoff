@@ -21,10 +21,9 @@ import {
 } from '@/shared/components/ui/sheet';
 import {
   Building2, Search, Filter, Plus, LayoutGrid, List, Users, GraduationCap,
-  MapPin, Brain, Eye, Pause, Play, RefreshCw, CheckCircle2, XCircle,
-  AlertTriangle, Clock, ArrowLeft, ChevronRight, School, Sparkles, X,
-  Loader2, Layers, Calendar, Activity, UserCheck, Hash, ExternalLink,
-  FileEdit, Trash2, ChevronDown, ChevronUp,
+  MapPin, Eye, Pause, Play, RefreshCw, CheckCircle2,
+  AlertTriangle, Clock, ChevronRight, X,
+  Loader2, Layers, Trash2,
 } from 'lucide-react';
 import { Textarea } from '@/shared/components/ui/textarea';
 const CreateSchoolWizard = lazy(() => import('@/features/teachers/components/wizards/CreateSchoolWizard'));

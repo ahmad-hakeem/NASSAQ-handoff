@@ -16,10 +16,9 @@ import { getFormErrorMessage } from '@/shared/models/utils/apiError';
 import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
 import { maskInternalId } from '@/shared/models/utils/internalId';
 import {
-  User, BookOpen, Shield, Edit, Save, X, Phone, Mail, Hash, Calendar,
-  MapPin, Key, UserX, UserCheck, Loader2, Award, Clock, Briefcase,
-  Copy, Eye, EyeOff, History, AlertTriangle, CheckCircle, FileText,
-  Trash2, Settings2
+  User, BookOpen, Edit, Save, X, Phone, Mail, Hash, Calendar,
+  MapPin, Loader2, Award, Briefcase, Copy, Eye, EyeOff, History,
+  AlertTriangle, CheckCircle, FileText
 } from 'lucide-react';
 
 export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh }) {

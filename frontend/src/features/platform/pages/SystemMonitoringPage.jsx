@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
-import { PageHeader } from '@/shared/components/layout/PageHeader';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/components/ui/card';
@@ -8,7 +7,6 @@ import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
 import { Progress } from '@/shared/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
-import { ScrollArea } from '@/shared/components/ui/scroll-area';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -31,44 +29,24 @@ import {
   HardDrive,
   Wifi,
   Database,
-  Globe,
-  Brain,
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
-  XCircle,
   Clock,
   Zap,
   Play,
   Pause,
   RotateCcw,
   Download,
-  Upload,
   FileText,
-  Eye,
-  Settings,
   Bell,
-  Shield,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  ArrowUp,
-  ArrowDown,
-  Link2,
-  CloudOff,
   Cloud,
-  Timer,
-  Hash,
   Layers,
   Terminal,
-  AlertCircle,
   Info,
   ChevronRight,
-  BarChart3,
-  PieChart,
-  Mail,
 } from 'lucide-react';
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartPie, Pie, Cell } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartPie, Pie, Cell } from 'recharts';
 
 // Defers chart mounting until after the first paint so recharts'
 // ResponsiveContainer measures a laid-out parent and never logs the

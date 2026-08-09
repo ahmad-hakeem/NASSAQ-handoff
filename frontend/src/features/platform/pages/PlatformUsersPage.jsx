@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { Button } from '@/shared/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Input } from '@/shared/components/ui/input';
 import { Badge } from '@/shared/components/ui/badge';
 import { toast } from 'sonner';
@@ -11,13 +11,8 @@ import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import {
   Users,
   UserCheck,
-  UserX,
-  Plus,
   Search,
   MoreHorizontal,
-  Sun,
-  Moon,
-  Globe,
   RefreshCw,
   Eye,
   Edit,
@@ -28,9 +23,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
-  Key,
-  UserCog,
-  GraduationCap,
 } from 'lucide-react';
 import {
   DropdownMenu,

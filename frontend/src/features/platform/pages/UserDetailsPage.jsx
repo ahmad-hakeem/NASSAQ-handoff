@@ -2,18 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
-import { PageHeader } from '@/shared/components/layout/PageHeader';
 import { Button } from '@/shared/components/ui/button';
-import { LoadingState } from '@/shared/components/ui/LoadingState';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/card';
 import { Badge } from '@/shared/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/shared/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/shared/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
 import { Switch } from '@/shared/components/ui/switch';
 import { Label } from '@/shared/components/ui/label';
 import { Input } from '@/shared/components/ui/input';
 import { Textarea } from '@/shared/components/ui/textarea';
-import { Checkbox } from '@/shared/components/ui/checkbox';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import {
@@ -29,7 +26,6 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetDescription,
 } from '@/shared/components/ui/sheet';
 import {
   Select,
@@ -38,47 +34,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/components/ui/select';
-import { ImageCropModal } from '@/shared/components/ui/ImageCropModal';
 import {
-  ArrowLeft,
-  User,
-  Mail,
-  Phone,
-  MapPin,
-  Building2,
-  Calendar,
-  Clock,
-  Shield,
-  Edit,
-  Trash2,
-  Lock,
-  Unlock,
-  Bell,
-  Key,
-  Activity,
-  FileText,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Download,
-  Send,
-  RefreshCw,
-  Eye,
-  Brain,
-  Settings,
-  History,
-  Briefcase,
-  GraduationCap,
-  Copy,
-  Check,
-  Upload,
-  Image,
-  Link,
-  ExternalLink,
-  Plus,
-  Minus,
-  Save,
-  X,
+  AlertTriangle, RefreshCw, ArrowLeft, CheckCircle2, XCircle, Brain,
+  Mail, Phone, MapPin, Building2, Briefcase, Calendar, Clock, User,
+  Edit, Key, Bell, Lock, Unlock, Trash2, FileText, Shield, History,
+  Download, Activity, Upload, Save, Settings, GraduationCap,
 } from 'lucide-react';
 
 

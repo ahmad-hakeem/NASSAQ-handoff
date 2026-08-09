@@ -17,7 +17,7 @@ import {
 } from '@/shared/components/ui/table';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/components/ui/tabs';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
-import { RefreshCw, Trash2, AlertTriangle, ShieldAlert, X, History, ChevronLeft, ChevronRight, Search, Download } from 'lucide-react';
+import { RefreshCw, Trash2, AlertTriangle, ShieldAlert, X, History, Search } from 'lucide-react';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
 
 const ARABIC = {

@@ -18,13 +18,12 @@ import { toast } from 'sonner';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
 import {
-  Building2, ArrowRight, ArrowLeft, Users, GraduationCap, BookOpen,
-  CreditCard, Activity, MapPin, Mail, Phone, Calendar, Hash,
+  Building2, ArrowLeft, Users, GraduationCap, BookOpen,
+  Activity, MapPin, Mail, Phone, Calendar,
   Edit, Save, X, Pause, Play, AlertTriangle, Loader2,
-  UserCheck, CheckCircle2, XCircle, Clock, Shield, Eye, EyeOff,
+  CheckCircle2, Clock, Shield, Eye, EyeOff,
   ChevronRight, School, LayoutDashboard, RefreshCw, Key, Copy,
-  Lock, Unlock, Sparkles, UserPlus, RotateCcw,
-  LogIn, LogOut, Download, Upload, Settings, Archive, Trash2, Send,
+  UserPlus, RotateCcw, Download,
 } from 'lucide-react';
 
 const STATUS_CONFIG = {

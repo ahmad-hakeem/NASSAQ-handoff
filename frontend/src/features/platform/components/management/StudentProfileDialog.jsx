@@ -19,10 +19,9 @@ import { RadioGroup, RadioGroupItem } from '@/shared/components/ui/radio-group';
 import { getFormErrorMessage } from '@/shared/models/utils/apiError';
 import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
 import {
-  User, BookOpen, Shield, TrendingUp, Brain, FileText, Edit, Save, X,
+  User, BookOpen, FileText, Edit, Save, X, Shield, Key, UserX, UserCheck, Trash2, Download,
   Phone, Mail, Hash, Calendar, MapPin, AlertTriangle, CheckCircle, Loader2,
-  Key, UserX, UserCheck, Trash2, ArrowRightLeft, Star, Activity, Target,
-  Sparkles, Clock, ChevronDown, ChevronUp, Stethoscope, Rocket, Zap, Download
+  ArrowRightLeft, Activity, Sparkles, ChevronDown, ChevronUp, Stethoscope, Rocket, Brain
 } from 'lucide-react';
 
 const HAKIM_POSES = {
