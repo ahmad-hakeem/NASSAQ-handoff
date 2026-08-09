@@ -7,6 +7,8 @@ import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
 import { Progress } from '@/shared/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
+import { ScrollArea } from '@/shared/components/ui/scroll-area';
+import { PageHeader } from '@/shared/components/layout/PageHeader';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -45,6 +47,14 @@ import {
   Terminal,
   Info,
   ChevronRight,
+  TrendingUp,
+  Globe,
+  Brain,
+  Link2,
+  CloudOff,
+  Eye,
+  Mail,
+  XCircle,
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartPie, Pie, Cell } from 'recharts';
 

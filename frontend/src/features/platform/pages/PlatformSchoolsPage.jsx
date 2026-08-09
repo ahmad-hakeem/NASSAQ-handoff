@@ -6,7 +6,7 @@ import { isIndependentTeacherWorkspaceRow } from '@/shared/models/utils/platform
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { Button } from '@/shared/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/card';
 import { Input } from '@/shared/components/ui/input';
 import { Badge } from '@/shared/components/ui/badge';
 import { toast } from 'sonner';
@@ -39,6 +39,12 @@ import {
   PlayCircle,
   LayoutGrid,
   LayoutList,
+  Globe,
+  Sun,
+  Moon,
+  UserCheck,
+  Brain,
+  ChevronsLeft,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -54,6 +60,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/shared/components/ui/dialog';
 import { Label } from '@/shared/components/ui/label';
 import {
@@ -79,7 +86,8 @@ export const PlatformSchoolsPage = () => {
   const navigate = useNavigate();
   const { user, api } = useAuth();
   const { openPrincipalDashboard, canOpenPrincipalDashboard } = usePlatformAdminSchoolPreview();
-  const { isRTL } = useTheme();
+  const { isRTL, theme, toggleTheme, language, toggleLanguage } = useTheme();
+  const isDark = theme === 'dark';
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');

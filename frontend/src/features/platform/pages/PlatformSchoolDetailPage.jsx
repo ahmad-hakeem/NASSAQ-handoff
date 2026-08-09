@@ -24,6 +24,8 @@ import {
   CheckCircle2, Clock, Shield, Eye, EyeOff,
   ChevronRight, School, LayoutDashboard, RefreshCw, Key, Copy,
   UserPlus, RotateCcw, Download,
+  Trash2, XCircle, LogIn, LogOut, UserCheck, Settings, Upload,
+  Sparkles, Lock, Archive, Send, ArrowRight, Hash, CreditCard,
 } from 'lucide-react';
 
 const STATUS_CONFIG = {

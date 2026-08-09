@@ -5,7 +5,7 @@ import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { Button } from '@/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/card';
 import { Badge } from '@/shared/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/shared/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/shared/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
 import { Switch } from '@/shared/components/ui/switch';
 import { Label } from '@/shared/components/ui/label';
@@ -26,7 +26,9 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetDescription,
 } from '@/shared/components/ui/sheet';
+import { Checkbox } from '@/shared/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -39,11 +41,15 @@ import {
   Mail, Phone, MapPin, Building2, Briefcase, Calendar, Clock, User,
   Edit, Key, Bell, Lock, Unlock, Trash2, FileText, Shield, History,
   Download, Activity, Upload, Save, Settings, GraduationCap,
+  Check, Copy, Send,
 } from 'lucide-react';
 
 
 import { useTranslation } from '@/shared/contexts/ThemeContext';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+import { PageHeader } from '@/shared/components/layout/PageHeader';
+import { LoadingState } from '@/shared/components/ui/LoadingState';
+import { ImageCropModal } from '@/shared/components/ui/ImageCropModal';
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 // Role configurations

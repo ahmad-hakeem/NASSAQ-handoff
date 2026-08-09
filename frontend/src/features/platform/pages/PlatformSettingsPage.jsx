@@ -12,6 +12,18 @@ import { Label } from '@/shared/components/ui/label';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { Switch } from '@/shared/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
+import { ScrollArea } from '@/shared/components/ui/scroll-area';
+import { Separator } from '@/shared/components/ui/separator';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+} from '@/shared/components/ui/alert-dialog';
+import { PageHeader } from '@/shared/components/layout/PageHeader';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import {
@@ -62,6 +74,20 @@ import {
   Activity,
   Zap,
   Trash2,
+  Sun,
+  Moon,
+  LogOut,
+  Server,
+  Palette,
+  Upload,
+  Hash,
+  Link2,
+  Twitter,
+  Facebook,
+  Instagram,
+  Linkedin,
+  Youtube,
+  Monitor,
 } from 'lucide-react';
 
 // Translations

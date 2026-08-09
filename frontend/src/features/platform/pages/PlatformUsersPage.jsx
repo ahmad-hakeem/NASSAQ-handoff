@@ -3,7 +3,7 @@ import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { Button } from '@/shared/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/card';
 import { Input } from '@/shared/components/ui/input';
 import { Badge } from '@/shared/components/ui/badge';
 import { toast } from 'sonner';
@@ -23,6 +23,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
+  Globe,
+  Sun,
+  Moon,
+  UserX,
+  UserCog,
+  GraduationCap,
+  Key,
 } from 'lucide-react';
 import {
   DropdownMenu,

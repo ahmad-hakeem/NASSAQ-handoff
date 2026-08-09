@@ -11,6 +11,7 @@ import {
   CheckCircle, Activity, FileText, RefreshCw,
   Calendar, Monitor, Smartphone, Globe,
   LogIn, ChevronDown, Eye,
+  Tablet, Cpu, LogOut, Trash2, Plus, Edit, Database, Lock, Unlock, Settings, Shield, ChevronRight, XCircle,
 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';

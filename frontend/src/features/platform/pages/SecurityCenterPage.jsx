@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { useAuth } from '@/shared/contexts/AuthContext';
+import { Sidebar } from '@/shared/components/layout/Sidebar';
+import { PageHeader } from '@/shared/components/layout/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
@@ -10,6 +12,7 @@ import { Label } from '@/shared/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
 import { Progress } from '@/shared/components/ui/progress';
 import { Switch } from '@/shared/components/ui/switch';
+import { ScrollArea } from '@/shared/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import {
@@ -73,6 +76,13 @@ import {
   Cloud,
   Wifi,
   WifiOff,
+  KeyRound,
+  AlertCircle,
+  UserCheck,
+  Database,
+  LogOut,
+  Brain,
+  TrendingUp,
 } from 'lucide-react';
 
 
