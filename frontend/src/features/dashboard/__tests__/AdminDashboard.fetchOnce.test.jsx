@@ -46,9 +46,7 @@ jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   }),
 }));
 
-// Stub heavy child components so they don't issue their own requests
 jest.mock('@/features/teachers/components/wizards/CreateSchoolWizard', () => ({ __esModule: true, default: () => <div /> }));
-jest.mock('@/features/teachers/components/wizards/CreateUserWizard', () => ({ __esModule: true, default: () => <div /> }));
 
 // QuickAIOperationsPanel is the component under test — stub a lightweight version
 // that records whether it tried to fetch stats independently.

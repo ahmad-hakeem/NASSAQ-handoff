@@ -1,29 +1,26 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/shared/contexts/AuthContext';
-import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
+import { useTheme, useTranslation } from '@/shared/contexts/ThemeContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { Button } from '@/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/card';
 import { Badge } from '@/shared/components/ui/badge';
 import { toast } from 'sonner';
-import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import {
-  Building2, Users, GraduationCap, UserCheck, Activity, BarChart3, Brain,
-  Zap, Shield, Clock, RefreshCw, Sparkles, Calendar, Settings,
-  BookOpen, ChevronRight, Play, Server, Eye, CheckCircle,
-  TrendingUp, TrendingDown, AlertTriangle, Bell, User, BookOpenCheck,
-  School, Layers, ClipboardList, HeartPulse, Loader2, ArrowUpRight,
-  Database, Wifi, CircleDot, MessagesSquare, UserCog, LayoutDashboard,
-  ChevronLeft, Target, UserPlus, Search
+  Building2, Users, GraduationCap, UserCheck, Activity, BarChart3,
+  Shield, Clock, RefreshCw, Sparkles, Calendar, Settings,
+  BookOpen, ChevronRight, Play, CheckCircle,
+  TrendingUp, TrendingDown, Bell, User,
+  School, Layers, ClipboardList, HeartPulse, Loader2,
+  CircleDot, UserCog, LayoutDashboard,
+  ChevronLeft, Target
 } from 'lucide-react';
 import {
-  XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell, PieChart, Pie
+  XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie
 } from 'recharts';
+import CreateSchoolWizard from '@/features/teachers/components/wizards/CreateSchoolWizard';
 import QuickAIOperationsPanel from '@/features/hakim/components/ai/QuickAIOperationsPanel';
-
-const CreateSchoolWizard = lazy(() => import('@/features/teachers/components/wizards/CreateSchoolWizard'));
-const CreateUserWizard = lazy(() => import('@/features/teachers/components/wizards/CreateUserWizard'));
 
 const HAKIM_AVATAR = '/hakim-poses/analyzing-data.png';
 
@@ -127,11 +124,10 @@ const KPICard = ({ icon: Icon, iconColor, title, value, subtitle, trend, trendVa
           <Icon className="h-5 w-5 text-white" />
         </div>
         {trend && (
-          <div className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${
-            trend === 'up' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+          <div className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${trend === 'up' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
             trend === 'down' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-            'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-          }`}>
+              'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+            }`}>
             {trend === 'up' ? <TrendingUp className="h-3 w-3" /> : trend === 'down' ? <TrendingDown className="h-3 w-3" /> : null}
             {trendValue}
           </div>
@@ -142,8 +138,8 @@ const KPICard = ({ icon: Icon, iconColor, title, value, subtitle, trend, trendVa
         <p className="text-sm font-medium text-slate-600 dark:text-slate-400 font-tajawal">{title}</p>
         {subtitle && <p className="text-xs text-slate-400 dark:text-slate-500">{subtitle}</p>}
       </div>
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity" 
-           style={{ backgroundImage: `linear-gradient(to right, var(--tw-gradient-from), var(--tw-gradient-to))` }} />
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{ backgroundImage: `linear-gradient(to right, var(--tw-gradient-from), var(--tw-gradient-to))` }} />
     </CardContent>
   </Card>
 );
@@ -151,16 +147,14 @@ const KPICard = ({ icon: Icon, iconColor, title, value, subtitle, trend, trendVa
 const HealthIndicator = ({ label, status, detail }) => (
   <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50">
     <div className="flex items-center gap-3">
-      <div className={`w-2.5 h-2.5 rounded-full ${
-        status === 'healthy' || status === 'active' ? 'bg-emerald-500 animate-pulse' :
+      <div className={`w-2.5 h-2.5 rounded-full ${status === 'healthy' || status === 'active' ? 'bg-emerald-500 animate-pulse' :
         status === 'warning' ? 'bg-amber-500 animate-pulse' : 'bg-red-500 animate-pulse'
-      }`} />
+        }`} />
       <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{label}</span>
     </div>
-    <Badge variant="outline" className={`text-xs ${
-      status === 'healthy' || status === 'active' ? 'border-emerald-300 text-emerald-700 dark:text-emerald-400' :
+    <Badge variant="outline" className={`text-xs ${status === 'healthy' || status === 'active' ? 'border-emerald-300 text-emerald-700 dark:text-emerald-400' :
       status === 'warning' ? 'border-amber-300 text-amber-700' : 'border-red-300 text-red-700'
-    }`}>
+      }`}>
       {detail || status}
     </Badge>
   </div>
@@ -170,8 +164,7 @@ export const AdminDashboard = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { api, user } = useAuth();
-  const { isRTL, isDark } = useTheme();
-  const { nassaqError } = useNassaqAlert();
+  const { isRTL } = useTheme();
 
   const [stats, setStats] = useState(null);
   const [schoolsOverview, setSchoolsOverview] = useState([]);
@@ -179,7 +172,6 @@ export const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddSchoolWizard, setShowAddSchoolWizard] = useState(false);
-  const [showCreateUserWizard, setShowCreateUserWizard] = useState(false);
   const [hakimInsights, setHakimInsights] = useState([]);
 
   const fetchAllData = useCallback(async (showToast = false) => {
@@ -411,11 +403,10 @@ export const AdminDashboard = () => {
                     <div className="space-y-2">
                       {hakimInsights.map((insight, i) => (
                         <div key={i} className="flex items-start gap-2 text-sm">
-                          <span className={`mt-0.5 text-base ${
-                            insight.type === 'warning' ? 'text-amber-500' :
+                          <span className={`mt-0.5 text-base ${insight.type === 'warning' ? 'text-amber-500' :
                             insight.type === 'alert' ? 'text-red-500' :
-                            insight.type === 'success' ? 'text-emerald-500' : 'text-blue-500'
-                          }`}>
+                              insight.type === 'success' ? 'text-emerald-500' : 'text-blue-500'
+                            }`}>
                             {insight.type === 'warning' ? '⚠' : insight.type === 'alert' ? '🔴' : insight.type === 'success' ? '✅' : 'ℹ️'}
                           </span>
                           <span className="text-slate-700 dark:text-slate-300 font-tajawal">{insight.text}</span>
@@ -682,24 +673,14 @@ export const AdminDashboard = () => {
         </div>
       </div>
 
-      <Suspense fallback={null}>
-        {showAddSchoolWizard && (
-          <CreateSchoolWizard
-            open={showAddSchoolWizard}
-            onOpenChange={setShowAddSchoolWizard}
-            onSuccess={() => { setShowAddSchoolWizard(false); fetchAllData(true); }}
-            api={api}
-            isRTL={isRTL}
-          />
-        )}
-        {showCreateUserWizard && (
-          <CreateUserWizard
-            onClose={() => setShowCreateUserWizard(false)}
-            onSuccess={() => { setShowCreateUserWizard(false); fetchAllData(true); }}
-          />
-        )}
-      </Suspense>
-    </Sidebar>
+      <CreateSchoolWizard
+        open={showAddSchoolWizard}
+        onOpenChange={setShowAddSchoolWizard}
+        onSuccess={() => { setShowAddSchoolWizard(false); fetchAllData(true); }}
+        api={api}
+        isRTL={isRTL}
+      />
+    </Sidebar >
   );
 };
 

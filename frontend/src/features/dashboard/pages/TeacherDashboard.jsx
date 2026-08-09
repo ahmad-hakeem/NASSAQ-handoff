@@ -5,12 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/sha
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/shared/components/ui/avatar';
-import { toast } from 'sonner';
 import {
-  BookOpen, Users, Calendar, ClipboardCheck, Bell, Settings,
-  GraduationCap, Clock, CheckCircle2, AlertCircle, ChevronLeft,
-  BarChart3, FileText, Star, TrendingUp, CalendarDays, Menu,
-  Globe, Sun, Moon
+  BookOpen, Users, Calendar, ClipboardCheck, Bell,
+  GraduationCap, Clock, CheckCircle2, AlertCircle,
+  CalendarDays, Globe, Sun, Moon
 } from 'lucide-react';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { formatHijriOnly, formatGregorianArabic } from '@/shared/models/utils/hijriDate';
