@@ -147,12 +147,39 @@ export const AuthProvider = ({ children }) => {
     return sessionStorage.getItem('nassaq_impersonating') === 'true';
   });
 
-  const api = useMemo(() => axios.create({
-    baseURL: `${API_URL}/api`,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  }), []);
+  const api = useMemo(() => {
+    const instance = axios.create({
+      baseURL: `${API_URL}/api`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const inFlightRequests = new Map();
+    const originalGet = instance.get.bind(instance);
+
+    instance.get = function (url, config) {
+      if (config?.bypassDedupe) {
+        return originalGet(url, config);
+      }
+
+      const paramsKey = config?.params ? JSON.stringify(config.params) : '';
+      const requestKey = `GET:${url}:${paramsKey}`;
+
+      if (inFlightRequests.has(requestKey)) {
+        return inFlightRequests.get(requestKey);
+      }
+
+      const promise = originalGet(url, config).finally(() => {
+        inFlightRequests.delete(requestKey);
+      });
+
+      inFlightRequests.set(requestKey, promise);
+      return promise;
+    };
+
+    return instance;
+  }, []);
 
   useEffect(() => {
   const reqInterceptor = api.interceptors.request.use((config) => {
@@ -1083,7 +1110,7 @@ export const AuthProvider = ({ children }) => {
     const effectiveToken = token || (typeof window !== 'undefined' ? localStorage.getItem('nassaq_token') : null);
     if (!effectiveToken) return null;
     try {
-      const response = await api.get('/auth/me');
+      const response = await api.get('/auth/me', { bypassDedupe: true });
       setUser(response.data);
       return response.data;
     } catch (error) {
@@ -1157,21 +1184,17 @@ export const AuthProvider = ({ children }) => {
     if (force) {
       invalidatePermissions();
     } else if (permissionsTokenRef.current !== bearer) {
-      // Bearer/session transition (role switch, re-login, step-up) that
-      // the passive identity effect hasn't observed yet — the cache and
-      // any in-flight request belong to the previous auth context.
       invalidatePermissions();
+    } else if (permissionsInFlightRef.current) {
+      return permissionsInFlightRef.current;
     } else if (permissions) {
       return permissions;
-    }
-    if (permissionsInFlightRef.current) {
-      return permissionsInFlightRef.current;
     }
     const gen = permissionsGenRef.current;
     permissionsTokenRef.current = bearer;
     const request = (async () => {
       try {
-        const response = await api.get('/auth/me/permissions');
+        const response = await api.get('/auth/me/permissions', { bypassDedupe: true });
         if (
           permissionsGenRef.current !== gen ||
           (localStorage.getItem('nassaq_token') || token) !== bearer
