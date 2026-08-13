@@ -16,6 +16,7 @@ from dependencies import db, JWT_SECRET, JWT_ALGORITHM
 from middleware.rate_limiter import RateLimitMiddleware
 from middleware.error_handler import ErrorHandlerMiddleware
 from middleware.request_tracing import RequestTracingMiddleware
+from middleware.metrics_middleware import prometheus_metrics_middleware
 
 logger = logging.getLogger("nassaq")
 
@@ -26,6 +27,7 @@ def register_middleware(app: FastAPI):
     app.add_middleware(ErrorHandlerMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestTracingMiddleware)
+    app.middleware("http")(prometheus_metrics_middleware)
 
     @app.middleware("http")
     async def pg_session_middleware(request: Request, call_next):
