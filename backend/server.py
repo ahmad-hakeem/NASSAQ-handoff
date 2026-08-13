@@ -299,6 +299,9 @@ def create_app() -> FastAPI:
     from app.middleware import register_middleware
     register_middleware(application)
 
+    from middleware.metrics_middleware import metrics_endpoint
+    application.add_api_route("/metrics", metrics_endpoint, methods=["GET"])
+
     api_router = APIRouter(prefix="/api")
 
     from app.routes import register_routes
