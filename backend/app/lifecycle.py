@@ -29,20 +29,39 @@ async def _run_with_session(label: str, coro_fn):
 
 
 async def _seed_platform_admins():
-    admins = [
-        {
+    admins = []
+
+    # Single admin from ConfigMap / Secret / Env
+    single_email = os.environ.get("ADMIN_SEED_EMAIL")
+    single_pass = os.environ.get("ADMIN_SEED_PASSWORD")
+    single_name = os.environ.get("ADMIN_SEED_NAME", "Platform Admin")
+
+    if single_email and single_pass:
+        admins.append({
+            "full_name": single_name,
+            "email": single_email,
+            "password": single_pass,
+            "role": "platform_admin",
+        })
+
+    zalat_pass = os.environ.get("ADMIN_SEED_PASSWORD_ZALAT", "")
+    if zalat_pass:
+        admins.append({
             "full_name": "Dr. Ahmad Zalat",
             "email": "zalat@nassaqapp.com",
-            "password": os.environ.get("ADMIN_SEED_PASSWORD_ZALAT", ""),
+            "password": zalat_pass,
             "role": "platform_admin",
-        },
-        {
+        })
+
+    hakim_pass = os.environ.get("ADMIN_SEED_PASSWORD_HAKIM", "")
+    if hakim_pass:
+        admins.append({
             "full_name": "Ahmed Hakim",
             "email": "hakim@nassaqapp.com",
-            "password": os.environ.get("ADMIN_SEED_PASSWORD_HAKIM", ""),
+            "password": hakim_pass,
             "role": "platform_admin",
-        },
-    ]
+        })
+
     for admin in admins:
         if not admin["password"]:
             logger.warning(f"Skipping admin seed for {admin['email']}: password env var not set")
