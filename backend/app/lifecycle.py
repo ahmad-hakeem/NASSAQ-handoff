@@ -29,20 +29,39 @@ async def _run_with_session(label: str, coro_fn):
 
 
 async def _seed_platform_admins():
-    admins = [
-        {
+    admins = []
+
+    # Single admin from ConfigMap / Secret / Env
+    single_email = os.environ.get("ADMIN_SEED_EMAIL")
+    single_pass = os.environ.get("ADMIN_SEED_PASSWORD")
+    single_name = os.environ.get("ADMIN_SEED_NAME", "Platform Admin")
+
+    if single_email and single_pass:
+        admins.append({
+            "full_name": single_name,
+            "email": single_email,
+            "password": single_pass,
+            "role": "platform_admin",
+        })
+
+    zalat_pass = os.environ.get("ADMIN_SEED_PASSWORD_ZALAT", "")
+    if zalat_pass:
+        admins.append({
             "full_name": "Dr. Ahmad Zalat",
             "email": "zalat@nassaqapp.com",
-            "password": os.environ.get("ADMIN_SEED_PASSWORD_ZALAT", ""),
+            "password": zalat_pass,
             "role": "platform_admin",
-        },
-        {
+        })
+
+    hakim_pass = os.environ.get("ADMIN_SEED_PASSWORD_HAKIM", "")
+    if hakim_pass:
+        admins.append({
             "full_name": "Ahmed Hakim",
             "email": "hakim@nassaqapp.com",
-            "password": os.environ.get("ADMIN_SEED_PASSWORD_HAKIM", ""),
+            "password": hakim_pass,
             "role": "platform_admin",
-        },
-    ]
+        })
+
     for admin in admins:
         if not admin["password"]:
             logger.warning(f"Skipping admin seed for {admin['email']}: password env var not set")
@@ -178,9 +197,11 @@ async def startup_tasks():
 
         await _run_with_session("Data snapshot", _data_snapshot)
 
-        if config.seed_allowed() and not db_has_data:
+        # Always run platform admin seed if explicit ADMIN_SEED_EMAIL & ADMIN_SEED_PASSWORD are configured
+        if (os.environ.get("ADMIN_SEED_EMAIL") and os.environ.get("ADMIN_SEED_PASSWORD")) or (config.seed_allowed() and not db_has_data):
             await _run_with_session("Seed admins", _seed_platform_admins)
 
+        if config.seed_allowed() and not db_has_data:
             from seeds.timetable_hard_constraints import seed_hard_constraints
             result = await _run_with_session("Hard constraints", lambda: seed_hard_constraints(db))
             if result:
@@ -190,10 +211,10 @@ async def startup_tasks():
             result = await _run_with_session("Soft constraints", lambda: seed_soft_constraints(db))
             if result:
                 logger.info(f"Timetable soft constraints: {result}")
-        elif config.seed_allowed() and db_has_data:
-            logger.info("DEPLOYMENT SAFETY: Seed scripts SKIPPED (database already has data)")
+        elif db_has_data:
+            logger.info("DEPLOYMENT SAFETY: Demo seed scripts SKIPPED (database already has data)")
         else:
-            logger.info(f"DEPLOYMENT SAFETY: Seed scripts SKIPPED (environment={config.ENVIRONMENT})")
+            logger.info(f"DEPLOYMENT SAFETY: Demo seed scripts SKIPPED (environment={config.ENVIRONMENT})")
 
     import asyncio as _asyncio
     try:
