@@ -2,7 +2,7 @@
 Sessions Module
 = NestJS @Module()
 
-Wires together Sessions controllers, services, and repository.
+Wires together sessions controllers, services, and repository.
 Register by calling register(api_router).
 """
 import logging
@@ -12,7 +12,6 @@ logger = logging.getLogger("nassaq")
 
 
 def register(api_router: APIRouter) -> None:
-    """Register Sessions routes into api_router."""
-    from src.modules.sessions.sessions_controller import router
-    api_router.include_router(router)
+    """Register sessions routes into api_router."""
+    pass
     logger.info("SessionsModule: registered")

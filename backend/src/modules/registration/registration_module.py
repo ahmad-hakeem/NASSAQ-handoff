@@ -2,7 +2,7 @@
 Registration Module
 = NestJS @Module()
 
-Wires together Registration controllers, services, and repository.
+Wires together registration controllers, services, and repository.
 Register by calling register(api_router).
 """
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger("nassaq")
 
 
 def register(api_router: APIRouter) -> None:
-    """Register Registration routes into api_router."""
-    from src.modules.registration.registration_controller import router
-    api_router.include_router(router)
+    """Register registration routes into api_router."""
+    from src.modules.registration.controllers.registration_routes_mod import router as _registration_routes_mod_router
+    api_router.include_router(_registration_routes_mod_router)
     logger.info("RegistrationModule: registered")

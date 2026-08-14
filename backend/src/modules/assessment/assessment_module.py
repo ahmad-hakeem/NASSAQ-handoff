@@ -2,7 +2,7 @@
 Assessment Module
 = NestJS @Module()
 
-Wires together Assessment controllers, services, and repository.
+Wires together assessment controllers, services, and repository.
 Register by calling register(api_router).
 """
 import logging
@@ -12,7 +12,9 @@ logger = logging.getLogger("nassaq")
 
 
 def register(api_router: APIRouter) -> None:
-    """Register Assessment routes into api_router."""
-    from src.modules.assessment.assessment_controller import router
-    api_router.include_router(router)
+    """Register assessment routes into api_router."""
+    from src.modules.assessment.controllers.assessment_routes_mod import router as _assessment_routes_mod_router
+    api_router.include_router(_assessment_routes_mod_router)
+    from src.modules.assessment.controllers.assessment_routes import router as _assessment_routes_router
+    api_router.include_router(_assessment_routes_router)
     logger.info("AssessmentModule: registered")

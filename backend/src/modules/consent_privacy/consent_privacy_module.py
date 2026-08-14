@@ -1,8 +1,8 @@
 """
-ConsentPrivacy Module
+Consent_privacy Module
 = NestJS @Module()
 
-Wires together ConsentPrivacy controllers, services, and repository.
+Wires together consent_privacy controllers, services, and repository.
 Register by calling register(api_router).
 """
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger("nassaq")
 
 
 def register(api_router: APIRouter) -> None:
-    """Register ConsentPrivacy routes into api_router."""
-    from src.modules.consent_privacy.consent_privacy_controller import router
-    api_router.include_router(router)
-    logger.info("ConsentPrivacyModule: registered")
+    """Register consent_privacy routes into api_router."""
+    from src.modules.consent_privacy.controllers.consent_privacy_routes_mod import router as _consent_privacy_routes_mod_router
+    api_router.include_router(_consent_privacy_routes_mod_router)
+    logger.info("Consent_privacyModule: registered")

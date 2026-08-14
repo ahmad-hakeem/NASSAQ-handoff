@@ -2,7 +2,7 @@
 Audit Module
 = NestJS @Module()
 
-Wires together Audit controllers, services, and repository.
+Wires together audit controllers, services, and repository.
 Register by calling register(api_router).
 """
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger("nassaq")
 
 
 def register(api_router: APIRouter) -> None:
-    """Register Audit routes into api_router."""
-    from src.modules.audit.audit_controller import router
-    api_router.include_router(router)
+    """Register audit routes into api_router."""
+    from src.modules.audit.controllers.audit_routes import router as _audit_routes_router
+    api_router.include_router(_audit_routes_router)
     logger.info("AuditModule: registered")

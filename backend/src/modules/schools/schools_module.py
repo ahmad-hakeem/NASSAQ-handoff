@@ -2,7 +2,7 @@
 Schools Module
 = NestJS @Module()
 
-Wires together Schools controllers, services, and repository.
+Wires together schools controllers, services, and repository.
 Register by calling register(api_router).
 """
 import logging
@@ -12,7 +12,11 @@ logger = logging.getLogger("nassaq")
 
 
 def register(api_router: APIRouter) -> None:
-    """Register Schools routes into api_router."""
-    from src.modules.schools.schools_controller import router
-    api_router.include_router(router)
+    """Register schools routes into api_router."""
+    from src.modules.schools.controllers.settings_routes import router as _settings_routes_router
+    api_router.include_router(_settings_routes_router)
+    from src.modules.schools.controllers.school_settings_mod import router as _school_settings_mod_router
+    api_router.include_router(_school_settings_mod_router)
+    from src.modules.schools.controllers.school_routes_mod import router as _school_routes_mod_router
+    api_router.include_router(_school_routes_mod_router)
     logger.info("SchoolsModule: registered")

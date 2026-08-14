@@ -2,7 +2,7 @@
 Relationships Module
 = NestJS @Module()
 
-Wires together Relationships controllers, services, and repository.
+Wires together relationships controllers, services, and repository.
 Register by calling register(api_router).
 """
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger("nassaq")
 
 
 def register(api_router: APIRouter) -> None:
-    """Register Relationships routes into api_router."""
-    from src.modules.relationships.relationships_controller import router
-    api_router.include_router(router)
+    """Register relationships routes into api_router."""
+    from src.modules.relationships.controllers.relationship_routes_mod import router as _relationship_routes_mod_router
+    api_router.include_router(_relationship_routes_mod_router)
     logger.info("RelationshipsModule: registered")
