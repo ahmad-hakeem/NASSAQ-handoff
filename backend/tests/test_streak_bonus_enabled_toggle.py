@@ -27,7 +27,7 @@ from engines.session_engine import (
     TeacherSessionEngine as SessionEngine,
     AnswerResult,
 )
-from routes.role_dashboards_mod import save_session_settings
+from src.modules.portals.controllers.role_dashboards_mod import save_session_settings
 
 
 # ──────────────────── helpers ────────────────────
@@ -457,7 +457,7 @@ async def test_explicit_enable_after_disable_via_full_post(tenant_a):
 async def test_get_settings_reflects_saved_disabled_flag(tenant_a):
     """Reopen contract: after disabling, GET /session/{id}/settings returns the
     stored flag so the dialog re-renders with the toggle off."""
-    from routes.role_dashboards_mod import get_session_settings
+    from src.modules.portals.controllers.role_dashboards_mod import get_session_settings
     class_id = await _mk_class(tenant_a)
     subject_id = await _mk_subject(tenant_a)
     teacher_id = await _mk_user(tenant_a)

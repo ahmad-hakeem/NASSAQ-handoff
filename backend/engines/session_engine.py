@@ -24,8 +24,8 @@ import logging
 from sqlalchemy import text as sa_text
 
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
-from utils.parent_resolution import resolve_students_parent_user_ids
-from utils.student_health import summarize_student_health
+from src.common.utils.parent_resolution import resolve_students_parent_user_ids
+from src.common.utils.student_health import summarize_student_health
 
 logger = logging.getLogger("nassaq.session_engine")
 

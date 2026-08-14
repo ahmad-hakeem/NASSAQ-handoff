@@ -28,8 +28,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.pool import NullPool
 
 from db import _get_async_url
-from middleware import rate_limiter as rl
-from middleware.rate_limiter import (
+from src.core.middleware import rate_limiter as rl
+from src.core.middleware.rate_limiter import (
     RATE_LIMITS,
     RateLimitStore,
     SharedRateLimitStore,
@@ -448,7 +448,7 @@ async def test_handler_level_429_headers_survive_the_middleware():
     from starlette.responses import JSONResponse as _JSON
     from starlette.routing import Route
 
-    from middleware.rate_limiter import RateLimitMiddleware, rate_limit_headers
+    from src.core.middleware.rate_limiter import RateLimitMiddleware, rate_limit_headers
 
     async def _inner_limited(_request):
         return _JSON({"detail": "inner"}, status_code=429,
@@ -507,7 +507,7 @@ async def test_health_snapshot_reports_degraded_and_denied_counts():
     for _ in range(12):
         await w.is_rate_limited("ip:/api/auth/login", 10, 60)
 
-    import middleware.rate_limiter as _rl_mod
+    import src.core.middleware.rate_limiter as _rl_mod
     original = _rl_mod.rate_store
     _rl_mod.rate_store = w
     try:
@@ -525,7 +525,7 @@ async def test_health_snapshot_reports_degraded_and_denied_counts():
 
 
 def test_health_snapshot_flags_memory_store_as_not_distributed():
-    import middleware.rate_limiter as _rl_mod
+    import src.core.middleware.rate_limiter as _rl_mod
     original = _rl_mod.rate_store
     _rl_mod.rate_store = RateLimitStore()
     try:

@@ -19,7 +19,7 @@ import jwt as _jwt
 
 os.environ.setdefault("MFA_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 
-from middleware.rate_limiter import rate_store, RATE_LIMITS  # noqa: E402
+from src.core.middleware.rate_limiter import rate_store, RATE_LIMITS  # noqa: E402
 from dependencies import (  # noqa: E402
     UserRole, hash_password, JWT_SECRET, JWT_ALGORITHM,
 )

@@ -26,11 +26,11 @@ import pytest
 
 from dependencies import db
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_update_one
-from utils.collab_access import (
+from src.common.utils.collab_access import (
     caller_can_access_class,
     caller_collab_mode_for_class,
 )
-from utils.tokens import mint_collab_invitation_token
+from src.common.utils.tokens import mint_collab_invitation_token
 
 from tests._it_fixtures import (
     headers, mk_it_workspace, now_ts, STEP_UP_CODES,

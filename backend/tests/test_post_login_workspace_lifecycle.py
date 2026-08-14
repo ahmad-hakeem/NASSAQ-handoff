@@ -24,7 +24,7 @@ os.environ.setdefault(
 
 from dependencies import db, UserRole, hash_password  # noqa: E402
 from engines.sql_utils import gd_insert, gd_update_one  # noqa: E402
-from auth_scope import independent_workspace_id  # noqa: E402
+from src.core.guards.tenant_guard import independent_workspace_id  # noqa: E402
 from services import mfa_crypto  # noqa: E402
 
 from tests._it_fixtures import seed_active_passkey  # noqa: E402

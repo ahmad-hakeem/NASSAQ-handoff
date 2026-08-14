@@ -136,7 +136,7 @@ class AuditLogEngine:
         **kwargs
     ) -> Dict[str, Any]:
         """Log an audit entry with full user and device context"""
-        from middleware.audit_middleware import parse_device_info as _parse_ua
+        from src.core.middleware.audit_middleware import parse_device_info as _parse_ua
 
         audit_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)

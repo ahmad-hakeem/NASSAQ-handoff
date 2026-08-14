@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from auth_scope import independent_workspace_id
+from src.core.guards.tenant_guard import independent_workspace_id
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert
 
@@ -306,7 +306,7 @@ async def test_analytics_export_csv_and_pdf(client):
     # The chart-builder helpers must return a Drawing for non-empty
     # series so the PDF carries the visual snapshot the spec asks for
     # (not just a tabular dump).
-    from routes.independent_teacher_analytics_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_analytics_routes import (
         _aggregate_all, _build_attendance_chart,
         _build_behavior_chart, _build_lesson_plan_chart,
         _workspace_id as _ws_id_helper,

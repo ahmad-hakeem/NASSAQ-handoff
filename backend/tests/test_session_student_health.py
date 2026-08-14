@@ -100,7 +100,7 @@ FULL_HEALTH_INFO = {
 # ───────────────────────────── helper units ─────────────────────────────
 
 def test_summarize_merges_both_sources_and_sets_flags():
-    from utils.student_health import summarize_student_health
+    from src.common.utils.student_health import summarize_student_health
     s = summarize_student_health({
         "profile_settings": FULL_PROFILE, "health_info": FULL_HEALTH_INFO,
     })
@@ -111,7 +111,7 @@ def test_summarize_merges_both_sources_and_sets_flags():
 
 
 def test_summarize_healthy_student_has_no_alerts():
-    from utils.student_health import summarize_student_health
+    from src.common.utils.student_health import summarize_student_health
     for row in ({}, {"profile_settings": None, "health_info": None},
                 {"profile_settings": {"emoji": "👧", "family_situation": "both_parents"}}):
         s = summarize_student_health(row)
@@ -124,7 +124,7 @@ def test_summarize_healthy_student_has_no_alerts():
 def test_summarize_medical_record_only_still_alerts():
     """A student whose data was entered only by an admin (health_info, no
     parent chips) must still get the roster alert flag."""
-    from utils.student_health import summarize_student_health
+    from src.common.utils.student_health import summarize_student_health
     s = summarize_student_health({"health_info": {"has_allergies": True, "allergies": "لقاح"}})
     assert s["health_conditions"] == []
     assert s["has_health_alert"] is True
@@ -132,7 +132,7 @@ def test_summarize_medical_record_only_still_alerts():
 
 
 def test_summarize_coerces_malformed_values():
-    from utils.student_health import summarize_student_health
+    from src.common.utils.student_health import summarize_student_health
     s = summarize_student_health({
         "profile_settings": {
             "health_conditions": "asthma",          # str, not list
@@ -147,7 +147,7 @@ def test_summarize_coerces_malformed_values():
 
 
 def test_detail_gates_flagged_pairs_and_excludes_family():
-    from utils.student_health import build_student_health_detail
+    from src.common.utils.student_health import build_student_health_detail
     d = build_student_health_detail({
         "profile_settings": FULL_PROFILE, "health_info": FULL_HEALTH_INFO,
     })
@@ -174,7 +174,7 @@ def test_detail_gates_flagged_pairs_and_excludes_family():
 
 
 def test_detail_empty_for_healthy_student():
-    from utils.student_health import build_student_health_detail
+    from src.common.utils.student_health import build_student_health_detail
     d = build_student_health_detail({})
     assert d["has_any"] is False
     assert d["health"]["conditions"] == []

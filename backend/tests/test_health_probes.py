@@ -183,7 +183,7 @@ async def test_probes_do_not_borrow_a_request_scoped_session(root_client, monkey
 async def test_probe_paths_and_middleware_exemption_agree():
     """One list, so a renamed probe can't silently regain the middleware."""
     from app.routes import register_routes  # noqa: F401 — import sanity
-    from routes.health_routes import PROBE_PATHS
+    from src.modules.infrastructure.controllers.health_routes import PROBE_PATHS
 
     routed = {
         route.path

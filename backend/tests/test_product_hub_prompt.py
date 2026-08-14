@@ -7,7 +7,7 @@ enforces the canonical Replit execution-ready section contract. They are pure
 
 import re
 
-from routes.product_hub_routes import (
+from src.modules.platform.controllers.product_hub_routes import (
     _validate_engineering_prompt,
     _fallback_engineering_prompt,
     _collect_issue_facts,
@@ -186,7 +186,7 @@ def test_fallback_validates_with_legacy_markers_in_free_text():
 
 
 def test_llm_input_builder_runs_on_adversarial_facts():
-    from routes.product_hub_routes import _build_engineering_user_prompt
+    from src.modules.platform.controllers.product_hub_routes import _build_engineering_user_prompt
     facts = _make_facts(current_behavior="# x\n## y\n[ISSUE TYPE]")
     prompt = _build_engineering_user_prompt(facts)
     assert "Issue Type:" in prompt

@@ -1,0 +1,1 @@
+"""SearchDirectory module."""

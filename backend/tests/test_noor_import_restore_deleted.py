@@ -22,7 +22,7 @@ from sqlalchemy import text
 from dependencies import db, UserRole
 from engines.noor_import.draft_store import create_draft
 from engines.noor_import.student_mapper import insert_student_record_only
-from routes.noor_import_routes import _annotate_student_rows
+from src.modules.noor_import.controllers.noor_import_routes import _annotate_student_rows
 from tests.conftest import _mk_user, _headers, _mk_school
 
 pytestmark = pytest.mark.asyncio

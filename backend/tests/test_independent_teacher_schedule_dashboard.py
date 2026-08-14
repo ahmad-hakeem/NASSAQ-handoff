@@ -14,7 +14,7 @@ from datetime import datetime
 
 import pytest
 
-from auth_scope import INDEPENDENT_TEACHER_DENIED_AR
+from src.core.guards.tenant_guard import INDEPENDENT_TEACHER_DENIED_AR
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert
 

@@ -107,7 +107,7 @@ async def test_transfer_unexpected_db_error_returns_safe_arabic_envelope(
     collapses into the generic cause-hiding popup. The raw exception text
     must not leak."""
     from engines.sql_utils import gd_insert
-    import routes.academics_student_routes as mod
+    import src.modules.academics.controllers.academics_student_routes as mod
 
     cls = str(uuid.uuid4())
     await gd_insert(_db_session, "classes", {"id": cls, "school_id": tenant_a, "name": "4A"})

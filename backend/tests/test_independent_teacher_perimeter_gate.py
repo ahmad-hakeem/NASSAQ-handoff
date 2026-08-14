@@ -15,7 +15,7 @@ import uuid
 import pytest
 from datetime import datetime, timezone
 
-from auth_scope import WORKSPACE_NOT_MATERIALISED_AR
+from src.core.guards.tenant_guard import WORKSPACE_NOT_MATERIALISED_AR
 from dependencies import UserRole, create_access_token, db
 from engines.sql_utils import gd_insert, gd_find_one
 

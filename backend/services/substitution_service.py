@@ -112,7 +112,7 @@ async def resolve_coverage_lesson_context(
     time_str = ""
     if include_time and period:
         try:
-            from routes.schedule_master_grid_routes import _resolve_period_times
+            from src.modules.scheduling.controllers.schedule_master_grid_routes import _resolve_period_times
 
             pt = await _resolve_period_times(str(school_id), [period])
             slot = pt.get(str(period)) or {}

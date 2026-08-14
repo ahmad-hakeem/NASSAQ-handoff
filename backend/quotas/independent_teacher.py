@@ -10,7 +10,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from auth_scope import independent_workspace_id
+from src.core.guards.tenant_guard import independent_workspace_id
 from engines.sql_utils import gd_count
 
 # v1 limits. Intentionally conservative — Phase 1 will revisit.

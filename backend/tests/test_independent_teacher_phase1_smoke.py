@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from auth_scope import independent_workspace_id
+from src.core.guards.tenant_guard import independent_workspace_id
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert, gd_find_one, gd_find
 

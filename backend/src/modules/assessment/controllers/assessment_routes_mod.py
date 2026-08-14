@@ -1,0 +1,1556 @@
+"""
+NASSAQ Route Module: Assessment engine endpoints
+Auto-consolidated during Phase 8 modularization.
+"""
+from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Body, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import Response
+from starlette.responses import StreamingResponse
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
+from typing import List, Optional, Any, Dict
+from datetime import datetime, timezone, timedelta
+import uuid, os, logging, json, random, re, io, base64
+from enum import Enum
+
+from dependencies import (
+    db, get_current_user, require_roles, UserRole, SchoolStatus,
+    hash_password, verify_password, create_access_token,
+    JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE, security, logger,
+    audit_engine, AuditAction, AuditSeverity,
+    smart_scheduling_engine, TimetableRunStatus, TimetableStatus,
+    ConflictType, ConflictSeverity, PreValidationResult, GenerationResult,
+    hakim_engine, reporting_engine, export_engine, session_engine,
+    REPORT_TYPES, generate_student_qr_code
+)
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+
+
+from src.modules.notifications.controllers.notification_routes_mod import create_notification_internal
+from engines.assessment_engine import AssessmentEngine
+from src.common.utils.parent_resolution import resolve_students_parent_user_ids
+
+router = APIRouter()
+
+_assessment_engine = AssessmentEngine(db, audit_engine=audit_engine)
+
+
+
+# ============== ASSESSMENT ENGINE ==============
+# Data Models
+
+class AssessmentType(str, Enum):
+    QUIZ = "quiz"
+    ASSIGNMENT = "assignment"
+    EXAM = "exam"
+    PARTICIPATION = "participation"
+    PROJECT = "project"
+    MIDTERM = "midterm"
+    FINAL = "final"
+    ORAL = "oral"
+    PRACTICAL = "practical"
+
+class AssessmentCreate(BaseModel):
+    class_id: str
+    subject_id: str
+    title: str
+    title_en: Optional[str] = None
+    assessment_type: AssessmentType
+    max_score: float = 100.0
+    weight: float = 1.0  # Weight for GPA calculation (0.0 - 1.0)
+    date: str  # YYYY-MM-DD
+    description: Optional[str] = None
+    is_published: bool = False
+
+class AssessmentUpdate(BaseModel):
+    title: Optional[str] = None
+    title_en: Optional[str] = None
+    max_score: Optional[float] = None
+    weight: Optional[float] = None
+    date: Optional[str] = None
+    description: Optional[str] = None
+    is_published: Optional[bool] = None
+
+class AssessmentResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    class_id: Optional[str] = None
+    class_name: Optional[str] = None
+    subject_id: Optional[str] = None
+    subject_name: Optional[str] = None
+    teacher_id: Optional[str] = None
+    teacher_name: Optional[str] = None
+    name: Optional[str] = None
+    title: Optional[str] = None
+    title_en: Optional[str] = None
+    type: Optional[str] = None
+    assessment_type: Optional[str] = None
+    max_score: Optional[float] = 100
+    weight: Optional[float] = 100
+    date: Optional[str] = None
+    description: Optional[str] = None
+    term_id: Optional[str] = None
+    status: Optional[str] = "graded"
+    is_published: Optional[bool] = True
+    school_id: Optional[str] = None
+    created_at: Optional[str] = None
+    grades_count: Optional[int] = 0
+
+class GradeCreate(BaseModel):
+    student_id: str
+    score: float
+    notes: Optional[str] = None
+
+class GradeUpdate(BaseModel):
+    score: Optional[float] = None
+    notes: Optional[str] = None
+
+class GradeResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    assessment_id: str
+    student_id: str
+    student_name: Optional[str] = None
+    student_code: Optional[str] = None
+    score: float
+    max_score: float
+    percentage: float
+    notes: Optional[str] = None
+    recorded_by: str
+    recorded_at: str
+
+class BulkGradeEntry(BaseModel):
+    assessment_id: str
+    grades: List[GradeCreate]
+
+class StudentGradeHistoryResponse(BaseModel):
+    student_id: str
+    student_name: str
+    class_id: str
+    class_name: str
+    total_assessments: int
+    average_percentage: float
+    grades_by_subject: dict
+    grades_by_type: dict
+    recent_grades: List[dict]
+
+class ClassGradeOverviewResponse(BaseModel):
+    class_id: str
+    class_name: str
+    subject_id: Optional[str]
+    subject_name: Optional[str]
+    total_students: int
+    total_assessments: int
+    class_average: float
+    highest_score: float
+    lowest_score: float
+    grade_distribution: dict
+    recent_assessments: List[dict]
+
+# Assessment APIs
+
+@router.post("/assessments", response_model=AssessmentResponse)
+async def create_assessment(
+    assessment: AssessmentCreate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a new assessment"""
+    if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'independent_teacher']:
+        raise HTTPException(status_code=403, detail="Not authorized to create assessments")
+    
+    # Verify class exists
+    class_info = await gd_find_one(db.session, "classes", {"id": assessment.class_id})
+    if not class_info:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    # Verify subject exists
+    subject = await gd_find_one(db.session, "subjects", {"id": assessment.subject_id})
+    if not subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+    
+    assessment_id = str(uuid.uuid4())
+    is_pub = getattr(assessment, 'is_published', False)
+    # IT callers: tenant_id is on the JWT but not on the DB users row.
+    from src.core.guards.tenant_guard import independent_workspace_id as _itw_id
+    effective_tenant = current_user.get('tenant_id') or _itw_id(current_user)
+    teacher_id = current_user.get('teacher_id') or current_user['id']
+    teacher_in_db = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    if not teacher_in_db:
+        teacher_in_db = await gd_find_one(db.session, "teachers", {"school_id": effective_tenant})
+        if teacher_in_db:
+            teacher_id = teacher_in_db['id']
+        else:
+            teacher_id = None
+    assessment_doc = {
+        "id": assessment_id,
+        "class_id": assessment.class_id,
+        "subject_id": assessment.subject_id,
+        "teacher_id": teacher_id,
+        "name": assessment.title,
+        "name_en": getattr(assessment, 'title_en', None),
+        "type": assessment.assessment_type.value,
+        "max_score": assessment.max_score,
+        "weight": assessment.weight,
+        "due_date": assessment.date,
+        "description": assessment.description,
+        "status": "published" if is_pub else "draft",
+        "school_id": effective_tenant or class_info.get('school_id'),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await gd_insert(db.session, "assessments", assessment_doc)
+    
+    # Get teacher name
+    teacher = await gd_find_one(db.session, "users", {"id": current_user['id']})
+    
+    return AssessmentResponse(
+        id=assessment_id,
+        class_id=assessment.class_id,
+        class_name=class_info.get('name'),
+        subject_id=assessment.subject_id,
+        subject_name=subject.get('name'),
+        teacher_id=current_user['id'],
+        teacher_name=teacher.get('full_name') if teacher else None,
+        title=assessment.title,
+        title_en=assessment.title_en,
+        assessment_type=assessment.assessment_type.value,
+        max_score=assessment.max_score,
+        weight=assessment.weight,
+        date=assessment.date,
+        description=assessment.description,
+        is_published=assessment.is_published,
+        created_at=assessment_doc['created_at'],
+        grades_count=0
+    )
+
+@router.get("/assessments", response_model=List[AssessmentResponse])
+async def get_assessments(
+    class_id: Optional[str] = None,
+    subject_id: Optional[str] = None,
+    assessment_type: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all assessments with optional filters"""
+    query = {}
+    
+    # Filter by school for school-level users
+    if current_user['role'] in ['school_principal', 'school_sub_admin', 'teacher']:
+        if current_user.get('tenant_id'):
+            query['school_id'] = current_user['tenant_id']
+    # Phase 0 §4.B-4 — IT accounts have tenant_id=None on the token; pin
+    # them to their synthetic workspace so /assessments cannot leak across
+    # independent-teacher tenants.
+    if current_user.get('role') == 'independent_teacher':
+        from src.core.guards.tenant_guard import independent_workspace_id
+        query['school_id'] = independent_workspace_id(current_user)
+    
+    if class_id:
+        query['class_id'] = class_id
+    if subject_id:
+        query['subject_id'] = subject_id
+    if assessment_type:
+        query['type'] = assessment_type
+    
+    assessments = await gd_find(db.session, "assessments", query, order_by="due_date", desc_order=True, limit=500)
+    
+    # Enrich with related data
+    result = []
+    for a in assessments:
+        # Get class info
+        class_id = a.get('class_id')
+        class_info = await gd_find_one(db.session, "classes", {"id": class_id}) if class_id else None
+        # Get subject info
+        subject_id = a.get('subject_id')
+        subject = await gd_find_one(db.session, "subjects", {"id": subject_id}) if subject_id else None
+        # Get teacher info (teacher_id might not exist in demo data)
+        teacher_id = a.get('teacher_id')
+        teacher = await gd_find_one(db.session, "users", {"id": teacher_id}) if teacher_id else None
+        # Count grades
+        grades_count = await gd_count(db.session, "grades", {"assessment_id": a['id']})
+        
+        result.append(AssessmentResponse(
+            id=a['id'],
+            class_id=class_id,
+            class_name=a.get('class_name') or (class_info.get('name') if class_info else None),
+            subject_id=subject_id,
+            subject_name=a.get('subject_name') or (subject.get('name') if subject else None),
+            teacher_id=teacher_id,
+            teacher_name=teacher.get('full_name') if teacher else None,
+            name=a.get('name'),
+            title=a.get('title') or a.get('name'),
+            title_en=a.get('title_en') or a.get('name_en'),
+            type=a.get('type'),
+            assessment_type=a.get('assessment_type') or a.get('type'),
+            max_score=a.get('max_score', 100),
+            weight=a.get('weight', 1.0),
+            date=a.get('date') or a.get('due_date'),
+            description=a.get('description'),
+            term_id=a.get('term_id'),
+            status=a.get('status', 'graded'),
+            is_published=a.get('is_published', True),
+            school_id=a.get('school_id'),
+            created_at=a.get('created_at'),
+            grades_count=grades_count
+        ))
+    
+    return result
+
+@router.get("/assessments/{assessment_id}", response_model=AssessmentResponse)
+async def get_assessment(
+    assessment_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get a single assessment by ID"""
+    # SECURITY (audit C-3): tenant pinning at the query level via the
+    # fail-closed helper. This is the route the app router actually serves
+    # (assessment_routes_mod wins over assessment_routes for overlapping
+    # paths — see backend/app/routes.py).
+    from src.common.utils.tenant_scope import tenant_scoped_find_one
+    assessment = await tenant_scoped_find_one(
+        db.session, "assessments", assessment_id, current_user
+    )
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    class_info = await gd_find_one(db.session, "classes", {"id": assessment['class_id']})
+    subject = await gd_find_one(db.session, "subjects", {"id": assessment['subject_id']})
+    teacher = await gd_find_one(db.session, "users", {"id": assessment['teacher_id']})
+    grades_count = await gd_count(db.session, "grades", {"assessment_id": assessment_id})
+    
+    return AssessmentResponse(
+        id=assessment['id'],
+        class_id=assessment['class_id'],
+        class_name=class_info.get('name') if class_info else None,
+        subject_id=assessment['subject_id'],
+        subject_name=subject.get('name') if subject else None,
+        teacher_id=assessment['teacher_id'],
+        teacher_name=teacher.get('full_name') if teacher else None,
+        title=assessment.get('title') or assessment.get('name'),
+        title_en=assessment.get('title_en') or assessment.get('name_en'),
+        assessment_type=assessment.get('assessment_type') or assessment.get('type'),
+        max_score=assessment.get('max_score', 100),
+        weight=assessment.get('weight', 1.0),
+        date=assessment.get('date') or assessment.get('due_date'),
+        description=assessment.get('description'),
+        is_published=assessment.get('is_published', False),
+        created_at=assessment['created_at'],
+        grades_count=grades_count
+    )
+
+@router.put("/assessments/{assessment_id}", response_model=AssessmentResponse)
+async def update_assessment(
+    assessment_id: str,
+    update: AssessmentUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update an assessment"""
+    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # IT callers: derive tenant from itw_* workspace; tenant check is the auth gate.
+    from src.core.guards.tenant_guard import independent_workspace_id as _itw_id
+    is_it_caller = current_user['role'] == UserRole.INDEPENDENT_TEACHER.value
+    tenant_id = current_user.get("tenant_id") or (_itw_id(current_user) if is_it_caller else None)
+    if tenant_id and current_user["role"] != UserRole.PLATFORM_ADMIN.value:
+        assess_tenant = assessment.get("tenant_id") or assessment.get("school_id")
+        if assess_tenant and assess_tenant != tenant_id:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
+    if not is_it_caller and current_user['role'] not in ['school_principal', 'school_sub_admin'] and assessment['teacher_id'] != current_user['id']:
+        raise HTTPException(status_code=403, detail="Not authorized to update this assessment")
+    
+    update_data = {k: v for k, v in update.model_dump().items() if v is not None}
+    update_data['updated_at'] = datetime.now(timezone.utc).isoformat()
+    
+    await gd_update_one(db.session, "assessments", {"id": assessment_id}, update_data)
+    
+    # Propagate IT-derived tenant_id into the follow-up scoped read.
+    if is_it_caller and not current_user.get("tenant_id") and tenant_id:
+        current_user = {**current_user, "tenant_id": tenant_id}
+    return await get_assessment(assessment_id, current_user)
+
+@router.delete("/assessments/{assessment_id}")
+async def delete_assessment(
+    assessment_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete an assessment and its grades"""
+    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    tenant_id = current_user.get("tenant_id")
+    if tenant_id and current_user["role"] != UserRole.PLATFORM_ADMIN.value:
+        assess_tenant = assessment.get("tenant_id") or assessment.get("school_id")
+        if assess_tenant and assess_tenant != tenant_id:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
+    if current_user['role'] not in ['school_principal', 'school_sub_admin'] and assessment['teacher_id'] != current_user['id']:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this assessment")
+    
+    # Delete all grades for this assessment
+    await gd_delete_many(db.session, "grades", {"assessment_id": assessment_id})
+    # Delete the assessment
+    await gd_delete_one(db.session, "assessments", {"id": assessment_id})
+    
+    return {"message": "Assessment deleted successfully"}
+
+# Grade APIs
+
+@router.post("/grades/bulk")
+async def create_bulk_grades(
+    data: BulkGradeEntry,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create or update multiple grades at once for an assessment"""
+    if current_user['role'] not in ['teacher', 'school_principal', 'school_sub_admin', 'independent_teacher']:
+        raise HTTPException(status_code=403, detail="Not authorized to enter grades")
+
+    assessment = await gd_find_one(db.session, "assessments", {"id": data.assessment_id})
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    # IT callers: tenant_id is on the JWT but not on the DB users row.
+    from src.core.guards.tenant_guard import independent_workspace_id as _itw_id
+    tenant_id = current_user.get("tenant_id") or _itw_id(current_user)
+    if tenant_id and current_user["role"] != UserRole.PLATFORM_ADMIN.value:
+        assess_tenant = assessment.get("tenant_id") or assessment.get("school_id")
+        if assess_tenant and assess_tenant != tenant_id:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+
+    grades_dicts = [{"student_id": g.student_id, "score": g.score, "notes": g.notes} for g in data.grades]
+    result = await _assessment_engine.record_bulk_grades(
+        assessment_id=data.assessment_id,
+        grades=grades_dicts,
+        graded_by=current_user['id'],
+        tenant_id=tenant_id,
+    )
+
+    created_sids = set(result.get("created_student_ids", []))
+    if created_sids:
+        max_score = assessment.get("max_score", 100)
+        assessment_title = assessment.get('title', 'تقييم')
+        students_list = await gd_find(db.session, "students", {"id": {"$in": list(created_sids)}, "tenant_id": tenant_id, "is_active": True}, limit=len(created_sids))
+        student_map = {s["id"]: s for s in students_list}
+
+        # Task #286 — IT-aware copy: resolve the inviting teacher's name
+        # ONCE per request so the per-grade loop doesn't re-query `users`
+        # for every parent notification in IT bulk grade entry.
+        _from_ar = ""
+        _from_en = ""
+        if isinstance(tenant_id, str) and tenant_id.startswith("itw_"):
+            _owner = await gd_find_one(
+                db.session, "users", {"id": tenant_id[len("itw_"):]}
+            )
+            _tname = (_owner or {}).get("full_name")
+            if _tname:
+                _from_ar = f" من الأستاذ/ة {_tname}"
+                _from_en = f" from {_tname}"
+
+        # Resolve parent user IDs in bulk — uses guardian_links first,
+        # falls back to students.parent_id. No mutable phone/email matching.
+        parent_uid_map = await resolve_students_parent_user_ids(list(created_sids), tenant_id)
+
+        for g in data.grades:
+            if g.student_id not in created_sids:
+                continue
+            try:
+                si = student_map.get(g.student_id)
+                if not si:
+                    continue
+                student_name = si.get('full_name', 'طالب')
+                percentage = round((g.score / max_score) * 100, 1) if max_score > 0 else 0
+
+                if si.get('user_id'):
+                    await create_notification_internal(
+                        title=f"درجة جديدة: {assessment_title}",
+                        title_en=f"New Grade: {assessment_title}",
+                        message=f"حصلت على درجة {g.score}/{max_score} ({percentage}%) في {assessment_title}",
+                        message_en=f"You scored {g.score}/{max_score} ({percentage}%) in {assessment_title}",
+                        recipient_id=si['user_id'],
+                        notification_type="assessment",
+                        priority="medium",
+                        sender_id=current_user['id'],
+                        related_entity="assessment",
+                        related_entity_id=data.assessment_id,
+                        action_url="/student/grades",
+                        school_id=tenant_id,
+                    )
+
+                parent_uid = parent_uid_map.get(g.student_id)
+                if parent_uid:
+                    await create_notification_internal(
+                        title=f"درجة جديدة لـ {student_name}{_from_ar}",
+                        title_en=f"New Grade for {student_name}{_from_en}",
+                        message=f"حصل {student_name} على درجة {g.score}/{max_score} ({percentage}%) في {assessment_title}{_from_ar}",
+                        message_en=f"{student_name} scored {g.score}/{max_score} ({percentage}%) in {assessment_title}{_from_en}",
+                        recipient_id=parent_uid,
+                        notification_type="assessment",
+                        priority="medium",
+                        sender_id=current_user['id'],
+                        related_entity="assessment",
+                        related_entity_id=data.assessment_id,
+                        action_url="/parent/grades",
+                        school_id=tenant_id,
+                    )
+            except Exception as e:
+                logging.getLogger(__name__).warning("Grade notification failed for student %s: %s", g.student_id, e)
+
+    try:
+        import asyncio
+        from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
+        _pe = PortfolioEvidenceEngine(db)
+        a_type = (assessment.get("assessment_type") or "exam").lower()
+        ev_type = "exam_results"
+        if "quiz" in a_type:
+            ev_type = "quiz_results"
+        elif "performance" in a_type or "task" in a_type:
+            ev_type = "performance_task"
+        a_title = assessment.get("title", "تقييم")
+        # Awaited inline so it shares the request's DB session safely
+        # (background tasks on the same AsyncSession break the commit).
+        await _pe.capture_evidence(
+            teacher_id=current_user["id"],
+            school_id=tenant_id or "",
+            evidence_type=ev_type,
+            title_ar=f"رصد درجات: {a_title}",
+            title_en=f"Grade Entry: {a_title}",
+            description_ar=f"تم رصد {result['created']} درجة جديدة",
+            description_en=f"Recorded {result['created']} new grades",
+            source="auto", source_entity_type="assessment",
+            source_entity_id=data.assessment_id,
+            class_id=assessment.get("class_id"),
+            subject_id=assessment.get("subject_id"),
+            metadata={"created": result["created"], "updated": result["updated"]},
+        )
+    except Exception as _pe_err:
+        logging.getLogger(__name__).debug("Portfolio evidence (bulk_grades) failed: %s", _pe_err)
+
+    return {
+        "success": True,
+        "created": result["created"],
+        "updated": result["updated"],
+        "errors": result["errors"],
+        "total_processed": result["processed"],
+    }
+
+@router.get("/grades/assessment/{assessment_id}", response_model=List[GradeResponse])
+async def get_grades_for_assessment(
+    assessment_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all grades for a specific assessment"""
+    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    user_role = current_user.get("role", "")
+    is_platform = user_role.startswith("platform_")
+    tenant_id = current_user.get("tenant_id")
+    if not is_platform:
+        if not tenant_id or assessment.get("school_id") != tenant_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+    
+    grades = await gd_find(db.session, "grades", {"assessment_id": assessment_id}, limit=500)
+    
+    result = []
+    for g in grades:
+        student = await gd_find_one(db.session, "students", {"id": g['student_id'], "is_active": True})
+        result.append(GradeResponse(
+            id=g['id'],
+            assessment_id=g['assessment_id'],
+            student_id=g['student_id'],
+            student_name=student.get('full_name') if student else None,
+            student_code=student.get('student_code') if student else None,
+            score=g['score'],
+            max_score=g['max_score'],
+            percentage=g.get('percentage', round((g['score'] / g['max_score']) * 100, 2) if g.get('max_score') else 0),
+            notes=g.get('notes'),
+            recorded_by=g['recorded_by'],
+            recorded_at=g['recorded_at']
+        ))
+    
+    return result
+
+@router.get("/grades/student/{student_id}")
+async def get_student_grade_history(
+    student_id: str,
+    subject_id: Optional[str] = None,
+    assessment_type: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get complete grade history for a student"""
+    student = await gd_find_one(db.session, "students", {"id": student_id, "is_active": True})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    user_role = current_user.get("role", "")
+    is_platform = user_role.startswith("platform_")
+    tenant_id = current_user.get("tenant_id")
+    if not is_platform:
+        if not tenant_id or student.get("school_id") != tenant_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Get class info
+    class_info = await gd_find_one(db.session, "classes", {"id": student.get('class_id')})
+    
+    query = {"student_id": student_id}
+    if subject_id:
+        query['subject_id'] = subject_id
+    
+    grades = await gd_find(db.session, "grades", query, order_by="recorded_at", desc_order=True, limit=500)
+
+    # Grade documents are self-contained: they carry subject/score/percentage/
+    # type inline. Build the response from the grade doc itself and only
+    # *enrich* from the assessments collection when a real assessment row can be
+    # resolved. "Live session" grades use a synthetic assessment_id
+    # ("session:<id>:homework") that has no assessments row — and some legacy
+    # docs omit the key entirely — so they must be surfaced, not skipped.
+    grades_by_subject = {}
+    grades_by_type = {}
+    flat_grades = []
+    total_percentage = 0
+    graded_count = 0
+    subject_name_cache = {}
+
+    for g in grades:
+        assessment_id = g.get('assessment_id')
+        # Only look up real assessment rows; synthetic session ids never resolve.
+        assessment = None
+        if assessment_id and ':' not in str(assessment_id):
+            assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+
+        a_type = None
+        if assessment:
+            a_type = assessment.get('assessment_type') or assessment.get('type')
+        a_type = a_type or g.get('assessment_type') or 'other'
+        if assessment_type and a_type != assessment_type:
+            continue
+
+        # Prefer the subject name stored on the grade doc; fall back to lookup.
+        subject_name = g.get('subject_name') or g.get('subject')
+        subj_id = g.get('subject_id')
+        if not subject_name:
+            if subj_id in subject_name_cache:
+                subject_name = subject_name_cache[subj_id]
+            else:
+                subject = await gd_find_one(db.session, "subjects", {"id": subj_id})
+                subject_name = subject.get('name') if subject else "غير محدد"
+                subject_name_cache[subj_id] = subject_name
+
+        score = g.get('score')
+        max_score = g.get('max_score')
+        percentage = g.get('percentage')
+        if percentage is None:
+            percentage = round((score / max_score) * 100, 2) if (score is not None and max_score) else 0
+
+        title = None
+        if assessment:
+            title = assessment.get('title') or assessment.get('name')
+        title = title or g.get('title') or a_type
+
+        grade_date = None
+        if assessment:
+            grade_date = assessment.get('date') or assessment.get('due_date')
+        grade_date = grade_date or g.get('date')
+
+        recorded_at = g.get('recorded_at') or g.get('graded_at') or g.get('updated_at')
+
+        flat_grades.append({
+            "assessment_id": assessment_id,
+            "subject_id": subj_id,
+            "subject_name": subject_name,
+            "subject": subject_name,
+            "title": title,
+            "type": a_type,
+            "assessment_type": a_type,
+            "score": score,
+            "max_score": max_score,
+            "percentage": percentage,
+            "date": grade_date,
+            "recorded_at": recorded_at,
+        })
+
+        # Aggregate by subject
+        if subject_name not in grades_by_subject:
+            grades_by_subject[subject_name] = {
+                "subject_id": subj_id,
+                "grades": [],
+                "average": 0
+            }
+        grades_by_subject[subject_name]['grades'].append({
+            "assessment_id": assessment_id,
+            "title": title,
+            "type": a_type,
+            "score": score,
+            "max_score": max_score,
+            "percentage": percentage,
+            "date": grade_date
+        })
+
+        # Aggregate by type
+        if a_type not in grades_by_type:
+            grades_by_type[a_type] = {"count": 0, "total_percentage": 0, "average": 0}
+        grades_by_type[a_type]['count'] += 1
+        grades_by_type[a_type]['total_percentage'] += percentage
+
+        total_percentage += percentage
+        if score is not None:
+            graded_count += 1
+
+    # Calculate averages
+    for subj in grades_by_subject.values():
+        if subj['grades']:
+            subj['average'] = round(sum(x['percentage'] for x in subj['grades']) / len(subj['grades']), 2)
+
+    for type_data in grades_by_type.values():
+        if type_data['count'] > 0:
+            type_data['average'] = round(type_data['total_percentage'] / type_data['count'], 2)
+
+    counted = len(flat_grades)
+    average_percentage = round(total_percentage / counted, 2) if counted else 0
+
+    # Per-subject summary consumed by the student-profile "grades by subject"
+    # table. score/max_score are set so the frontend's score/total*100 math
+    # reproduces the subject's average percentage.
+    subjects_summary = [
+        {
+            "subject_name": name,
+            "subject_id": subj['subject_id'],
+            "score": subj['average'],
+            "max_score": 100,
+            "percentage": subj['average'],
+            "average": subj['average'],
+            "count": len(subj['grades']),
+        }
+        for name, subj in grades_by_subject.items()
+    ]
+
+    # Recent grades (last 10) — grades are already ordered newest-first.
+    recent_grades = flat_grades[:10]
+
+    return {
+        "student_id": student_id,
+        "student_name": student.get('full_name'),
+        "class_id": student.get('class_id'),
+        "class_name": class_info.get('name') if class_info else None,
+        "total_assessments": counted,
+        "average_percentage": average_percentage,
+        "statistics": {
+            "overall_average": average_percentage,
+            "total_assessments": counted,
+            "graded_count": graded_count,
+        },
+        "grades_by_subject": grades_by_subject,
+        "grades_by_type": grades_by_type,
+        "subjects": subjects_summary,
+        "recent_grades": recent_grades
+    }
+
+@router.get("/grades/class/{class_id}/overview")
+async def get_class_grade_overview(
+    class_id: str,
+    subject_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get grade overview for a class"""
+    class_info = await gd_find_one(db.session, "classes", {"id": class_id})
+    if not class_info:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    # Get all students in class
+    students = await gd_find(db.session, "students", {"class_id": class_id, "is_active": True}, limit=100)
+    student_ids = [s['id'] for s in students]
+    
+    # Get grades query
+    query = {"student_id": {"$in": student_ids}}
+    if subject_id:
+        query['subject_id'] = subject_id
+    
+    grades = await gd_find(db.session, "grades", query, limit=1000)
+    
+    # Get subject info
+    subject_name = None
+    if subject_id:
+        subject = await gd_find_one(db.session, "subjects", {"id": subject_id})
+        subject_name = subject.get('name') if subject else None
+    
+    # Calculate statistics
+    if not grades:
+        return {
+            "class_id": class_id,
+            "class_name": class_info.get('name'),
+            "subject_id": subject_id,
+            "subject_name": subject_name,
+            "total_students": len(students),
+            "total_assessments": 0,
+            "class_average": 0,
+            "highest_score": 0,
+            "lowest_score": 0,
+            "grade_distribution": {},
+            "recent_assessments": []
+        }
+    
+    percentages = [g.get('percentage', 0) for g in grades]
+    class_average = round(sum(percentages) / len(percentages), 2)
+    highest_score = max(percentages)
+    lowest_score = min(percentages)
+    
+    # Grade distribution
+    grade_distribution = {
+        "excellent": len([p for p in percentages if p >= 90]),  # A
+        "very_good": len([p for p in percentages if 80 <= p < 90]),  # B
+        "good": len([p for p in percentages if 70 <= p < 80]),  # C
+        "pass": len([p for p in percentages if 60 <= p < 70]),  # D
+        "fail": len([p for p in percentages if p < 60])  # F
+    }
+    
+    # Get unique assessments count
+    assessment_ids = list(set(g['assessment_id'] for g in grades))
+    
+    # Get recent assessments
+    recent_assessments = []
+    assessments_query = {"class_id": class_id}
+    if subject_id:
+        assessments_query['subject_id'] = subject_id
+    
+    recent_assessment_docs = await gd_find(db.session, "assessments", assessments_query, order_by="due_date", desc_order=True, limit=5)
+    
+    for a in recent_assessment_docs:
+        # Get grades for this assessment
+        assessment_grades = [g for g in grades if g['assessment_id'] == a['id']]
+        assessment_percentages = [g.get('percentage', 0) for g in assessment_grades]
+        
+        recent_assessments.append({
+            "id": a['id'],
+            "title": a.get('title') or a.get('name'),
+            "type": a.get('assessment_type') or a.get('type'),
+            "date": a.get('date') or a.get('due_date'),
+            "max_score": a['max_score'],
+            "students_graded": len(assessment_grades),
+            "average": round(sum(assessment_percentages) / len(assessment_percentages), 2) if assessment_percentages else 0
+        })
+    
+    return {
+        "class_id": class_id,
+        "class_name": class_info.get('name'),
+        "subject_id": subject_id,
+        "subject_name": subject_name,
+        "total_students": len(students),
+        "total_assessments": len(assessment_ids),
+        "class_average": class_average,
+        "highest_score": highest_score,
+        "lowest_score": lowest_score,
+        "grade_distribution": grade_distribution,
+        "recent_assessments": recent_assessments
+    }
+
+@router.get("/assessments/students-for-grading/{assessment_id}")
+async def get_students_for_grading(
+    assessment_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get students with their grades for a specific assessment"""
+    assessment = await gd_find_one(db.session, "assessments", {"id": assessment_id})
+    if not assessment:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    
+    # Get class info
+    class_info = await gd_find_one(db.session, "classes", {"id": assessment['class_id']})
+    
+    # Get subject info
+    subject = await gd_find_one(db.session, "subjects", {"id": assessment['subject_id']})
+    
+    # Get all students in this class
+    students = await gd_find(db.session, "students", {"class_id": assessment['class_id'], "is_active": True}, limit=100)
+    
+    # Get existing grades for this assessment
+    existing_grades = await gd_find(db.session, "grades", {"assessment_id": assessment_id}, limit=100)
+    
+    # Create a map of student_id -> grade
+    grades_map = {g['student_id']: g for g in existing_grades}
+    
+    # Build result with grade data
+    result = []
+    for student in students:
+        student_id = student['id']
+        grade_record = grades_map.get(student_id)
+        
+        result.append({
+            "id": student_id,
+            "student_code": student.get('student_code'),
+            "full_name": student.get('full_name'),
+            "full_name_en": student.get('full_name_en'),
+            "avatar_url": student.get('avatar_url'),  # students table has no avatar_url column — always None
+            "gender": student.get('gender'),
+            "score": grade_record.get('score') if grade_record else None,
+            "notes": grade_record.get('notes') if grade_record else None,
+            "grade_id": grade_record.get('id') if grade_record else None,
+            "percentage": grade_record.get('percentage') if grade_record else None
+        })
+    
+    graded_count = len([s for s in result if s['score'] is not None])
+    
+    return {
+        "assessment_id": assessment_id,
+        "assessment_title": assessment.get('title') or assessment.get('name'),
+        "assessment_type": assessment.get('assessment_type') or assessment.get('type'),
+        "max_score": assessment.get('max_score', 100),
+        "date": assessment.get('date') or assessment.get('due_date'),
+        "class_id": assessment['class_id'],
+        "class_name": class_info.get('name') if class_info else None,
+        "subject_id": assessment['subject_id'],
+        "subject_name": subject.get('name') if subject else None,
+        "total_students": len(students),
+        "graded_count": graded_count,
+        "students": result
+    }
+
+
+# ============== GRADE WEIGHTS ENDPOINTS ==============
+
+class GradeWeightInput(BaseModel):
+    subject_id: str
+    weights: Dict[str, float]
+    academic_year: Optional[str] = None
+    semester: Optional[int] = None
+
+@router.post("/grade-weights")
+async def set_grade_weights(
+    data: GradeWeightInput,
+    current_user: dict = Depends(get_current_user)
+):
+    """Set or update grade weights for a subject"""
+    role = current_user.get("role", "")
+    allowed = {UserRole.PLATFORM_ADMIN.value, UserRole.SCHOOL_ADMIN.value, UserRole.SCHOOL_PRINCIPAL.value, UserRole.TEACHER.value}
+    if role not in allowed:
+        raise HTTPException(status_code=403, detail="ليس لديك صلاحية لتعديل أوزان الدرجات")
+
+    school_id = current_user.get("tenant_id")
+    total = sum(data.weights.values())
+    if abs(total - 100) > 0.01:
+        raise HTTPException(status_code=400, detail=f"مجموع الأوزان يجب أن يساوي 100 (الحالي: {total})")
+
+    existing = await gd_find_one(db.session, "grade_weights", {
+        "school_id": school_id,
+        "subject_id": data.subject_id,
+        "academic_year": data.academic_year,
+        "semester": data.semester
+    })
+
+    now = datetime.now(timezone.utc).isoformat()
+    if existing:
+        await gd_update_one(db.session, "grade_weights", {"id": existing["id"]}, {"weights": data.weights, "updated_at": now, "updated_by": current_user["id"]})
+        existing["weights"] = data.weights
+        existing.pop("_id", None)
+        return existing
+
+    weight_id = str(uuid.uuid4())
+    doc = {
+        "id": weight_id,
+        "school_id": school_id,
+        "subject_id": data.subject_id,
+        "weights": data.weights,
+        "academic_year": data.academic_year,
+        "semester": data.semester,
+        "created_at": now,
+        "created_by": current_user["id"]
+    }
+    await gd_insert(db.session, "grade_weights", doc)
+    doc.pop("_id", None)
+    return doc
+
+@router.get("/grade-weights/{subject_id}")
+async def get_grade_weights(
+    subject_id: str,
+    academic_year: Optional[str] = None,
+    semester: Optional[int] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get grade weights for a subject"""
+    school_id = current_user.get("tenant_id")
+    query = {"school_id": school_id, "subject_id": subject_id}
+    if academic_year:
+        query["academic_year"] = academic_year
+    if semester is not None:
+        query["semester"] = semester
+
+    weights = await gd_find_one(db.session, "grade_weights", query)
+    if weights:
+        return weights
+    return {
+        "subject_id": subject_id,
+        "weights": {"quiz": 10, "assignment": 10, "midterm": 30, "final": 40, "participation": 10},
+        "is_default": True
+    }
+
+
+# ============== STUDENT AVERAGE ENDPOINT ==============
+
+@router.get("/grades/student/{student_id}/average/{subject_id}")
+async def get_student_subject_average(
+    student_id: str,
+    subject_id: str,
+    academic_year: Optional[str] = None,
+    semester: Optional[int] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Calculate weighted average for a student in a subject"""
+    school_id = current_user.get("tenant_id")
+
+    weight_doc = await gd_find_one(db.session, "grade_weights", {"school_id": school_id, "subject_id": subject_id})
+    weights = weight_doc.get("weights") if weight_doc else {
+        "quiz": 10, "assignment": 10, "midterm": 30, "final": 40, "participation": 10
+    }
+
+    grade_query = {"student_id": student_id, "subject_id": subject_id}
+    if school_id:
+        grade_query["school_id"] = school_id
+    grades = await gd_find(db.session, "grades", grade_query, limit=200)
+
+    type_grades = {}
+    for g in grades:
+        assessment = await gd_find_one(db.session, "assessments", {"id": g.get("assessment_id")})
+        if assessment:
+            atype = assessment.get("assessment_type", "other")
+            if atype not in type_grades:
+                type_grades[atype] = []
+            type_grades[atype].append(g.get("percentage", 0))
+
+    weighted_sum = 0
+    total_weight = 0
+    breakdown = {}
+    for atype, weight in weights.items():
+        if atype in type_grades and type_grades[atype]:
+            avg = sum(type_grades[atype]) / len(type_grades[atype])
+            weighted_sum += avg * (weight / 100)
+            total_weight += weight
+            breakdown[atype] = {"average": round(avg, 1), "weight": weight, "count": len(type_grades[atype])}
+
+    final_avg = round(weighted_sum * (100 / total_weight), 1) if total_weight > 0 else 0
+
+    def get_letter(pct):
+        if pct >= 95: return "A+"
+        if pct >= 90: return "A"
+        if pct >= 85: return "B+"
+        if pct >= 80: return "B"
+        if pct >= 75: return "C+"
+        if pct >= 70: return "C"
+        if pct >= 65: return "D+"
+        if pct >= 60: return "D"
+        return "F"
+
+    return {
+        "student_id": student_id,
+        "subject_id": subject_id,
+        "weighted_average": final_avg,
+        "letter_grade": get_letter(final_avg),
+        "breakdown": breakdown,
+        "total_grades": len(grades)
+    }
+
+
+# ============== REPORT CARD ENDPOINT ==============
+
+@router.get("/report-card/{student_id}")
+async def generate_report_card(
+    student_id: str,
+    academic_year: Optional[str] = None,
+    semester: Optional[int] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Generate a report card for a student"""
+    school_id = current_user.get("tenant_id")
+
+    student_query = {"id": student_id, "is_active": True}
+    if school_id:
+        student_query["tenant_id"] = school_id
+    student = await gd_find_one(db.session, "students", student_query)
+    if not student:
+        raise HTTPException(status_code=404, detail="الطالب غير موجود")
+
+    class_query = {"id": student.get("class_id")}
+    if school_id:
+        class_query["tenant_id"] = school_id
+    class_info = await gd_find_one(db.session, "classes", class_query)
+
+    grade_query = {"student_id": student_id}
+    if school_id:
+        grade_query["school_id"] = school_id
+    all_grades = await gd_find(db.session, "grades", grade_query, limit=500)
+
+    subject_ids = set()
+    for g in all_grades:
+        if g.get("subject_id"):
+            subject_ids.add(g["subject_id"])
+
+    subjects_results = []
+    total_avg = 0
+    for sid in subject_ids:
+        subject = await gd_find_one(db.session, "subjects", {"id": sid})
+        sub_grades = [g for g in all_grades if g.get("subject_id") == sid]
+        if sub_grades:
+            avg = sum(g.get("percentage", 0) for g in sub_grades) / len(sub_grades)
+            total_avg += avg
+
+            def get_letter(pct):
+                if pct >= 95: return "A+"
+                if pct >= 90: return "A"
+                if pct >= 85: return "B+"
+                if pct >= 80: return "B"
+                if pct >= 75: return "C+"
+                if pct >= 70: return "C"
+                if pct >= 65: return "D+"
+                if pct >= 60: return "D"
+                return "F"
+
+            subjects_results.append({
+                "subject_id": sid,
+                "subject_name": subject.get("name") if subject else sid,
+                "subject_name_en": subject.get("name_en") if subject else sid,
+                "average": round(avg, 1),
+                "letter_grade": get_letter(avg),
+                "total_assessments": len(sub_grades),
+                "highest": max(g.get("percentage", 0) for g in sub_grades),
+                "lowest": min(g.get("percentage", 0) for g in sub_grades)
+            })
+
+    gpa = round(total_avg / len(subject_ids), 1) if subject_ids else 0
+
+    att_base = {"student_id": student_id}
+    if school_id:
+        att_base["tenant_id"] = school_id
+    att_total = await gd_count(db.session, "attendance", att_base)
+    att_present = await gd_count(db.session, "attendance", {**att_base, "status": "present"})
+    att_absent = await gd_count(db.session, "attendance", {**att_base, "status": "absent"})
+    att_late = await gd_count(db.session, "attendance", {**att_base, "status": "late"})
+
+    behaviour_records = await gd_find(db.session, "behaviour_records", {"student_id": student_id, "tenant_id": school_id}, limit=500)
+    behaviour_positive = sum(1 for b in behaviour_records if b.get("category") == "positive")
+    behaviour_negative = sum(1 for b in behaviour_records if b.get("category") == "negative")
+    behaviour_points = sum(b.get("points", 0) for b in behaviour_records)
+    behaviour_score = min(100, max(0, 100 + behaviour_points))
+
+    participation_records = await gd_find(db.session, "participation_records", {"student_id": student_id, "tenant_id": school_id}, limit=500)
+    participation_total = len(participation_records)
+    participation_points = sum(p.get("points", 0) for p in participation_records)
+
+    return {
+        "id": str(uuid.uuid4()),
+        "student_id": student_id,
+        "student_name": student.get("full_name"),
+        "student_name_en": student.get("full_name_en"),
+        "class_name": class_info.get("name") if class_info else None,
+        "school_id": school_id,
+        "academic_year": academic_year,
+        "semester": semester,
+        "gpa": gpa,
+        "subjects": subjects_results,
+        "attendance": {
+            "total_days": att_total,
+            "present": att_present,
+            "absent": att_absent,
+            "late": att_late,
+            "rate": round((att_present / att_total * 100), 1) if att_total > 0 else 0
+        },
+        "behaviour": {
+            "positive_count": behaviour_positive,
+            "negative_count": behaviour_negative,
+            "total_points": behaviour_points,
+            "behaviour_score": behaviour_score
+        },
+        "participation": {
+            "total_participations": participation_total,
+            "total_points": participation_points
+        },
+        "status": "draft",
+        "generated_at": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@router.get("/class-rankings/{class_id}")
+async def get_class_rankings(
+    class_id: str,
+    subject_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get class rankings by student GPA or subject"""
+    school_id = current_user.get("tenant_id")
+
+    students = await gd_find(db.session, "students", {"class_id": class_id, "tenant_id": school_id, "is_active": True}, limit=200)
+
+    rankings = []
+    for student in students:
+        sid = student["id"]
+        grade_query = {"student_id": sid}
+        if school_id:
+            grade_query["school_id"] = school_id
+        if subject_id:
+            grade_query["subject_id"] = subject_id
+
+        grades = await gd_find(db.session, "grades", grade_query, limit=500)
+        if grades:
+            avg = round(sum(g.get("percentage", 0) for g in grades) / len(grades), 1)
+        else:
+            avg = 0
+
+        def get_letter(pct):
+            if pct >= 95: return "A+"
+            if pct >= 90: return "A"
+            if pct >= 85: return "B+"
+            if pct >= 80: return "B"
+            if pct >= 75: return "C+"
+            if pct >= 70: return "C"
+            if pct >= 65: return "D+"
+            if pct >= 60: return "D"
+            return "F"
+
+        rankings.append({
+            "student_id": sid,
+            "student_name": student.get("full_name"),
+            "average": avg,
+            "letter_grade": get_letter(avg),
+            "total_grades": len(grades)
+        })
+
+    rankings.sort(key=lambda x: x["average"], reverse=True)
+    for i, r in enumerate(rankings):
+        r["rank"] = i + 1
+
+    class_avg = round(sum(r["average"] for r in rankings) / max(1, len(rankings)), 1)
+
+    return {
+        "class_id": class_id,
+        "subject_id": subject_id,
+        "class_average": class_avg,
+        "total_students": len(rankings),
+        "rankings": rankings,
+        "top_3": rankings[:3] if len(rankings) >= 3 else rankings
+    }
+
+
+# ============== CROSS-SECTION COMPARISON ==============
+
+@router.get("/assessments/compare-sections")
+async def compare_sections(
+    assessment_id: Optional[str] = None,
+    subject_id: Optional[str] = None,
+    academic_year: Optional[str] = None,
+    semester: Optional[int] = None,
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL
+    ])),
+):
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    return await _assessment_engine.compare_sections(
+        tenant_id=tenant_id,
+        assessment_id=assessment_id,
+        subject_id=subject_id,
+        academic_year=academic_year,
+        semester=semester,
+    )
+
+
+# ============== STUDENT RANKING ==============
+
+@router.get("/assessments/student-ranking/{class_id}")
+async def get_student_ranking(
+    class_id: str,
+    subject_id: Optional[str] = None,
+    academic_year: Optional[str] = None,
+    semester: Optional[int] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    return await _assessment_engine.get_student_ranking(
+        tenant_id=tenant_id,
+        class_id=class_id,
+        subject_id=subject_id,
+        academic_year=academic_year,
+        semester=semester,
+    )
+
+
+# ============== PERFORMANCE TREND ==============
+
+@router.get("/assessments/performance-trend/{student_id}")
+async def get_performance_trend(
+    student_id: str,
+    subject_id: Optional[str] = None,
+    periods: int = Query(6, ge=2, le=20),
+    current_user: dict = Depends(get_current_user),
+):
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    return await _assessment_engine.get_performance_trend(
+        tenant_id=tenant_id,
+        student_id=student_id,
+        subject_id=subject_id,
+        periods=periods,
+    )
+
+
+# ============== GRADE DECLINE ALERTS ==============
+
+@router.get("/assessments/grade-decline-alerts")
+async def get_grade_decline_alerts(
+    class_id: Optional[str] = None,
+    threshold: float = Query(-10.0, le=0),
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.TEACHER
+    ])),
+):
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    return await _assessment_engine.get_grade_decline_alerts(
+        tenant_id=tenant_id,
+        class_id=class_id,
+        threshold=threshold,
+    )
+
+
+# ============== SUBJECT STATISTICS ==============
+
+@router.get("/assessments/subject-statistics/{subject_id}")
+async def get_subject_statistics(
+    subject_id: str,
+    academic_year: Optional[str] = None,
+    semester: Optional[int] = None,
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.TEACHER
+    ])),
+):
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    return await _assessment_engine.get_subject_statistics(
+        tenant_id=tenant_id,
+        subject_id=subject_id,
+        academic_year=academic_year,
+        semester=semester,
+    )
+
+
+COMMITTEE_ROLES = [UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_SUB_ADMIN]
+
+class CommitteeCreate(BaseModel):
+    name: str
+    location: Optional[str] = ""
+    rows: int = 5
+    cols: int = 6
+    classes: List[str] = []
+    students: List[dict] = []
+    cancelledSeats: List[str] = []
+
+class CommitteeUpdate(BaseModel):
+    name: Optional[str] = None
+    location: Optional[str] = None
+    rows: Optional[int] = None
+    cols: Optional[int] = None
+    classes: Optional[List[str]] = None
+    students: Optional[List[dict]] = None
+    cancelledSeats: Optional[List[str]] = None
+
+
+@router.get("/exam-committees")
+async def get_exam_committees(
+    current_user: dict = Depends(require_roles(COMMITTEE_ROLES))
+):
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    committees = await gd_find(db.session, "exam_committees", {"school_id": tenant_id, "is_active": {"$ne": False}}, order_by="created_at", desc_order=False, limit=200)
+    return {"success": True, "committees": committees}
+
+
+@router.post("/exam-committees")
+async def create_exam_committee(
+    data: CommitteeCreate,
+    current_user: dict = Depends(require_roles(COMMITTEE_ROLES))
+):
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    now = datetime.now(timezone.utc).isoformat()
+    committee_doc = {
+        "id": str(uuid.uuid4()),
+        "school_id": tenant_id,
+        "name": data.name,
+        "location": data.location or "",
+        "rows": data.rows,
+        "cols": data.cols,
+        "classes": data.classes,
+        "students": data.students,
+        "cancelledSeats": data.cancelledSeats,
+        "is_active": True,
+        "created_at": now,
+        "updated_at": now,
+    }
+    await gd_insert(db.session, "exam_committees", committee_doc)
+    committee_doc.pop("_id", None)
+    return {"success": True, "committee": committee_doc}
+
+
+@router.post("/exam-committees/bulk")
+async def create_exam_committees_bulk(
+    data: List[CommitteeCreate],
+    current_user: dict = Depends(require_roles(COMMITTEE_ROLES))
+):
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    now = datetime.now(timezone.utc).isoformat()
+    docs = []
+    for item in data:
+        doc = {
+            "id": str(uuid.uuid4()),
+            "school_id": tenant_id,
+            "name": item.name,
+            "location": item.location or "",
+            "rows": item.rows,
+            "cols": item.cols,
+            "classes": item.classes,
+            "students": item.students,
+            "cancelledSeats": item.cancelledSeats,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        }
+        docs.append(doc)
+    if docs:
+        await gd_insert_many(db.session, "exam_committees", docs)
+    result = []
+    for d in docs:
+        d.pop("_id", None)
+        result.append(d)
+    return {"success": True, "committees": result, "count": len(result)}
+
+
+@router.put("/exam-committees/{committee_id}")
+async def update_exam_committee(
+    committee_id: str,
+    data: CommitteeUpdate,
+    current_user: dict = Depends(require_roles(COMMITTEE_ROLES))
+):
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    existing = await gd_find_one(db.session, "exam_committees", {"id": committee_id, "school_id": tenant_id})
+    if not existing:
+        raise HTTPException(404, "اللجنة غير موجودة")
+    update_fields = {"updated_at": datetime.now(timezone.utc).isoformat()}
+    for field in ["name", "location", "rows", "cols", "classes", "students", "cancelledSeats"]:
+        val = getattr(data, field, None)
+        if val is not None:
+            update_fields[field] = val
+    await gd_update_one(db.session, "exam_committees", {"id": committee_id, "school_id": tenant_id}, update_fields)
+    updated = await gd_find_one(db.session, "exam_committees", {"id": committee_id, "school_id": tenant_id})
+    return {"success": True, "committee": updated}
+
+
+@router.delete("/exam-committees/{committee_id}")
+async def delete_exam_committee(
+    committee_id: str,
+    current_user: dict = Depends(require_roles(COMMITTEE_ROLES))
+):
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    result = await gd_delete_one(db.session, "exam_committees", {"id": committee_id, "school_id": tenant_id})
+    if result == 0:
+        raise HTTPException(404, "اللجنة غير موجودة")
+    return {"success": True, "message": "تم حذف اللجنة"}
+
+
+@router.get("/seating-card-settings")
+async def get_seating_card_settings(
+    current_user: dict = Depends(require_roles(COMMITTEE_ROLES))
+):
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    doc = await gd_find_one(db.session, "seating_card_settings", {"school_id": tenant_id})
+    if not doc:
+        return {"success": True, "settings": None}
+    return {"success": True, "settings": doc}
+
+
+@router.put("/seating-card-settings")
+async def save_seating_card_settings(
+    body: dict = Body(...),
+    current_user: dict = Depends(require_roles(COMMITTEE_ROLES))
+):
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await gd_find_one(db.session, "seating_card_settings", {"school_id": tenant_id})
+    doc = {
+        "school_id": tenant_id,
+        "fields": body.get("fields", []),
+        "cardWidth": body.get("cardWidth", 300),
+        "cardHeight": body.get("cardHeight", 180),
+        "updated_at": now,
+    }
+    if existing:
+        doc["id"] = existing.get("id")
+        doc["created_at"] = existing.get("created_at", now)
+        await gd_update_one(db.session, "seating_card_settings", {"id": doc["id"]}, doc)
+    else:
+        doc["id"] = str(uuid.uuid4())
+        doc["created_at"] = now
+        await gd_insert(db.session, "seating_card_settings", doc)
+    return {"success": True, "settings": doc}
+
+
+# ============================================================
+# EXAM PERIODS (exam schedule with nested subjects)
+# ============================================================
+
+@router.get("/exam-schedule")
+async def get_exam_schedule(
+    current_user: dict = Depends(require_roles(COMMITTEE_ROLES))
+):
+    """Return the saved exam-schedule periods (with nested subjects) for this school."""
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    doc = await gd_find_one(db.session, "exam_schedule", {"school_id": tenant_id})
+    if not doc:
+        return {"success": True, "periods": []}
+    return {"success": True, "periods": doc.get("periods") or []}
+
+
+@router.put("/exam-schedule")
+async def save_exam_schedule(
+    body: dict = Body(...),
+    current_user: dict = Depends(require_roles(COMMITTEE_ROLES))
+):
+    """Replace the entire exam-schedule periods list for this school (atomic upsert)."""
+    tenant_id = current_user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    periods = body.get("periods")
+    if periods is None or not isinstance(periods, list):
+        raise HTTPException(400, "periods array is required")
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await gd_find_one(db.session, "exam_schedule", {"school_id": tenant_id})
+    doc = {
+        "school_id": tenant_id,
+        "periods": periods,
+        "updated_at": now,
+    }
+    if existing:
+        doc["id"] = existing.get("id")
+        doc["created_at"] = existing.get("created_at", now)
+        await gd_update_one(db.session, "exam_schedule", {"id": doc["id"]}, doc)
+    else:
+        doc["id"] = str(uuid.uuid4())
+        doc["created_at"] = now
+        await gd_insert(db.session, "exam_schedule", doc)
+    return {"success": True, "periods": periods}

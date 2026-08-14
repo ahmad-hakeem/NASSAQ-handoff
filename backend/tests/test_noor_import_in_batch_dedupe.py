@@ -8,7 +8,7 @@ by row 1.
 import pytest
 from unittest.mock import patch, AsyncMock
 
-from routes.noor_import_routes import (
+from src.modules.noor_import.controllers.noor_import_routes import (
     _annotate_student_rows,
     _annotate_teacher_rows,
     _commit_students,

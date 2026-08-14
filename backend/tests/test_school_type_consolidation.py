@@ -17,7 +17,7 @@ The deprecated UI option "خاصة" (stored as ``"special"`` /
    leaves all other values (including independent-teacher tenant
    types) alone.
 """
-from utils.school_type import normalize_school_type
+from src.common.utils.school_type import normalize_school_type
 
 
 def test_normalize_helper_maps_deprecated_aliases_to_private():
@@ -46,14 +46,14 @@ def test_normalize_helper_returns_none_for_none():
 
 
 def test_school_create_schema_normalizes_at_api_boundary():
-    from models.school import SchoolCreate
+    from src.modules.schools.dto.school_dto import SchoolCreate
     assert SchoolCreate(name="X", school_type="special").school_type == "private"
     assert SchoolCreate(name="X", school_type="special_needs").school_type == "private"
     assert SchoolCreate(name="X", school_type="public").school_type == "public"
 
 
 def test_school_update_schema_normalizes_at_api_boundary():
-    from models.school import SchoolUpdate
+    from src.modules.schools.dto.school_dto import SchoolUpdate
     assert SchoolUpdate(school_type="special").school_type == "private"
     assert SchoolUpdate(school_type="special_needs").school_type == "private"
     # Optional field stays optional.
@@ -69,7 +69,7 @@ def test_school_settings_info_update_schema_normalizes_type_alias():
     # The settings page submits the column under its API alias ``type``;
     # the validator on that field must normalize before the route
     # writes ``school_type = update_data["type"]`` (school_settings_mod.py).
-    from routes.school_settings_mod import SchoolInfoUpdate
+    from src.modules.schools.controllers.school_settings_mod import SchoolInfoUpdate
     assert SchoolInfoUpdate(type="special").type == "private"
     assert SchoolInfoUpdate(type="special_needs").type == "private"
     assert SchoolInfoUpdate(type="private").type == "private"
@@ -77,7 +77,7 @@ def test_school_settings_info_update_schema_normalizes_type_alias():
 
 
 def test_registration_request_schema_normalizes():
-    from models.registration import RegistrationRequestBase
+    from src.modules.registration.dto.registration_dto import RegistrationRequestBase
     req = RegistrationRequestBase(
         school_name="Z",
         school_type="special",
@@ -94,7 +94,7 @@ def test_school_type_enum_no_longer_exposes_special_needs():
     # SPECIAL_NEEDS was the duplicate option backing "خاصة"; after
     # consolidation it must not be a member of the enum so new code
     # cannot reintroduce the deprecated stored value.
-    from models.foundation import SchoolType
+    from src.common.dto.foundation import SchoolType
     assert not hasattr(SchoolType, "SPECIAL_NEEDS")
     assert {m.value for m in SchoolType} == {"public", "private", "international"}
 

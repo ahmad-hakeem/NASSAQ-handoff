@@ -331,7 +331,7 @@ def reset_email_metrics() -> None:
 
 def _request_id() -> str:
     try:
-        from middleware.request_tracing import request_id_var
+        from src.core.middleware.request_tracing import request_id_var
 
         return request_id_var.get("-")
     except Exception:  # pragma: no cover

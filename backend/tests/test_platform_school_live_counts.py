@@ -24,7 +24,7 @@ from sqlalchemy import text as _sa_text
 
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert
-from routes.school_routes_mod import _live_entity_counts_by_tenant
+from src.modules.schools.controllers.school_routes_mod import _live_entity_counts_by_tenant
 
 
 def _headers(user: dict) -> dict:

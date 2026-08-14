@@ -233,7 +233,7 @@ class SchoolCreate(BaseModel):
     @field_validator("school_type", mode="before")
     @classmethod
     def _normalize_school_type(cls, v):
-        from utils.school_type import normalize_school_type
+        from src.common.utils.school_type import normalize_school_type
         return normalize_school_type(v)
 
 class SchoolResponse(BaseModel):

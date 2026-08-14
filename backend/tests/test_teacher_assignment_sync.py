@@ -22,8 +22,8 @@ import pytest
 
 from dependencies import db
 from engines.sql_utils import gd_insert, gd_find
-import routes.role_dashboards_mod as rd
-from utils.teacher_assignment_sync import (
+import src.modules.portals.controllers.role_dashboards_mod as rd
+from src.common.utils.teacher_assignment_sync import (
     normalize_subject_name,
     build_subject_name_index,
     match_subject_by_name,

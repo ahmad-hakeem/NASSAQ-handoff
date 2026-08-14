@@ -316,7 +316,7 @@ async def test_bulk_attendance_teacher_without_assignment_denied(client, teacher
 
 @pytest.mark.asyncio
 async def test_bulk_attendance_it_owner_allowed_without_assignment(client):
-    from auth_scope import independent_workspace_id
+    from src.core.guards.tenant_guard import independent_workspace_id
     from dependencies import create_access_token, UserRole
 
     uid = str(uuid.uuid4())

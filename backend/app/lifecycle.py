@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone, timedelta as _td
 
 from dependencies import db, hash_password
-from db import async_session_factory, init_pg_tables, close_pg_engine
+from src.core.database.db import async_session_factory, init_pg_tables, close_pg_engine
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, gd_iter_rows, _gd_aggregate
 
 logger = logging.getLogger("nassaq")
@@ -121,7 +121,7 @@ async def startup_tasks():
         # Runtime-only sequences (not Alembic-owned). Isolated from the schema
         # gate so a DDL/privilege issue here can never block production boot.
         try:
-            from db import ensure_runtime_sequences
+            from src.core.database.db import ensure_runtime_sequences
             await ensure_runtime_sequences()
         except Exception as seq_err:
             logger.warning(f"Runtime sequence ensure skipped: {seq_err}")
@@ -146,8 +146,8 @@ async def startup_tasks():
         logger.warning(f"PostgreSQL init on startup: {e}")
 
     try:
-        from db import get_sync_engine
-        from middleware.query_monitor import install_query_timing, start_pool_monitor
+        from src.core.database.db import get_sync_engine
+        from src.core.middleware.query_monitor import install_query_timing, start_pool_monitor
         sync_eng = get_sync_engine()
         install_query_timing(sync_eng)
         start_pool_monitor(sync_eng)
@@ -175,7 +175,7 @@ async def startup_tasks():
 
         async def _product_hub_integrity():
             try:
-                from routes.product_hub_routes import _ensure_issue_counter, _ensure_data_integrity
+                from src.modules.platform.controllers.product_hub_routes import _ensure_issue_counter, _ensure_data_integrity
                 await _ensure_issue_counter()
                 integrity = await _ensure_data_integrity()
                 logger.info(f"Product hub data integrity: {integrity}")
@@ -236,7 +236,7 @@ async def startup_tasks():
                 try:
                     async def _purge():
                         from sqlalchemy import delete as _sa_delete
-                        from pg_models import RevokedToken
+                        from src.common.entities import RevokedToken
                         now = _dt.now(_tz.utc)
                         res = await db.session.execute(
                             _sa_delete(RevokedToken).where(RevokedToken.expires_at < now)
@@ -402,7 +402,7 @@ async def _rate_limit_sweep_loop(initial_delay_s: float = 60.0,
         await _a.sleep(initial_delay_s)
         while True:
             try:
-                from middleware.rate_limiter import rate_store
+                from src.core.middleware.rate_limiter import rate_store
                 deleted = await rate_store.cleanup(force=True)
                 if deleted:
                     logger.info(f"Rate-limit counter sweep: purged {deleted} expired row(s)")
@@ -485,7 +485,7 @@ async def _sweep_auto_exports():
     from engines.sql_utils import gd_iter_rows as _gd_iter_rows, gd_find as _gd_find, gd_find_one as _gd_find_one, gd_update_one as _gd_update_one
     from engines.email_service import send_workspace_auto_export_email
     from services.email_client import send_email_off_loop
-    from utils.tokens import mint_workspace_export_token, WORKSPACE_EXPORT_TOKEN_TTL
+    from src.common.utils.tokens import mint_workspace_export_token, WORKSPACE_EXPORT_TOKEN_TTL
     from dependencies import audit_engine
 
     now = datetime.now(timezone.utc)
@@ -688,8 +688,8 @@ async def _sweep_reactivation_reminders():
             # inbox (in_app channel is non-suppressible) so a user with
             # email muted still sees the warning.
             try:
-                from routes.notification_routes_mod import create_notification_internal
-                from routes.independent_teacher_notifications_routes import should_send_channel
+                from src.modules.notifications.controllers.notification_routes_mod import create_notification_internal
+                from src.modules.independent_teacher.controllers.independent_teacher_notifications_routes import should_send_channel
                 if owner and await should_send_channel(owner, "workspace_lifecycle", "in_app"):
                     await create_notification_internal(
                         title="تذكير: اقتراب موعد إعادة تفعيل مساحة العمل",
@@ -712,7 +712,7 @@ async def _sweep_reactivation_reminders():
             except Exception as exc:
                 logger.debug(f"reactivation reminder inbox notify failed: {exc}")
 
-            from routes.independent_teacher_notifications_routes import should_send_channel
+            from src.modules.independent_teacher.controllers.independent_teacher_notifications_routes import should_send_channel
             email_allowed = await should_send_channel(
                 owner, "workspace_lifecycle", "email",
             ) if owner else True
@@ -765,8 +765,8 @@ async def _sweep_erasure_purges():
     table is in a separate schema and is not in ``_PURGE_TABLES``).
     """
     from datetime import datetime as _dt, timezone as _tz, timedelta as _td
-    from routes.platform_workspace_purge_routes import purge_workspace_cascade
-    from routes.independent_teacher_workspace_lifecycle_routes import (
+    from src.modules.platform.controllers.platform_workspace_purge_routes import purge_workspace_cascade
+    from src.modules.independent_teacher.controllers.independent_teacher_workspace_lifecycle_routes import (
         AUDIT_ERASURE_COMPLETED,
     )
     from dependencies import audit_engine
@@ -1204,7 +1204,7 @@ async def shutdown_tasks():
         logger.debug(f"Deferred maintenance cancellation: {e}")
 
     try:
-        from routes.websocket_routes import get_connection_manager
+        from src.modules.notifications.controllers.websocket_routes import get_connection_manager
         mgr = get_connection_manager()
         for user_id in list(mgr.active_connections.keys()):
             for conn in mgr.active_connections[user_id]:

@@ -5,7 +5,7 @@ import pytest
 
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_find_one, gd_insert
-from auth_scope import (
+from src.core.guards.tenant_guard import (
     INDEPENDENT_TEACHER_DENIED_AR,
     independent_workspace_id,
 )

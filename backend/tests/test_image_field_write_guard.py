@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 
 from engines.sql_utils import gd_insert, gd_update_one, gd_update_many, gd_upsert
-from utils.avatar_image import (
+from src.common.utils.avatar_image import (
     MAX_STORED_IMAGE_CHARS,
     OversizedImageWriteError,
     assert_stored_image_bounded,

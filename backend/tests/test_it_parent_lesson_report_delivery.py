@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from auth_scope import independent_workspace_id
+from src.core.guards.tenant_guard import independent_workspace_id
 from dependencies import db, UserRole, create_access_token, session_engine
 from engines.sql_utils import gd_insert, gd_find, gd_count
 
@@ -654,7 +654,7 @@ async def test_validator_rejects_cross_workspace_target():
     resolved target that is not an active parent user pinned to the caller's
     workspace tenant, even if a roster pair somehow carried it."""
     from fastapi import HTTPException
-    from routes.notification_routes_mod import (
+    from src.modules.notifications.controllers.notification_routes_mod import (
         _it_validate_summary_recipients_or_403,
     )
 

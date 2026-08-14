@@ -24,8 +24,8 @@ from fastapi import HTTPException
 
 from dependencies import db
 from engines.sql_utils import gd_insert
-from routes.auth_routes_mod import _find_user_by_email_ci
-from routes.registration_routes_mod import (
+from src.modules.auth.controllers.auth_routes_mod import _find_user_by_email_ci
+from src.modules.registration.controllers.registration_routes_mod import (
     _create_school_instant,
     _create_independent_teacher_instant,
 )

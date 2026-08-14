@@ -22,7 +22,7 @@ import pytest
 
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert
-from routes.role_dashboards_mod import (
+from src.modules.portals.controllers.role_dashboards_mod import (
     _resolve_it_teacher_sessions,
     _resolve_teacher_sessions,
 )

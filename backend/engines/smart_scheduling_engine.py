@@ -921,7 +921,7 @@ class SmartSchedulingEngine:
         # must be excluded from eligibility so they are not re-scheduled. Load
         # the removal tombstones once and filter suitable_teachers below.
         try:
-            from utils.teacher_assignment_sync import load_tombstones, is_tombstoned
+            from src.common.utils.teacher_assignment_sync import load_tombstones, is_tombstoned
             _removal_tombstones = await load_tombstones(self.session, school_id)
         except Exception:
             _removal_tombstones = []
@@ -3002,7 +3002,7 @@ class SmartSchedulingEngine:
         second wall."""
         if calling_user is None:
             return  # internal callers (background jobs, tests) pass None
-        from utils.tenant_scope import assert_school_access
+        from src.common.utils.tenant_scope import assert_school_access
         assert_school_access(calling_user, school_id)
 
     async def generate_timetable(
@@ -3058,12 +3058,12 @@ class SmartSchedulingEngine:
         # بفحص الجاهزية الصارم أدناه ولا نمرّر فشلاً صامتاً للتوليد.
         seed_error: Optional[str] = None
         try:
-            from routes.school_settings_mod import _auto_populate_teacher_class_assignments
+            from src.modules.schools.controllers.school_settings_mod import _auto_populate_teacher_class_assignments
             await _auto_populate_teacher_class_assignments(school_id)
             # Task #919: backfill canonical teacher_assignments from any legacy
             # teacher_class_assignments links so the canonical table is the
             # COMPLETE eligibility source — the scheduler no longer reads TCA.
-            from utils.teacher_assignment_sync import materialize_class_assignments_from_legacy_tca
+            from src.common.utils.teacher_assignment_sync import materialize_class_assignments_from_legacy_tca
             await materialize_class_assignments_from_legacy_tca(school_id)
         except Exception as _seed_err:
             seed_error = str(_seed_err)

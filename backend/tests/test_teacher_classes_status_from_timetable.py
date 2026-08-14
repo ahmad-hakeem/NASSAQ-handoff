@@ -24,7 +24,7 @@ import pytest
 
 from dependencies import db
 from engines.sql_utils import gd_insert
-import routes.role_dashboards_mod as rd
+import src.modules.portals.controllers.role_dashboards_mod as rd
 
 
 async def _seed_class_and_assignment(school_id, teacher_id):
@@ -72,7 +72,7 @@ def _patch_handler_deps(monkeypatch, teacher, sessions):
     monkeypatch.setattr(rd, "_reconcile_teacher_assignments_from_schedule", _noop_reconcile)
     monkeypatch.setattr(rd, "_resolve_teacher_sessions", _resolve_sessions)
 
-    import routes.school_settings_mod as ss
+    import src.modules.schools.controllers.school_settings_mod as ss
 
     async def _noop_populate(*_a, **_k):
         return None

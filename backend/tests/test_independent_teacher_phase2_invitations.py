@@ -26,10 +26,10 @@ from unittest.mock import patch
 
 import pytest
 
-from auth_scope import independent_workspace_id
+from src.core.guards.tenant_guard import independent_workspace_id
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_update_one
-from utils.tokens import token_hash as _token_hash
+from src.common.utils.tokens import token_hash as _token_hash
 
 from tests._it_fixtures import (
     headers, mk_it_workspace, now_ts, seed_active_passkey, STEP_UP_CODES,
@@ -243,7 +243,7 @@ async def _seed_invitation(
     parent_phone: str | None = None,
 ) -> tuple[str, str]:
     """Mint a fresh invitation row directly + return (invitation_id, raw_token)."""
-    from utils.tokens import mint_invitation_token
+    from src.common.utils.tokens import mint_invitation_token
     raw, t_hash, expires_at = mint_invitation_token(wsid, sid)
     inv_id = str(uuid.uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -521,7 +521,7 @@ async def test_accept_invitation_rejects_replay(client):
 @pytest.mark.asyncio
 async def test_accept_invitation_rate_limit_trips(client):
     """Per-IP burst beyond the configured cap returns 429."""
-    from middleware.rate_limiter import rate_store
+    from src.core.middleware.rate_limiter import rate_store
     # Reset our key by burning through with garbage tokens until 429.
     saw_429 = False
     for _ in range(15):
@@ -581,7 +581,7 @@ async def test_accept_response_includes_inviter_and_workspace_names(client):
     """
     # Reset the per-IP accept rate-limit bucket so prior tests in the
     # same module don't push us over the burst cap.
-    from middleware.rate_limiter import rate_store
+    from src.core.middleware.rate_limiter import rate_store
     rate_store._store.clear()
 
     ctx = await mk_it_workspace(with_student=False, with_parent=False, with_passkey=False)

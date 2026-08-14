@@ -6,7 +6,7 @@ place each session on its TRUE teaching-period row regardless of whether the
 timetable stored raw slot numbers (manual) or contiguous indexes (generator).
 """
 
-from routes.parent_portal_routes import _build_parent_period_model
+from src.modules.portals.controllers.parent_portal_routes import _build_parent_period_model
 
 
 def _slots(*pairs):

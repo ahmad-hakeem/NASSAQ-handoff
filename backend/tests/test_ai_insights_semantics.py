@@ -268,7 +268,7 @@ def test_arabic_counted_nouns_agree_with_the_number():
     "9 طالباً" and "16 فصول" are both broken Arabic; a native reader sees
     the card as machine-written rather than trustworthy.
     """
-    from routes.ai_routes_mod import _ar_count
+    from src.modules.ai.controllers.ai_routes_mod import _ar_count
 
     forms = ("طالب واحد", "طالبين", "طلاب", "طالباً")
     assert _ar_count(1, *forms) == "طالب واحد"
@@ -282,7 +282,7 @@ def test_arabic_counted_nouns_agree_with_the_number():
 
 def test_scope_label_inflects_the_class_count():
     """The scope label is the most-read generated sentence on the page."""
-    from routes.ai_routes_mod import _scope_descriptor_from_classes
+    from src.modules.ai.controllers.ai_routes_mod import _scope_descriptor_from_classes
 
     def _cls(name):
         return {"id": name, "name": name}
@@ -342,7 +342,7 @@ def test_every_recommendation_builder_returns_its_context():
 def test_scope_label_reports_the_real_total_beyond_the_load_cap():
     """Class rows are loaded in a capped page; the label must state the true
     total, not the page size."""
-    from routes.ai_routes_mod import _scope_descriptor_from_classes
+    from src.modules.ai.controllers.ai_routes_mod import _scope_descriptor_from_classes
 
     page = [{"id": f"c{i}", "name": f"C{i}"} for i in range(100)]
 

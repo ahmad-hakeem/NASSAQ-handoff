@@ -159,7 +159,7 @@ async def test_it_child_schedule_cross_workspace_forbidden(client):
 
 @pytest.mark.asyncio
 async def test_it_today_resolver_returns_timed_sessions():
-    from routes.parent_portal_routes import _resolve_class_today_sessions
+    from src.modules.portals.controllers.parent_portal_routes import _resolve_class_today_sessions
 
     tenant, owner_uid = await _mk_it_workspace()
     _, sid, cid = await _mk_parent_and_child(tenant)

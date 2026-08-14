@@ -23,12 +23,12 @@ from fastapi import HTTPException
 
 from dependencies import db
 from engines.sql_utils import gd_find, gd_find_one, gd_insert
-from routes.school_settings_mod import (
+from src.modules.schools.controllers.school_settings_mod import (
     TeacherClassAssignmentCreate,
     create_teacher_class_assignment,
     delete_teacher_class_assignment,
 )
-from utils.teacher_assignment_sync import load_tombstones
+from src.common.utils.teacher_assignment_sync import load_tombstones
 
 
 def _principal(school_id: str) -> dict:

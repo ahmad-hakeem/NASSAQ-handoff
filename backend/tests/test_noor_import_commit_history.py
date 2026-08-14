@@ -23,7 +23,7 @@ from sqlalchemy import text
 
 from dependencies import db, UserRole
 from engines.sql_utils import gd_insert
-from routes.noor_import_routes import _commit_students, _commit_teachers
+from src.modules.noor_import.controllers.noor_import_routes import _commit_students, _commit_teachers
 from tests.conftest import _mk_user, _headers, _mk_school
 
 pytestmark = pytest.mark.asyncio

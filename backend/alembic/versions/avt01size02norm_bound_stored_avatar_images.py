@@ -34,7 +34,7 @@ _TARGETS = (("users", "avatar_url"), ("schools", "logo_url"))
 
 def upgrade():
     try:
-        from utils.avatar_image import AvatarImageError, normalize_avatar_data_url
+        from src.common.utils.avatar_image import AvatarImageError, normalize_avatar_data_url
     except ImportError:  # pragma: no cover - defensive
         # This is a data backfill, not a schema step. If the helper is ever
         # moved or removed, a fresh database (which has no rows to convert)

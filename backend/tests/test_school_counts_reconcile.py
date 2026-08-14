@@ -23,7 +23,7 @@ from sqlalchemy import text as _sa_text
 from dependencies import db
 from engines.sql_utils import gd_insert, gd_find_one
 from engines.entity_counts import reconcile_school_counts
-from routes.school_routes_mod import _live_entity_counts_by_tenant
+from src.modules.schools.controllers.school_routes_mod import _live_entity_counts_by_tenant
 
 
 async def _mk_school(school_id: str, current_students=0, current_teachers=0) -> None:

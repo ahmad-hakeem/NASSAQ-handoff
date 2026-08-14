@@ -315,7 +315,7 @@ async def stub_generation(monkeypatch):
     stale reaping and tenant scoping — not the scheduling engine, and seeding
     a fully solvable school would drown that in fixture noise.
     """
-    import routes.scheduling_smart_engine_routes as mod
+    import src.modules.scheduling.controllers.scheduling_smart_engine_routes as mod
     from engines.infeasibility import InfeasibilityReport
 
     async def no_context(school_id):

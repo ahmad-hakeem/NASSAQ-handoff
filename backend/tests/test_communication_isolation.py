@@ -22,7 +22,7 @@ import pytest_asyncio
 
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_find, gd_insert
-from routes.communication_routes import _resolve_recipient_ids
+from src.modules.communication.controllers.communication_routes import _resolve_recipient_ids
 from engines.school_notification_engine import (
     SchoolNotificationEngine,
     RecipientType,

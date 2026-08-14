@@ -8,7 +8,7 @@ returned a route-not-matched 404, leaving the cumulative-record tab empty even
 when data existed.
 """
 
-from routes.ai_routes_mod import router
+from src.modules.ai.controllers.ai_routes_mod import router
 
 
 def _paths():

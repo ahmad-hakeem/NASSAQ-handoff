@@ -17,7 +17,7 @@ import uuid
 
 import pytest
 
-from auth_scope import (
+from src.core.guards.tenant_guard import (
     INDEPENDENT_TEACHER_DENIED_AR,
     independent_workspace_id,
 )

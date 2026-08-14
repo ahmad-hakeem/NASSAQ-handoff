@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import server  # noqa: F401  (must import first: circular-import guard)
 
-from middleware.rate_limiter import RateLimitStore  # noqa: E402
+from src.core.middleware.rate_limiter import RateLimitStore  # noqa: E402
 
 
 async def demo_bypass(workers: int, limit: int = 10, window: int = 60) -> int:

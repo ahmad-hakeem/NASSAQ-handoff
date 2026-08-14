@@ -25,7 +25,7 @@ import pytest
 
 from dependencies import db, UserRole
 from engines.sql_utils import gd_insert
-from routes.academics_subject_routes import _build_subject_code, _code_letters
+from src.modules.academics.controllers.academics_subject_routes import _build_subject_code, _code_letters
 from tests.conftest import _mk_user, _headers
 
 

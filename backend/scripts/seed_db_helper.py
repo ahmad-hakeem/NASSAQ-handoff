@@ -7,7 +7,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from db import async_session_factory
-from repositories import Repos
+from src.core.database.repository import Repos
 
 _seed_repos = Repos()
 

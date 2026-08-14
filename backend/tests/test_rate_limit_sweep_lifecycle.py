@@ -17,7 +17,7 @@ import asyncio
 import pytest
 
 from app import lifecycle
-from middleware import rate_limiter as rl
+from src.core.middleware import rate_limiter as rl
 
 pytestmark = pytest.mark.asyncio
 

@@ -19,7 +19,7 @@ from PIL import Image
 
 from dependencies import db, create_access_token
 from engines.sql_utils import gd_insert
-from utils.avatar_serving import (
+from src.common.utils.avatar_serving import (
     IMAGE_COOKIE_NAME,
     content_version,
     mint_image_access_cookie,

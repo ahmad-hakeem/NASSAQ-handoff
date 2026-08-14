@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from routes.ai_routes_mod import _hakim_nav_links_for_role
+from src.modules.ai.controllers.ai_routes_mod import _hakim_nav_links_for_role
 
 APP_ROUTES = Path(__file__).resolve().parents[2] / "frontend" / "src" / "routes" / "appRoutes.js"
 

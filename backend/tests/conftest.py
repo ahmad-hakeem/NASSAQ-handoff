@@ -44,7 +44,7 @@ def _reset_rate_limiter():
     The shared (Postgres-backed) store also survives *between* tests, so give
     each test its own key namespace instead of deleting rows: isolation
     without a DELETE per test, and the real shared code path still runs."""
-    from middleware.rate_limiter import rate_store
+    from src.core.middleware.rate_limiter import rate_store
 
     def _clear():
         rate_store._store.clear()

@@ -1,0 +1,1 @@
+"""ConsentPrivacy module."""

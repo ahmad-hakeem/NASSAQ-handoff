@@ -27,7 +27,7 @@ import pytest
 
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_find
-import routes.standby_routes as standby_routes
+import src.modules.scheduling.controllers.standby_routes as standby_routes
 
 
 pytestmark = pytest.mark.asyncio

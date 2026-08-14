@@ -40,7 +40,7 @@ import pytest
 
 from dependencies import db
 from engines.sql_utils import gd_insert
-from routes.schedule_master_grid_routes import _resolve_active_timetable
+from src.modules.scheduling.controllers.schedule_master_grid_routes import _resolve_active_timetable
 
 # Reuse the heavy generation seed from the dynamic-periods test so we
 # don't duplicate ~90 lines of setup. The helper inserts the minimum

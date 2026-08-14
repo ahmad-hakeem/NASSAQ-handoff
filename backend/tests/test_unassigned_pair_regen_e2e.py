@@ -33,8 +33,8 @@ from datetime import datetime, timezone
 from dependencies import db
 from engines.smart_scheduling_engine import SmartSchedulingEngine
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_update_one
-from routes.school_settings_mod import delete_teacher_class_assignment
-from utils.teacher_assignment_sync import materialize_default_class_assignments
+from src.modules.schools.controllers.school_settings_mod import delete_teacher_class_assignment
+from src.common.utils.teacher_assignment_sync import materialize_default_class_assignments
 
 
 async def _mk_time_slot(school_id: str, period_number: int) -> None:

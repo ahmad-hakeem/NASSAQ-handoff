@@ -1,0 +1,1 @@
+"""IndependentTeacher module."""

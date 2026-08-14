@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from routes.noor_import_routes import _annotate_student_rows, _commit_students
+from src.modules.noor_import.controllers.noor_import_routes import _annotate_student_rows, _commit_students
 
 
 class _NestedCM:

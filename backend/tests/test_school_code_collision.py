@@ -18,7 +18,7 @@ import pytest
 
 from dependencies import db
 from engines.sql_utils import gd_insert, gd_find, gd_find_one, gd_count
-import utils.school_code as sc
+import src.common.utils.school_code as sc
 
 
 # ---------------------------------------------------------------------------

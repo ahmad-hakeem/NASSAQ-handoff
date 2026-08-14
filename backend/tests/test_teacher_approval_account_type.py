@@ -25,7 +25,7 @@ import uuid
 
 import pytest
 
-from auth_scope import is_independent_teacher, independent_workspace_id
+from src.core.guards.tenant_guard import is_independent_teacher, independent_workspace_id
 from engines.approval_handlers import TeacherApprovalHandler
 from engines.sql_utils import model_to_dict
 from pg_models import User, Teacher, School

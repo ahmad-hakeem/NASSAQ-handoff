@@ -11,7 +11,7 @@ they neither read nor write the database.
 """
 import pytest
 
-import routes.school_settings_mod as ssm
+import src.modules.schools.controllers.school_settings_mod as ssm
 
 from tests.test_independent_teacher_schedule import (
     _headers,

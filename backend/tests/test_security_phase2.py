@@ -45,7 +45,7 @@ def _make_request(peer: str, headers: dict | None = None):
 
 
 def _reload_trusted_proxy():
-    import utils.trusted_proxy as tp
+    import src.common.utils.trusted_proxy as tp
     importlib.reload(tp)
     return tp
 

@@ -1,0 +1,1 @@
+"""Controllers for notifications module."""

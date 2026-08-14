@@ -14,7 +14,7 @@ import pytest
 from dependencies import db
 from engines.approval_engine import PENDING_STATUSES
 from engines.sql_utils import gd_insert
-from routes.user_routes_mod import get_users_management_stats
+from src.modules.users.controllers.user_routes_mod import get_users_management_stats
 
 
 async def _queue_request(status: str, req_type: str = "teacher") -> str:

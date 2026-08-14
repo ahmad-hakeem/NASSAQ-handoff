@@ -35,7 +35,7 @@ import pytest
 
 from dependencies import db
 from engines.sql_utils import gd_insert, gd_find
-import routes.role_dashboards_mod as rd
+import src.modules.portals.controllers.role_dashboards_mod as rd
 
 
 # ----------------------------------------------------------------------

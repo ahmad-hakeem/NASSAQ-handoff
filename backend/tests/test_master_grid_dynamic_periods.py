@@ -30,7 +30,7 @@ from pathlib import Path
 from dependencies import db
 from engines.smart_scheduling_engine import SmartSchedulingEngine
 from engines.sql_utils import gd_find, gd_insert
-from routes.schedule_master_grid_routes import _resolve_periods_for_school
+from src.modules.scheduling.controllers.schedule_master_grid_routes import _resolve_periods_for_school
 
 
 async def _mk_settings(school_id: str, periods_per_day: int) -> None:

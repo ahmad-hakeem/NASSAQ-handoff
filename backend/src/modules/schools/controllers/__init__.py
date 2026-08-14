@@ -1,0 +1,1 @@
+"""Controllers for schools module."""

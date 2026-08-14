@@ -31,8 +31,8 @@ from sqlalchemy.pool import NullPool
 
 from db import _get_async_url
 from routes import ai_routes_mod
-from utils import public_hakim_limiter
-from utils.public_hakim_limiter import (
+from src.common.utils import public_hakim_limiter
+from src.common.utils.public_hakim_limiter import (
     LimiterDecision,
     PER_IP_PER_MINUTE,
     PER_IP_UA_PER_MINUTE,

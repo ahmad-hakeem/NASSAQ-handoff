@@ -175,7 +175,7 @@ def test_predicate_classification_matrix():
 def test_role_dashboards_predicate_is_the_same_function():
     # Single source of truth — analytics and the session summary must never
     # drift apart again.
-    from routes.role_dashboards_mod import _interaction_is_participatory
+    from src.modules.portals.controllers.role_dashboards_mod import _interaction_is_participatory
     assert _interaction_is_participatory is interaction_is_participatory
 
 

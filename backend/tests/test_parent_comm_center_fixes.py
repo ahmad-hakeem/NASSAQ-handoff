@@ -274,7 +274,7 @@ async def test_meeting_request_not_blocked_after_three_open(client, tenant_a):
 
 # ---------- 3) per-IP burst limits replace the removed cap ----------
 
-from middleware.rate_limiter import RATE_LIMITS, rate_store  # noqa: E402
+from src.core.middleware.rate_limiter import RATE_LIMITS, rate_store  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

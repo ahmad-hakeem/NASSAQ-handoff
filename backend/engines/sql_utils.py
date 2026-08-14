@@ -774,7 +774,7 @@ def _guard_bounded_image_fields(collection: str, mapping: dict) -> None:
     """
     if collection not in ("users", "schools") or not isinstance(mapping, dict):
         return
-    from utils.avatar_image import assert_stored_image_bounded
+    from src.common.utils.avatar_image import assert_stored_image_bounded
 
     for sub in (mapping, mapping.get("$set") or {}):
         if isinstance(sub, dict):

@@ -218,7 +218,7 @@ async def test_resolve_matches_record_by_email_fallback(
 # ----------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_ensure_record_reactivates_deactivated_record_in_place(monkeypatch):
-    from routes.user_routes_mod import _ensure_school_teacher_record
+    from src.modules.users.controllers.user_routes_mod import _ensure_school_teacher_record
 
     intended = await _mk_school("intended")
     user = await _mk_teacher_user(intended)

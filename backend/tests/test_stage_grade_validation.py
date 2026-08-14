@@ -22,7 +22,7 @@ if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
 
-from utils.stage_grade import (  # noqa: E402
+from src.common.utils.stage_grade import (  # noqa: E402
     normalize_stage,
     validate_stage_grade_pair,
 )
@@ -45,7 +45,7 @@ def patched_lookup(monkeypatch):
         row = rows.get((sid, gid))
         return dict(row) if row else None
 
-    import utils.stage_grade as mod
+    import src.common.utils.stage_grade as mod
     monkeypatch.setattr(mod, "gd_find_one", _fake)
     return rows
 

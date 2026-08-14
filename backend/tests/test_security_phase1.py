@@ -184,7 +184,7 @@ async def test_forgot_password_per_email_429_after_budget(client, monkeypatch):
     short-circuit *before* hitting the DB. We assert that with the per-IP
     middleware bucket out of the way (raised in this test), the per-identity
     bucket alone returns the silent generic message after 5 hits."""
-    from middleware.rate_limiter import rate_store
+    from src.core.middleware.rate_limiter import rate_store
     # Use a fresh, unique email so we don't collide with other tests.
     email = f"rl-{uuid.uuid4().hex[:8]}@example.com"
     bucket = f"forgot_password_email:{email.lower()}"
@@ -205,7 +205,7 @@ async def test_forgot_password_per_email_429_after_budget(client, monkeypatch):
 async def test_reset_password_per_identity_returns_429(client, tenant_a):
     """Per-identity bucket: after 10 valid-token attempts against the same
     user_id, the 11th must 429 — even though each token is unique."""
-    from middleware.rate_limiter import rate_store
+    from src.core.middleware.rate_limiter import rate_store
     from dependencies import JWT_SECRET, JWT_ALGORITHM
     import jwt as _jwt
     user_id = str(uuid.uuid4())
@@ -312,7 +312,7 @@ async def test_tenant_scoped_find_one_dual_key_fallback(tenant_a, tenant_b):
     The dual-key fallback path is exercised by inserting a `classes` row
     (which uses school_id natively) and looking it up — both columns
     must yield the correct, tenant-pinned answer."""
-    from utils.tenant_scope import tenant_scoped_find_one
+    from src.common.utils.tenant_scope import tenant_scoped_find_one
     cls_id = str(uuid.uuid4())
     await gd_insert(db.session, "classes", {
         "id": cls_id, "school_id": tenant_a, "name": "dual-key cls",
@@ -376,14 +376,14 @@ async def test_attendance_student_endpoint_blocks_unrelated_teacher(client, tena
 # ---------------------------------------------------------------------------
 
 def test_forgot_password_in_rate_limits_map():
-    from middleware.rate_limiter import RATE_LIMITS
+    from src.core.middleware.rate_limiter import RATE_LIMITS
     entry = RATE_LIMITS.get("/api/auth/forgot-password")
     assert entry is not None
     assert entry["max"] >= 1 and entry["window"] >= 60
 
 
 def test_reset_password_in_rate_limits_map():
-    from middleware.rate_limiter import RATE_LIMITS
+    from src.core.middleware.rate_limiter import RATE_LIMITS
     entry = RATE_LIMITS.get("/api/auth/reset-password")
     assert entry is not None
     assert entry["max"] >= 1 and entry["window"] >= 60
@@ -449,7 +449,7 @@ async def test_cleanup_test_data_reasserts_at_exit(monkeypatch):
 # ---------------------------------------------------------------------------
 
 async def test_tenant_scoped_find_one_denies_when_no_tenant(tenant_a):
-    from utils.tenant_scope import tenant_scoped_find_one
+    from src.common.utils.tenant_scope import tenant_scoped_find_one
     from fastapi import HTTPException
 
     no_tenant_user = {"role": UserRole.SCHOOL_PRINCIPAL.value}  # tenant_id missing
@@ -463,7 +463,7 @@ async def test_tenant_scoped_find_one_denies_when_no_tenant(tenant_a):
 
 
 async def test_tenant_scoped_find_one_returns_none_for_foreign_tenant(tenant_a, tenant_b):
-    from utils.tenant_scope import tenant_scoped_find_one
+    from src.common.utils.tenant_scope import tenant_scoped_find_one
     gid = str(uuid.uuid4())
     await gd_insert(db.session, "grade_levels", {
         "id": gid, "school_id": tenant_b, "name_ar": "x", "name_en": "x", "order": 1,
@@ -474,7 +474,7 @@ async def test_tenant_scoped_find_one_returns_none_for_foreign_tenant(tenant_a, 
 
 
 async def test_tenant_scoped_find_one_returns_row_for_own_tenant(tenant_a):
-    from utils.tenant_scope import tenant_scoped_find_one
+    from src.common.utils.tenant_scope import tenant_scoped_find_one
     gid = str(uuid.uuid4())
     await gd_insert(db.session, "grade_levels", {
         "id": gid, "school_id": tenant_a, "name_ar": "س", "name_en": "x", "order": 1,

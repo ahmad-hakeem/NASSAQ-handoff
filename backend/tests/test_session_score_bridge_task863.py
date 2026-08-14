@@ -339,7 +339,7 @@ async def test_commit_route_surfaces_failure_no_false_success(client, tenant_a, 
     """Route-level: when the commit fails, the route must return an Arabic error
     (HTTP 500) — never a misleading success — so the UI does not show points as
     saved while the profiles never received them."""
-    import routes.role_dashboards_mod as rd
+    import src.modules.portals.controllers.role_dashboards_mod as rd
 
     class_id = await _mk_class(tenant_a)
     subject_id = await _mk_subject(tenant_a)

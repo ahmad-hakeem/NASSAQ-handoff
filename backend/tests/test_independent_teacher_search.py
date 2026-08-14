@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from auth_scope import independent_workspace_id
+from src.core.guards.tenant_guard import independent_workspace_id
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert
 
@@ -303,7 +303,7 @@ async def test_exact_match_ranked_first(client):
 @pytest.mark.asyncio
 async def test_per_user_rate_limit_returns_429_on_burst(client):
     from routes import independent_teacher_search_routes as search_mod
-    from middleware.rate_limiter import rate_store
+    from src.core.middleware.rate_limiter import rate_store
 
     user = await _mk_it_workspace()
     h = _headers(user["id"], user["role"], user["tenant_id"])

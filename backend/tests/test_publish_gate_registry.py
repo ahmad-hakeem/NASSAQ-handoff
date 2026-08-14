@@ -19,7 +19,7 @@ from engines.smart_scheduling_engine import (
     SmartSchedulingEngine,
 )
 from engines.sql_utils import gd_insert, gd_find_one, gd_update_many
-from routes._publish_gate import assert_publishable
+from src.modules.scheduling.controllers._publish_gate import assert_publishable
 
 
 # ---------------------------------------------------------------------------

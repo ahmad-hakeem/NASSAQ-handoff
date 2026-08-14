@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from auth_scope import (
+from src.core.guards.tenant_guard import (
     INDEPENDENT_TEACHER_DENIED_AR,
     independent_workspace_id,
 )
@@ -64,9 +64,9 @@ def test_5_9_1_phase0_b_marker_symbols_present():  # §5.9 #1
     """Sanity: the canonical helpers/constants the rest of this suite
     parametrizes over MUST be importable. A regression that strips them
     would make §5.9 #2/#3 silently degrade — we want a loud failure."""
-    from middleware.rbac import ROLE_PERMISSIONS, Permission
+    from src.core.middleware.rbac import ROLE_PERMISSIONS, Permission
     from quotas.independent_teacher import MAX_CLASSES, MAX_STUDENTS
-    from auth_scope import (  # noqa: F401  (import-only sanity)
+    from src.core.guards.tenant_guard import (  # noqa: F401  (import-only sanity)
         require_full_school_tenant,
         require_workspace_materialised,
         independent_workspace_id as _iwid,

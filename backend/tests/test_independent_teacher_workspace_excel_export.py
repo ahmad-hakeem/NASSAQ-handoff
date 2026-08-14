@@ -13,7 +13,7 @@ import io
 
 import openpyxl
 
-from routes.independent_teacher_workspace_excel_export_routes import (
+from src.modules.independent_teacher.controllers.independent_teacher_workspace_excel_export_routes import (
     _build_workbook,
     _sanitize_cell,
 )

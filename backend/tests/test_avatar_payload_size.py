@@ -19,7 +19,7 @@ import io
 import pytest
 from PIL import Image
 
-from utils.avatar_image import (
+from src.common.utils.avatar_image import (
     AVATAR_MAX_PX,
     AvatarImageError,
     normalize_avatar_data_url,
@@ -139,7 +139,7 @@ async def test_self_avatar_upload_is_normalized_and_me_stays_small(
     assert stored_url.startswith("/api/users/"), stored_url
     # Image fetches require the image-access cookie (set by /auth/me).
     me0 = await client.get("/auth/me", headers=teacher_headers)
-    from utils.avatar_serving import IMAGE_COOKIE_NAME, mint_image_access_cookie
+    from src.common.utils.avatar_serving import IMAGE_COOKIE_NAME, mint_image_access_cookie
     client.cookies.set(IMAGE_COOKIE_NAME, mint_image_access_cookie(
         me0.json()["id"], me0.json().get("tenant_id"), me0.json().get("role")))
     img_res = await client.get(stored_url.removeprefix("/api"))
@@ -203,7 +203,7 @@ async def test_school_logo_write_path_is_also_normalized(
     # assert the stored bytes were normalised.
     logo_url = res.json().get("logo_url")
     assert logo_url and logo_url.startswith(f"/api/schools/{tenant_a}/logo?"), logo_url
-    from utils.avatar_serving import IMAGE_COOKIE_NAME, mint_image_access_cookie
+    from src.common.utils.avatar_serving import IMAGE_COOKIE_NAME, mint_image_access_cookie
     client.cookies.set(IMAGE_COOKIE_NAME, mint_image_access_cookie("qa-admin", tenant_a, "school_admin"))
     img = await client.get(logo_url.removeprefix("/api"))
     assert img.status_code == 200

@@ -30,7 +30,7 @@ import pytest
 
 from dependencies import db, create_access_token
 from engines.sql_utils import gd_insert
-from utils.subject_display import build_subject_name_map, subject_display_name
+from src.common.utils.subject_display import build_subject_name_map, subject_display_name
 
 SAUDI_TZ = ZoneInfo("Asia/Riyadh")
 _DAY_MAP = {6: "sunday", 0: "monday", 1: "tuesday", 2: "wednesday",

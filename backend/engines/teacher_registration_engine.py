@@ -165,7 +165,7 @@ class TeacherRegistrationEngine:
         )
 
         try:
-            from routes.websocket_routes import get_connection_manager, send_realtime_notification
+            from src.modules.notifications.controllers.websocket_routes import get_connection_manager, send_realtime_notification
             ws_manager = get_connection_manager()
             await send_realtime_notification(
                 manager=ws_manager,

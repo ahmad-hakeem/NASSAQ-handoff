@@ -1,7 +1,7 @@
 import pytest
 from fastapi import HTTPException
-from utils.tenant_scope import assert_school_access, resolve_school_id
-from models.enums import UserRole
+from src.common.utils.tenant_scope import assert_school_access, resolve_school_id
+from src.common.dto.enums import UserRole
 
 PRINCIPAL_A = {"role": UserRole.SCHOOL_PRINCIPAL.value, "tenant_id": "school-A", "school_id": "school-A"}
 PRINCIPAL_B = {"role": UserRole.SCHOOL_PRINCIPAL.value, "tenant_id": "school-B", "school_id": "school-B"}
@@ -99,7 +99,7 @@ class TestResolveSchoolId:
 
 
 def test_tenant_scoped_collections_includes_timetable_tables():
-    from middleware.tenant_isolation import TENANT_SCOPED_COLLECTIONS
+    from src.core.middleware.tenant_isolation import TENANT_SCOPED_COLLECTIONS
     required = {
         "timetables",
         "schedule_sessions",
@@ -146,7 +146,7 @@ class TestCanViewClassIndependentTeacher:
     @pytest.mark.asyncio
     async def test_owned_workspace_class_allowed_without_assignment(self, monkeypatch):
         import engines.sql_utils as sql_utils
-        from utils.tenant_scope import can_view_class
+        from src.common.utils.tenant_scope import can_view_class
 
         monkeypatch.setattr(
             sql_utils, "gd_find_one",
@@ -157,7 +157,7 @@ class TestCanViewClassIndependentTeacher:
     @pytest.mark.asyncio
     async def test_foreign_workspace_class_denied(self, monkeypatch):
         import engines.sql_utils as sql_utils
-        from utils.tenant_scope import can_view_class
+        from src.common.utils.tenant_scope import can_view_class
 
         # The class exists, but under ANOTHER independent teacher's workspace.
         monkeypatch.setattr(

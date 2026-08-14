@@ -22,12 +22,12 @@ import pytest
 
 from dependencies import db
 from engines.sql_utils import gd_insert, gd_find_one
-from routes.school_routes_mod import _live_entity_counts_by_tenant
-from routes.principal_management_routes import (
+from src.modules.schools.controllers.school_routes_mod import _live_entity_counts_by_tenant
+from src.modules.teacher_management.controllers.principal_management_routes import (
     UpdateAccountStatusRequest,
     update_student_account_status,
 )
-from routes.user_routes_mod import _do_resolve_teacher_mismatch
+from src.modules.users.controllers.user_routes_mod import _do_resolve_teacher_mismatch
 
 
 async def _mk_actor(school_id: str) -> dict:

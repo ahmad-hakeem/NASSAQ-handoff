@@ -17,8 +17,8 @@ import os
 # Add backend to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from middleware.rbac import RBACMiddleware, Permission, ROLE_PERMISSIONS
-from middleware.tenant_isolation import TenantIsolation, PLATFORM_ROLES
+from src.core.middleware.rbac import RBACMiddleware, Permission, ROLE_PERMISSIONS
+from src.core.middleware.tenant_isolation import TenantIsolation, PLATFORM_ROLES
 
 
 class TestRBAC:

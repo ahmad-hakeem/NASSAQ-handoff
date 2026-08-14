@@ -23,7 +23,7 @@ import pytest
 
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert, gd_find, gd_find_one, gd_count
-from auth_scope import independent_workspace_id
+from src.core.guards.tenant_guard import independent_workspace_id
 
 
 def _headers(user_id: str, role: str, tenant_id=None) -> dict:
@@ -248,7 +248,7 @@ async def test_relink_unsupported_table_guard_returns_404_and_no_audit(client):
     six approved paths), but the guard is the safety net if a new route
     is ever added without updating the allow-list. We exercise it directly
     here and assert NO audit row is emitted on the rejection."""
-    from routes.academics_class_routes import _reactivate_dependents, RelinkRequest
+    from src.modules.academics.controllers.academics_class_routes import _reactivate_dependents, RelinkRequest
     from fastapi import HTTPException
 
     user = await _mk_independent_teacher()

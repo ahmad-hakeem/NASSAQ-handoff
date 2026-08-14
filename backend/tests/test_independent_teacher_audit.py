@@ -554,7 +554,7 @@ async def test_export_csv_columns_preset_emits_only_requested_in_canonical_order
 
 @pytest.mark.asyncio
 async def test_export_csv_columns_unknown_only_falls_back_to_full_default(client):
-    from routes.independent_teacher_audit_routes import _CSV_FIELDS
+    from src.modules.independent_teacher.controllers.independent_teacher_audit_routes import _CSV_FIELDS
 
     own = await mk_it_workspace()
     await _seed_log(school_id=own["wsid"], action="auth.login")

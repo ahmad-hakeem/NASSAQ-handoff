@@ -2,7 +2,7 @@
 NASSAQ - Database Service
 Database connection and utilities (PostgreSQL via SQLAlchemy)
 """
-from repositories import Repos
+from src.core.database.repository import Repos
 
 _db = Repos()
 

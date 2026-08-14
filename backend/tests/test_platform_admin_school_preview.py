@@ -8,7 +8,7 @@ import pytest
 
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert
-from utils.platform_admin_preview import (
+from src.common.utils.platform_admin_preview import (
     MSG_ARCHIVED,
     MSG_INDEPENDENT_TEACHER_WORKSPACE,
     REASON_ARCHIVED,

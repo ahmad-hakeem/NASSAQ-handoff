@@ -26,7 +26,7 @@ from fastapi.routing import APIRoute
 from starlette.testclient import TestClient
 
 from server import app
-from middleware.error_handler import SAFE_ERROR_CODE, SAFE_ERROR_MESSAGE_AR
+from src.core.middleware.error_handler import SAFE_ERROR_CODE, SAFE_ERROR_MESSAGE_AR
 
 _SECRET = "secret-internal-db-detail-should-not-leak"
 

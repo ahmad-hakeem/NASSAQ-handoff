@@ -42,7 +42,7 @@ class StructuredJsonFormatter(logging.Formatter):
 _handler = logging.StreamHandler(sys.stdout)
 _handler.setFormatter(StructuredJsonFormatter(datefmt="%Y-%m-%dT%H:%M:%S"))
 
-from middleware.request_tracing import RequestIdFilter
+from src.core.middleware.request_tracing import RequestIdFilter
 _handler.addFilter(RequestIdFilter())
 
 logging.basicConfig(level=logging.INFO, handlers=[_handler])
@@ -280,7 +280,7 @@ def create_app() -> FastAPI:
         # cause-hiding generic popup. Returning the canonical envelope with a
         # safe Arabic message keeps the UI informative without ever exposing
         # raw str(exc) to the client.
-        from middleware.error_handler import SAFE_ERROR_CODE, SAFE_ERROR_MESSAGE_AR
+        from src.core.middleware.error_handler import SAFE_ERROR_CODE, SAFE_ERROR_MESSAGE_AR
         logger.exception(
             "Unhandled exception on %s %s",
             request.method, request.url.path,
@@ -299,7 +299,7 @@ def create_app() -> FastAPI:
     from app.middleware import register_middleware
     register_middleware(application)
 
-    from middleware.metrics_middleware import metrics_endpoint
+    from src.core.middleware.metrics_middleware import metrics_endpoint
     application.add_api_route("/metrics", metrics_endpoint, methods=["GET"])
 
     api_router = APIRouter(prefix="/api")

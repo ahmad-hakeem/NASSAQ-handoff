@@ -21,59 +21,59 @@ def register_routes(app, api_router: APIRouter):
     # Infrastructure probes: root-mounted and unauthenticated by design, so
     # load balancers / orchestrators / uptime monitors can reach them without
     # a token. Never mirrored under /api — infra tools use the bare paths.
-    from routes.health_routes import router as health_router
+    from src.modules.infrastructure.controllers.health_routes import router as health_router
     app.include_router(health_router)
 
-    from routes.monitoring_routes import router as monitoring_router
+    from src.modules.infrastructure.controllers.monitoring_routes import router as monitoring_router
     app.include_router(monitoring_router)
     api_router.include_router(monitoring_router)
 
-    from routes.auth_routes_mod import router as auth_mod_router
-    from routes.mfa_routes import router as mfa_router
-    from routes.user_routes_mod import router as user_mod_router
-    from routes.school_routes_mod import router as school_mod_router
-    from routes.dashboard_routes_mod import router as dashboard_mod_router
-    from routes.ai_routes_mod import router as ai_mod_router
-    from routes.registration_routes_mod import router as registration_mod_router
-    from routes.academics_reference_routes import router as academics_ref_router
-    from routes.academics_student_routes import router as academics_student_router
-    from routes.academics_class_routes import router as academics_class_router
-    from routes.academics_subject_routes import router as academics_subject_router
-    from routes.academics_year_term_routes import router as academics_year_term_router
-    from routes.academics_structure_engine_routes import router as academics_structure_router
-    from routes.academics_teacher_routes import router as academics_teacher_router
-    from routes.scheduling_smart_engine_routes import router as scheduling_smart_router
-    from routes.scheduling_smart_session_routes import (
+    from src.modules.auth.controllers.auth_routes_mod import router as auth_mod_router
+    from src.modules.mfa.controllers.mfa_routes import router as mfa_router
+    from src.modules.users.controllers.user_routes_mod import router as user_mod_router
+    from src.modules.schools.controllers.school_routes_mod import router as school_mod_router
+    from src.modules.portals.controllers.dashboard_routes_mod import router as dashboard_mod_router
+    from src.modules.ai.controllers.ai_routes_mod import router as ai_mod_router
+    from src.modules.registration.controllers.registration_routes_mod import router as registration_mod_router
+    from src.modules.academics.controllers.academics_reference_routes import router as academics_ref_router
+    from src.modules.academics.controllers.academics_student_routes import router as academics_student_router
+    from src.modules.academics.controllers.academics_class_routes import router as academics_class_router
+    from src.modules.academics.controllers.academics_subject_routes import router as academics_subject_router
+    from src.modules.academics.controllers.academics_year_term_routes import router as academics_year_term_router
+    from src.modules.academics.controllers.academics_structure_engine_routes import router as academics_structure_router
+    from src.modules.academics.controllers.academics_teacher_routes import router as academics_teacher_router
+    from src.modules.scheduling.controllers.scheduling_smart_engine_routes import router as scheduling_smart_router
+    from src.modules.scheduling.controllers.scheduling_smart_session_routes import (
         router as scheduling_smart_sess_router,
         class_teaching_router as scheduling_class_teaching_router,
     )
-    from routes.schedule_candidates_routes import router as schedule_candidates_router
-    from routes.schedule_master_grid_routes import router as schedule_master_grid_router
-    from routes.standby_routes import router as standby_router
-    from routes.attendance_routes_mod import router as attendance_mod_router
-    from routes.assessment_routes_mod import router as assessment_mod_router
-    from routes.behaviour_routes_mod import router as behaviour_mod_router
-    from routes.notification_routes_mod import router as notification_mod_router
-    from routes.platform_routes_mod import router as platform_mod_router
-    from routes.reporting_routes_mod import router as reporting_mod_router
-    from routes.role_dashboards_mod import router as role_dashboards_mod_router
-    from routes.admin_routes_mod import router as admin_mod_router
-    from routes.school_settings_mod import router as school_settings_mod_router
-    from routes.school_settings_mod import time_slots_router as school_time_slots_router
-    from routes.participation_routes_mod import router as participation_mod_router
-    from routes.search_directory_routes_mod import router as search_directory_mod_router
-    from routes.event_workflow_routes_mod import router as event_workflow_mod_router
-    from routes.relationship_routes_mod import router as relationship_mod_router
-    from routes.consent_privacy_routes_mod import router as consent_privacy_mod_router
-    from routes.activities_routes_mod import router as activities_mod_router
-    from routes.product_hub_routes import router as product_hub_router
-    from routes.portfolio_routes_mod import router as portfolio_mod_router
-    from routes.calendar_routes_mod import router as calendar_mod_router
-    from routes.hakeem_plan_routes_mod import router as hakeem_plan_mod_router
+    from src.modules.scheduling.controllers.schedule_candidates_routes import router as schedule_candidates_router
+    from src.modules.scheduling.controllers.schedule_master_grid_routes import router as schedule_master_grid_router
+    from src.modules.scheduling.controllers.standby_routes import router as standby_router
+    from src.modules.attendance.controllers.attendance_routes_mod import router as attendance_mod_router
+    from src.modules.assessment.controllers.assessment_routes_mod import router as assessment_mod_router
+    from src.modules.behaviour.controllers.behaviour_routes_mod import router as behaviour_mod_router
+    from src.modules.notifications.controllers.notification_routes_mod import router as notification_mod_router
+    from src.modules.platform.controllers.platform_routes_mod import router as platform_mod_router
+    from src.modules.reporting.controllers.reporting_routes_mod import router as reporting_mod_router
+    from src.modules.portals.controllers.role_dashboards_mod import router as role_dashboards_mod_router
+    from src.modules.platform.controllers.admin_routes_mod import router as admin_mod_router
+    from src.modules.schools.controllers.school_settings_mod import router as school_settings_mod_router
+    from src.modules.schools.controllers.school_settings_mod import time_slots_router as school_time_slots_router
+    from src.modules.participation.controllers.participation_routes_mod import router as participation_mod_router
+    from src.modules.search_directory.controllers.search_directory_routes_mod import router as search_directory_mod_router
+    from src.modules.events.controllers.event_workflow_routes_mod import router as event_workflow_mod_router
+    from src.modules.relationships.controllers.relationship_routes_mod import router as relationship_mod_router
+    from src.modules.consent_privacy.controllers.consent_privacy_routes_mod import router as consent_privacy_mod_router
+    from src.modules.activities.controllers.activities_routes_mod import router as activities_mod_router
+    from src.modules.platform.controllers.product_hub_routes import router as product_hub_router
+    from src.modules.portfolio.controllers.portfolio_routes_mod import router as portfolio_mod_router
+    from src.modules.calendar.controllers.calendar_routes_mod import router as calendar_mod_router
+    from src.modules.ai.controllers.hakeem_plan_routes_mod import router as hakeem_plan_mod_router
 
     # Task #1139 — signature-authorised image bytes (user avatars / school
     # logos). No bearer dependency by design; see the module docstring.
-    from routes.image_serving_routes import router as image_serving_router
+    from src.modules.infrastructure.controllers.image_serving_routes import router as image_serving_router
     api_router.include_router(image_serving_router)
 
     api_router.include_router(auth_mod_router)
@@ -91,12 +91,12 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(academics_structure_router)
     api_router.include_router(academics_teacher_router)
 
-    from routes.academic_structure_routes import router as academic_structure_router
+    from src.modules.academics.controllers.academic_structure_routes import router as academic_structure_router
     api_router.include_router(academic_structure_router)
     # Phase 0 §4.B-2 — capability gate for routers reserved to full
     # school tenants. Independent-Teacher accounts get a friendly Arabic
     # 403 instead of a misleading "Permission denied" or 500.
-    from auth_scope import require_full_school_tenant, require_workspace_materialised
+    from src.core.guards.tenant_guard import require_full_school_tenant, require_workspace_materialised
     from fastapi import Depends as _Depends
     _full_tenant_dep = [_Depends(require_full_school_tenant)]
 
@@ -105,14 +105,14 @@ def register_routes(app, api_router: APIRouter):
     # dependency is attached at the api_router level, but the bootstrap
     # path is itself in the allow-list so this ordering is informational
     # rather than load-bearing.
-    from routes.independent_teacher_bootstrap_routes import router as it_bootstrap_router
+    from src.modules.independent_teacher.controllers.independent_teacher_bootstrap_routes import router as it_bootstrap_router
     api_router.include_router(it_bootstrap_router)
     # Phase 2 §5.2 (#189) — IT-only workspace settings (reduced surface).
     # Mounted WITHOUT _full_tenant_dep so IT callers can reach it; the
     # router itself enforces an IT role gate per-endpoint and a deny-by-
     # default allow-list on writes. Principal `/school/settings` paths
     # stay gated by `_full_tenant_dep` and continue to deny IT (Phase 0).
-    from routes.independent_teacher_workspace_settings_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_workspace_settings_routes import (
         router as it_workspace_settings_router,
     )
     api_router.include_router(it_workspace_settings_router)
@@ -120,7 +120,7 @@ def register_routes(app, api_router: APIRouter):
     # natural-key with optimistic concurrency on schedule_sessions.version).
     # Mounted WITHOUT _full_tenant_dep; the router itself enforces the IT
     # role gate per-endpoint and pins school_id to the caller's workspace.
-    from routes.independent_teacher_schedule_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_schedule_routes import (
         router as it_schedule_router,
     )
     api_router.include_router(it_schedule_router)
@@ -129,7 +129,7 @@ def register_routes(app, api_router: APIRouter):
     # role gate per-endpoint and pins every join by school_id ==
     # itw_{user_id}. Send paths still go through notification_routes_mod
     # (with IT-specific hardening added in the same ticket).
-    from routes.independent_teacher_communication_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_communication_routes import (
         router as it_communication_router,
     )
     api_router.include_router(it_communication_router)
@@ -139,7 +139,7 @@ def register_routes(app, api_router: APIRouter):
     # endpoint, requires fresh MFA via require_recent_mfa, and is
     # the SOLE backend writer that flips students.parent_id NULL →
     # non-NULL for an IT user.
-    from routes.independent_teacher_invite_parent_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_invite_parent_routes import (
         router as it_invite_parent_router,
     )
     api_router.include_router(it_invite_parent_router)
@@ -148,7 +148,7 @@ def register_routes(app, api_router: APIRouter):
     # enforces the IT role gate per-endpoint, pins every read to
     # school_id/tenant_id == itw_{user_id} (cross-workspace by-id → 404),
     # and gates credential rotation behind require_recent_mfa_403.
-    from routes.independent_teacher_parents_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_parents_routes import (
         router as it_parents_router,
     )
     api_router.include_router(it_parents_router)
@@ -156,7 +156,7 @@ def register_routes(app, api_router: APIRouter):
     # cancel / public accept). Router has no global gate; the IT-only
     # endpoints enforce the role + Tier-A MFA via per-route deps and
     # the public accept endpoint is unauthenticated + IP rate-limited.
-    from routes.independent_teacher_invitation_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_invitation_routes import (
         router as it_invitation_router,
     )
     api_router.include_router(it_invitation_router)
@@ -165,7 +165,7 @@ def register_routes(app, api_router: APIRouter):
     # endpoint and pins tenant_id == itw_{user_id} + created_by ==
     # current_user.id + is_personal=True on every read/write. The legacy
     # /v1/calendar surface in calendar_routes_mod stays untouched.
-    from routes.independent_teacher_calendar_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_calendar_routes import (
         router as it_calendar_router,
     )
     api_router.include_router(it_calendar_router)
@@ -173,7 +173,7 @@ def register_routes(app, api_router: APIRouter):
     # Mounted WITHOUT _full_tenant_dep; the router enforces the IT
     # role gate per-endpoint, pins all writes to itw_{user_id}, and
     # gates /commit behind require_recent_mfa_403 (Tier-A step-up).
-    from routes.independent_teacher_bulk_import_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_bulk_import_routes import (
         router as it_bulk_import_router,
     )
     api_router.include_router(it_bulk_import_router)
@@ -182,7 +182,7 @@ def register_routes(app, api_router: APIRouter):
     # /commit + /duplicate-week gated behind require_recent_mfa_403, and the
     # daily counter on workspace_quota.imports_today is shared across all
     # four bulk paths.
-    from routes.independent_teacher_bulk_extensions_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_bulk_extensions_routes import (
         router as it_bulk_ext_router,
     )
     api_router.include_router(it_bulk_ext_router)
@@ -192,7 +192,7 @@ def register_routes(app, api_router: APIRouter):
     # named class. Mounted WITHOUT _full_tenant_dep; the router enforces
     # the IT role gate per-endpoint, requires fresh MFA on every write
     # surface, and gates host-side writes on `workspace.collab_manage`.
-    from routes.independent_teacher_collab_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_collab_routes import (
         router as it_collab_router,
     )
     api_router.include_router(it_collab_router)
@@ -201,7 +201,7 @@ def register_routes(app, api_router: APIRouter):
     # IT-only endpoints enforce the role + Tier-A MFA per route, and
     # the public download endpoint is unauthenticated + IP rate-
     # limited. Hard-delete remains platform-admin out-of-band.
-    from routes.independent_teacher_workspace_lifecycle_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_workspace_lifecycle_routes import (
         router as it_workspace_lifecycle_router,
     )
     api_router.include_router(it_workspace_lifecycle_router)
@@ -211,7 +211,7 @@ def register_routes(app, api_router: APIRouter):
     # response body — cannot regress the soft-delete pre-condition that
     # the lifecycle export guarantees. Same IT-only + MFA + workspace-
     # pinning guards apply per-endpoint.
-    from routes.independent_teacher_workspace_excel_export_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_workspace_excel_export_routes import (
         router as it_workspace_excel_export_router,
     )
     api_router.include_router(it_workspace_excel_export_router)
@@ -221,7 +221,7 @@ def register_routes(app, api_router: APIRouter):
     # created_by == current_user.id on every read/write, and bumps the
     # workspace_quota.lesson_plans_today daily counter on each generate.
     # NO MFA step-up (low-sensitivity content generation per spec).
-    from routes.independent_teacher_lesson_plans_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_lesson_plans_routes import (
         router as it_lesson_plans_router,
     )
     api_router.include_router(it_lesson_plans_router)
@@ -230,7 +230,7 @@ def register_routes(app, api_router: APIRouter):
     # replay link. Mounted WITHOUT _full_tenant_dep; the router enforces
     # the IT role gate per-endpoint and only writes
     # ``users.it_onboarding_completed_at`` on the caller's own row.
-    from routes.independent_teacher_onboarding_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_onboarding_routes import (
         router as it_onboarding_router,
     )
     api_router.include_router(it_onboarding_router)
@@ -239,7 +239,7 @@ def register_routes(app, api_router: APIRouter):
     # endpoint and pins school_id == itw_{user_id} on every read.
     # Cross-workspace ids return 404 per spec §8 inv. 3. Read-only;
     # no MFA step-up.
-    from routes.independent_teacher_audit_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_audit_routes import (
         router as it_audit_router,
     )
     api_router.include_router(it_audit_router)
@@ -248,7 +248,7 @@ def register_routes(app, api_router: APIRouter):
     # and pins tenant_id == itw_{user_id} on every aggregation. Cross-
     # workspace class_id returns 404 per spec §8 inv. 3. Read-only;
     # no MFA step-up.
-    from routes.independent_teacher_analytics_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_analytics_routes import (
         router as it_analytics_router,
     )
     api_router.include_router(it_analytics_router)
@@ -257,7 +257,7 @@ def register_routes(app, api_router: APIRouter):
     # require_recent_mfa_403 enforced at the route layer. school_id is
     # derived server-side from itw_{user_id}; cross-workspace student_id /
     # class_id returns 404 per spec §8 inv. 3.
-    from routes.independent_teacher_reports_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_reports_routes import (
         router as it_reports_router,
     )
     api_router.include_router(it_reports_router)
@@ -266,7 +266,7 @@ def register_routes(app, api_router: APIRouter):
     # gate per-endpoint and pins user_id + tenant_id == itw_{user_id}
     # on every read/write. Cross-workspace by-id reads return 404
     # per spec §8 inv. 3.
-    from routes.independent_teacher_notifications_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_notifications_routes import (
         router as it_notifications_router,
     )
     api_router.include_router(it_notifications_router)
@@ -275,14 +275,14 @@ def register_routes(app, api_router: APIRouter):
     # (`schools.pending_hard_delete = TRUE`). Lives behind
     # `require_roles([PLATFORM_ADMIN])`; never reachable from the IT
     # surface itself, preserving the §6.8 trust boundary.
-    from routes.platform_workspace_purge_routes import (
+    from src.modules.platform.controllers.platform_workspace_purge_routes import (
         router as platform_workspace_purge_router,
     )
     api_router.include_router(platform_workspace_purge_router)
     # Task #251 — IT workspace-wide command-palette search. IT-only,
     # workspace-pinned (school_id / tenant_id / workspace_school_id ==
     # itw_{user_id}); cross-workspace rows are never returned.
-    from routes.independent_teacher_search_routes import (
+    from src.modules.independent_teacher.controllers.independent_teacher_search_routes import (
         router as it_search_router,
     )
     api_router.include_router(it_search_router)
@@ -324,10 +324,10 @@ def register_routes(app, api_router: APIRouter):
     api_router.include_router(calendar_mod_router)
     api_router.include_router(hakeem_plan_mod_router, dependencies=_full_tenant_dep)
 
-    from routes.principal_management_routes import router as principal_mgmt_router
+    from src.modules.teacher_management.controllers.principal_management_routes import router as principal_mgmt_router
     api_router.include_router(principal_mgmt_router, dependencies=_full_tenant_dep)
 
-    from routes.timetable_readiness_routes import router as timetable_readiness_router, set_database as set_readiness_db
+    from src.modules.scheduling.controllers.timetable_readiness_routes import router as timetable_readiness_router, set_database as set_readiness_db
     set_readiness_db(db)
     api_router.include_router(timetable_readiness_router)
 
@@ -341,13 +341,13 @@ def register_routes(app, api_router: APIRouter):
     #                      plus a few paths also in assessment_routes_mod — _mod wins (registered first)
     #   student/teacher/class_management: serve /options, /validate, /drafts (unique to factory)
     # TODO: Migrate unique factory endpoints into _mod sub-modules, then remove factory registrations.
-    from routes.attendance_routes import create_attendance_router
-    from routes.assessment_routes import create_assessment_router
-    from routes.teacher_registration_routes import create_teacher_registration_router
-    from routes.student_management_routes import create_student_routes
-    from routes.teacher_management_routes import create_teacher_management_routes
-    from routes.class_management_routes import create_class_management_routes
-    from routes.notification_routes import create_notification_routes
+    from src.modules.attendance.controllers.attendance_routes import create_attendance_router
+    from src.modules.assessment.controllers.assessment_routes import create_assessment_router
+    from src.modules.teacher_management.controllers.teacher_registration_routes import create_teacher_registration_router
+    from src.modules.student_management.controllers.student_management_routes import create_student_routes
+    from src.modules.teacher_management.controllers.teacher_management_routes import create_teacher_management_routes
+    from src.modules.academics.controllers.class_management_routes import create_class_management_routes
+    from src.modules.notifications.controllers.notification_routes import create_notification_routes
 
     attendance_router = create_attendance_router(db, get_current_user, require_roles, UserRole)
     assessment_router = create_assessment_router(db, get_current_user, require_roles, UserRole)
@@ -357,35 +357,35 @@ def register_routes(app, api_router: APIRouter):
     class_management_routes = create_class_management_routes(db, get_current_user)
     notification_routes = create_notification_routes(db, get_current_user)
 
-    from routes.teacher_attendance_routes import create_teacher_attendance_routes
+    from src.modules.attendance.controllers.teacher_attendance_routes import create_teacher_attendance_routes
     teacher_attendance_router = create_teacher_attendance_routes(db, get_current_user, require_roles, UserRole)
 
-    from routes.communication_routes import create_communication_routes
+    from src.modules.communication.controllers.communication_routes import create_communication_routes
     communication_router = create_communication_routes(db, get_current_user, require_roles, UserRole)
 
-    from routes.bulk_teacher_routes import create_bulk_teacher_routes
+    from src.modules.bulk_import.controllers.bulk_teacher_routes import create_bulk_teacher_routes
     bulk_teacher_router = create_bulk_teacher_routes(db, get_current_user, require_roles, UserRole, hash_password, generate_secure_password)
 
-    from routes.student_creation_routes import create_student_creation_routes
+    from src.modules.student_management.controllers.student_creation_routes import create_student_creation_routes
     student_creation_router = create_student_creation_routes(db, get_current_user, require_roles, UserRole, hash_password, generate_secure_password)
 
-    from routes.admin_dashboard_routes import setup_admin_routes
+    from src.modules.platform.controllers.admin_dashboard_routes import setup_admin_routes
     admin_dashboard_router = setup_admin_routes(db, get_current_user, require_roles, UserRole)
 
-    from routes.security_routes import setup_security_routes
+    from src.modules.auth.controllers.security_routes import setup_security_routes
     from dependencies import require_recent_mfa as _require_recent_mfa
     security_router = setup_security_routes(db, get_current_user, require_roles, UserRole, _require_recent_mfa)
 
-    from routes.audit_routes import setup_audit_routes
+    from src.modules.audit.controllers.audit_routes import setup_audit_routes
     audit_router = setup_audit_routes(db, get_current_user, require_roles, UserRole, _require_recent_mfa)
 
-    from routes.settings_routes import setup_settings_routes
+    from src.modules.schools.controllers.settings_routes import setup_settings_routes
     settings_router = setup_settings_routes(db, get_current_user, require_roles, UserRole, _require_recent_mfa)
 
-    from routes.user_roles_routes import setup_user_roles_routes
+    from src.modules.users.controllers.user_roles_routes import setup_user_roles_routes
     user_roles_router = setup_user_roles_routes(db, get_current_user, require_roles, UserRole, create_access_token, _require_recent_mfa)
 
-    from routes.websocket_routes import create_websocket_routes
+    from src.modules.notifications.controllers.websocket_routes import create_websocket_routes
     from db import async_session_factory as _ws_session_factory
 
     async def decode_token_for_ws(token: str):
@@ -530,17 +530,17 @@ def register_routes(app, api_router: APIRouter):
 
     websocket_router, ws_manager = create_websocket_routes(db, decode_token_for_ws)
 
-    from routes.bulk_import_export_routes import setup_bulk_routes, setup_import_tracking_routes
+    from src.modules.bulk_import.controllers.bulk_import_export_routes import setup_bulk_routes, setup_import_tracking_routes
     bulk_routes = setup_bulk_routes(db, get_current_user, require_roles, UserRole)
     import_tracking_routes = setup_import_tracking_routes(db, get_current_user, require_roles, UserRole)
 
-    from routes.noor_import_routes import create_noor_import_routes
+    from src.modules.noor_import.controllers.noor_import_routes import create_noor_import_routes
     noor_import_router = create_noor_import_routes(db, get_current_user)
 
-    from routes.student_portal_routes import setup_student_portal_routes
+    from src.modules.portals.controllers.student_portal_routes import setup_student_portal_routes
     student_portal_routes = setup_student_portal_routes(db, get_current_user, require_roles, UserRole)
 
-    from routes.parent_portal_routes import setup_parent_portal_routes
+    from src.modules.portals.controllers.parent_portal_routes import setup_parent_portal_routes
     parent_portal_routes = setup_parent_portal_routes(db, get_current_user, require_roles, UserRole)
 
     api_router.include_router(attendance_router)
@@ -569,7 +569,7 @@ def register_routes(app, api_router: APIRouter):
     # Phase 1 (#183) — fail-closed gate: every authenticated /api route
     # is checked. The dep is a no-op for non-IT callers and for the
     # explicit allow-list (auth surface, MFA enrolment, bootstrap).
-    from auth_scope import require_workspace_materialised as _wm_dep
+    from src.core.guards.tenant_guard import require_workspace_materialised as _wm_dep
     from fastapi import Depends as _Depends2
     app.include_router(api_router, dependencies=[_Depends2(_wm_dep)])
 

@@ -14,7 +14,7 @@ To add a new request type:
 
 import os
 
-from utils.school_type import normalize_school_type as _normalize_school_type
+from src.common.utils.school_type import normalize_school_type as _normalize_school_type
 from datetime import datetime, timezone
 from typing import Optional
 import uuid
@@ -30,7 +30,7 @@ from sqlalchemy import select, and_, desc as sa_desc
 from pg_models import User, Teacher, School, SchoolSettings
 from engines.sql_utils import model_to_dict, dict_to_model, gd_insert, gd_find_one
 from engines.approval_engine import ApprovalHandler, ApprovalResult
-from utils.platform_admin_preview import (
+from src.common.utils.platform_admin_preview import (
     IT_SCHOOL_TYPES,
     is_independent_teacher_workspace,
 )
@@ -446,7 +446,7 @@ class SchoolApprovalHandler(ApprovalHandler):
 
         default_settings = await gd_find_one(session, "default_settings", {"id": "default-school-settings"})
         if default_settings:
-            from routes.school_settings_mod import normalize_school_settings_doc
+            from src.modules.schools.controllers.school_settings_mod import normalize_school_settings_doc
             settings_obj = dict_to_model(SchoolSettings, normalize_school_settings_doc({
                 "id": f"settings-{school_id}",
                 "school_id": school_id,

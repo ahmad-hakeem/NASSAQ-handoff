@@ -26,7 +26,7 @@ from unittest.mock import patch as mock_patch
 
 import pytest
 
-from auth_scope import independent_workspace_id
+from src.core.guards.tenant_guard import independent_workspace_id
 from dependencies import db, UserRole, create_access_token, verify_password
 from engines.sql_utils import gd_count, gd_find, gd_find_one, gd_insert
 

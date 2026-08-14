@@ -19,7 +19,7 @@ import pytest_asyncio
 
 from dependencies import db as _db, UserRole, create_access_token
 from engines.sql_utils import gd_find, gd_insert
-from utils.parent_resolution import (
+from src.common.utils.parent_resolution import (
     PARENT_NOT_FOUND_AR,
     resolve_student_parent_user_id,
     resolve_students_parent_user_ids,

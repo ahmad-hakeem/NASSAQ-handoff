@@ -18,7 +18,7 @@ import pytest
 
 from dependencies import db
 from engines.sql_utils import gd_find_one, gd_insert
-from routes.independent_teacher_notifications_routes import (
+from src.modules.independent_teacher.controllers.independent_teacher_notifications_routes import (
     IT_CATEGORIES,
     should_send_channel,
 )

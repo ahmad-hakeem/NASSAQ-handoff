@@ -19,7 +19,7 @@ import pytest_asyncio
 
 from dependencies import db, UserRole, create_access_token
 from engines.sql_utils import gd_insert
-from auth_scope import (
+from src.core.guards.tenant_guard import (
     INDEPENDENT_TEACHER_DENIED_AR,
     independent_workspace_id,
 )
@@ -318,7 +318,7 @@ async def test_auth_me_permissions_returns_independent_teacher_set(client):
 async def test_independent_teacher_slice_grants_assessments_edit():
     """Task #194 — spec §5.5: IT slice must include ASSESSMENTS_EDIT so an
     IT can fix a typo / due date / rubric on an assessment they created."""
-    from middleware.rbac import ROLE_PERMISSIONS, Permission
+    from src.core.middleware.rbac import ROLE_PERMISSIONS, Permission
     assert Permission.ASSESSMENTS_EDIT.value in ROLE_PERMISSIONS["independent_teacher"]
 
 

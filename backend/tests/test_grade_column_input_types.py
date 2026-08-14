@@ -22,7 +22,7 @@ import pytest
 
 from dependencies import db, create_access_token
 from engines.sql_utils import gd_find, gd_insert
-from routes.role_dashboards_mod import session_engine
+from src.modules.portals.controllers.role_dashboards_mod import session_engine
 
 
 def _auth(user_id: str, role: str, tenant_id: str) -> dict:

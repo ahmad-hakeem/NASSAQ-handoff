@@ -26,10 +26,10 @@ import uuid
 
 import pytest
 
-from auth_scope import independent_workspace_id
+from src.core.guards.tenant_guard import independent_workspace_id
 from dependencies import db, UserRole
 from engines.sql_utils import gd_find, gd_find_one, gd_insert
-from utils.it_parent_link import (
+from src.common.utils.it_parent_link import (
     _conservative_fill,
     dedupe_workspace_parent,
     link_workspace_parent_to_student,

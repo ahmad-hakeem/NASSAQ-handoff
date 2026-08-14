@@ -22,7 +22,7 @@ from engines.sql_utils import (
     gd_find, gd_find_one, gd_insert, gd_update_one,
 )
 
-from models.foundation import (
+from src.common.dto.foundation import (
     UserIdentity, UserRelationship, LinkedRole,
     UserRole, AccountStatus, RelationshipType, PermissionScope,
     AuditLog as AuditLogModel, AuditAction
@@ -60,7 +60,7 @@ class IdentityEngine:
         # value with a programming-error exception).
         avatar_url = kwargs.get("avatar_url")
         if isinstance(avatar_url, str) and avatar_url.startswith("data:image/"):
-            from utils.avatar_image import (
+            from src.common.utils.avatar_image import (
                 MAX_IMAGE_FIELD_CHARS,
                 AvatarImageError,
                 normalize_avatar_data_url_async,

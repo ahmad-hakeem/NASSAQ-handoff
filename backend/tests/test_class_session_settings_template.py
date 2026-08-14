@@ -25,7 +25,7 @@ from fastapi import HTTPException
 
 from dependencies import db, UserRole
 from engines.sql_utils import gd_insert, gd_find_one
-from routes.scheduling_smart_session_routes import (
+from src.modules.scheduling.controllers.scheduling_smart_session_routes import (
     get_class_session_settings,
     save_class_session_settings,
 )

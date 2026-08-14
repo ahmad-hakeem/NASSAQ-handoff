@@ -251,7 +251,7 @@ async def test_audience_filter_drops_principal_only_card_for_teacher():
     """Direct unit test of the backend authoritative audience filter, so a
     future builder that emits a principal-only card without the
     pre-skip safeguard still cannot leak it to a teacher payload."""
-    from routes.ai_routes_mod import (
+    from src.modules.ai.controllers.ai_routes_mod import (
         _filter_recommendations_for_role,
         _PRINCIPAL_AUDIENCE,
         _ALL_SCHOOL_AUDIENCE,

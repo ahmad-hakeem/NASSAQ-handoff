@@ -16,7 +16,7 @@ from unittest.mock import patch
 import jwt
 
 from dependencies import JWT_SECRET, JWT_ALGORITHM
-from utils.tokens import (
+from src.common.utils.tokens import (
     INVITATION_TOKEN_TTL,
     mint_invitation_token,
     token_hash,

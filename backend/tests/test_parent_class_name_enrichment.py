@@ -18,7 +18,7 @@ import pytest_asyncio
 
 from dependencies import db as _db
 from engines.sql_utils import gd_insert
-from utils.parent_children_resolution import enrich_children_with_class_names
+from src.common.utils.parent_children_resolution import enrich_children_with_class_names
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ async def test_unexpected_class_row_id_logged_and_skipped(caplog, monkeypatch):
 
     monkeypatch.setattr(sql_utils, "gd_find", _patched_gd_find)
 
-    import utils.parent_children_resolution as mod
+    import src.common.utils.parent_children_resolution as mod
     monkeypatch.setattr(mod, "gd_find", _patched_gd_find)
 
     children = [

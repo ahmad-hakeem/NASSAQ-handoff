@@ -28,7 +28,7 @@ load_dotenv(ROOT_DIR / '.env')
 # briefly installs the plain-text format and competes with the JSON handler.
 logger = logging.getLogger("nassaq")
 
-from repositories import Repos
+from src.core.database.repository import Repos
 db = Repos()
 
 JWT_SECRET = os.environ.get('JWT_SECRET_KEY', '')
@@ -57,7 +57,7 @@ from engines.smart_scheduling_engine import (
     GenerationResult
 )
 
-from db import get_pg_session, get_db, async_session_factory
+from src.core.database.db import get_pg_session, get_db, async_session_factory
 from sqlalchemy.ext.asyncio import AsyncSession
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 
@@ -766,7 +766,7 @@ def require_recent_mfa_403_if_independent_teacher(max_age_seconds: int = 300):
     ) -> dict:
         # Lazy import to avoid a module-load cycle with auth_scope, which
         # itself imports symbols from dependencies.
-        from auth_scope import is_independent_teacher
+        from src.core.guards.tenant_guard import is_independent_teacher
 
         if not is_independent_teacher(current_user):
             return current_user

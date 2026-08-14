@@ -16,7 +16,7 @@ import pytest
 from datetime import datetime, timezone
 
 from dependencies import db, UserRole, create_access_token
-from auth_scope import (
+from src.core.guards.tenant_guard import (
     independent_workspace_id,
     WORKSPACE_NOT_MATERIALISED_AR,
 )
@@ -230,7 +230,7 @@ async def test_bootstrap_rolls_back_on_mid_transaction_failure(client, monkeypat
     # Patch gd_insert to fail when the route inserts the `teachers` row —
     # this is mid-transaction (schools / settings / year / term already
     # inserted in the same session) so the rollback must wipe everything.
-    import routes.independent_teacher_bootstrap_routes as it_module
+    import src.modules.independent_teacher.controllers.independent_teacher_bootstrap_routes as it_module
 
     real_gd_insert = it_module.gd_insert
 

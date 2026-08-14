@@ -33,7 +33,7 @@ os.environ.setdefault(
     or "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 )
 
-from middleware.rate_limiter import rate_store  # noqa: E402
+from src.core.middleware.rate_limiter import rate_store  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

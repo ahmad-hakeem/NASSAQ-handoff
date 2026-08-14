@@ -11,18 +11,18 @@ from fastapi import FastAPI, Request
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from db import async_session_factory
+from src.core.database.db import async_session_factory
 from dependencies import db, JWT_SECRET, JWT_ALGORITHM
-from middleware.rate_limiter import RateLimitMiddleware
-from middleware.error_handler import ErrorHandlerMiddleware
-from middleware.request_tracing import RequestTracingMiddleware
-from middleware.metrics_middleware import prometheus_metrics_middleware
+from src.core.middleware.rate_limiter import RateLimitMiddleware
+from src.core.middleware.error_handler import ErrorHandlerMiddleware
+from src.core.middleware.request_tracing import RequestTracingMiddleware
+from src.core.middleware.metrics_middleware import prometheus_metrics_middleware
 
 logger = logging.getLogger("nassaq")
 
 
 def register_middleware(app: FastAPI):
-    from routes.health_routes import PROBE_PATHS as _PROBE_PATHS
+    from src.modules.infrastructure.controllers.health_routes import PROBE_PATHS as _PROBE_PATHS
 
     app.add_middleware(ErrorHandlerMiddleware)
     app.add_middleware(RateLimitMiddleware)
@@ -136,7 +136,7 @@ def register_middleware(app: FastAPI):
     @app.middleware("http")
     async def audit_log_middleware(request: Request, call_next):
         # B-26: imports moved to module top
-        from middleware.audit_middleware import _should_audit, _derive_action, _derive_severity, parse_device_info, _extract_real_ip, _sanitize_query_params as _sanitize_qp
+        from src.core.middleware.audit_middleware import _should_audit, _derive_action, _derive_severity, parse_device_info, _extract_real_ip, _sanitize_query_params as _sanitize_qp
 
         method = request.method
         path = request.url.path
@@ -214,7 +214,7 @@ def register_middleware(app: FastAPI):
 
             async def _persist_audit(doc):
                 try:
-                    from repositories import Repos
+                    from src.core.database.repository import Repos
                     async with async_session_factory() as audit_session:
                         audit_repos = Repos(audit_session)
                         await audit_repos.audit_logs.insert_one(doc)

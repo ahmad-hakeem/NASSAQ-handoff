@@ -13,14 +13,14 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import uuid
 
-from utils.school_type import normalize_school_type
+from src.common.utils.school_type import normalize_school_type
 
 from sqlalchemy import select, and_, func, desc as sa_desc
 
 from pg_models import School, AuditLog, Student, Teacher, Class
 from engines.sql_utils import model_to_dict, models_to_dicts, dict_to_model, apply_updates
 
-from models.foundation import (
+from src.common.dto.foundation import (
     TenantConfiguration, TenantStatus, TenantType,
     AuditAction,
 )

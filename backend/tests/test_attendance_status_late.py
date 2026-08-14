@@ -12,11 +12,11 @@ status alongside the existing present/absent/excused set:
 import pytest
 from pydantic import ValidationError
 
-from routes.teacher_attendance_routes import (
+from src.modules.attendance.controllers.teacher_attendance_routes import (
     TeacherAttendanceRecord,
     AttendanceStatusLiteral as TeacherStatusLiteral,
 )
-from routes.attendance_routes import (
+from src.modules.attendance.controllers.attendance_routes import (
     AttendanceRecord,
     AttendanceCreate,
     AttendanceStatusLiteral as StudentStatusLiteral,
