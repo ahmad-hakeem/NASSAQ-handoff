@@ -47,7 +47,8 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Set
 
-from dependencies import db
+from src.core.database.repository import Repos
+db = Repos()
 from engines.sql_utils import gd_find, gd_find_one
 
 

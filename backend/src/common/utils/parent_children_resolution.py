@@ -33,7 +33,8 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
-from dependencies import db
+from src.core.database.repository import Repos
+db = Repos()
 from engines.sql_utils import gd_find, gd_find_one
 
 

@@ -465,6 +465,42 @@ class SmartSchedulingEngine:
             # Try to find any academic year
             academic_year = await gd_find_one(self.session, "academic_years", {"school_id": school_id})
         if not academic_year:
+            # Auto-seed a default active academic year & term for this school
+            try:
+                now_dt = datetime.now(timezone.utc)
+                now_str = now_dt.isoformat()
+                ay_id = str(uuid.uuid4())
+                term_id = str(uuid.uuid4())
+                await gd_insert(self.session, "academic_years", {
+                    "id": ay_id,
+                    "school_id": school_id,
+                    "name": "1448 - 1449 هـ",
+                    "start_date": now_str,
+                    "end_date": (now_dt + timedelta(days=300)).isoformat(),
+                    "is_current": True,
+                    "status": "active",
+                    "created_at": now_str,
+                    "updated_at": now_str,
+                })
+                await gd_insert(self.session, "academic_terms", {
+                    "id": term_id,
+                    "school_id": school_id,
+                    "academic_year_id": ay_id,
+                    "name": "الفصل الأول",
+                    "term_number": 1,
+                    "start_date": now_str,
+                    "end_date": (now_dt + timedelta(days=300)).isoformat(),
+                    "is_current": True,
+                    "status": "active",
+                    "created_at": now_str,
+                    "updated_at": now_str,
+                })
+                academic_year = await gd_find_one(self.session, "academic_years", {"id": ay_id})
+                logger.info("Auto-seeded default academic year and term for school %s", school_id)
+            except Exception as _ay_err:
+                logger.warning("Failed to auto-seed academic year for school %s: %s", school_id, _ay_err)
+
+        if not academic_year:
             issues.append(ValidationIssue(
                 category="academic_year",
                 severity="critical",
@@ -3090,12 +3126,14 @@ class SmartSchedulingEngine:
             if canonical_class_links == 0:
                 msg_en = (
                     f"Refusing to generate: teacher_assignments has no class links despite "
-                    f"{teachers_check_count} teacher(s) and {classes_check_count} class(es)."
-                    + (f" Auto-seed error: {seed_error}" if seed_error else " Auto-seed produced no rows.")
+                    f"{teachers_check_count} teacher(s) and {classes_check_count} class(es). "
+                    f"Please ensure teachers have a specialization set or assign teachers to classes in Teacher Class Assignments."
+                    + (f" Auto-seed error: {seed_error}" if seed_error else "")
                 )
                 msg_ar = (
-                    f"تعذّر إنشاء الجدول: لا يوجد إسناد للفصول رغم وجود "
-                    f"{teachers_check_count} معلّم و{classes_check_count} فصل."
+                    f"تعذّر إنشاء الجدول: لا يوجد إسناد للمعلمين بالفصول رغم وجود "
+                    f"{teachers_check_count} معلّم و{classes_check_count} فصل. "
+                    f"يرجى تحديد تخصص/مادة المعلم أو إسناد المعلم للفصل من صفحة «إسناد المعلمين للفصول»."
                 )
                 logger.error("generate_timetable precondition_failed school=%s reason=%s", school_id, msg_en)
                 # نُنشئ سجلّ تشغيل فاشلاً صريحاً ليظهر للمدير في سجلّ المحاولات
