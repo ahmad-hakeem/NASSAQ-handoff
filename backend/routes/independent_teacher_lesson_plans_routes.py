@@ -81,7 +81,7 @@ _BURST_LONG_WINDOW = 60  # seconds
 _MSG_CLASS_NOT_FOUND = "الفصل غير موجود في مساحتك"
 _MSG_AI_PARSE = "تعذّر تحليل ردّ الذكاء الاصطناعي — حاول مرة أخرى"
 
-_MODEL = os.environ.get("AI_LESSON_PLAN_MODEL", "gpt-5-mini")
+_MODEL = os.environ.get("AI_LESSON_PLAN_MODEL") or os.environ.get("AI_MODEL") or os.environ.get("OPENAI_MODEL") or "gemini-3.5-flash"
 
 # Foreign-id keys that must be stripped from the LLM payload before we
 # return / persist it. Spec §6.4: the assistant content lives in JSONB

@@ -46,7 +46,7 @@ logger = logging.getLogger("nassaq.hakim")
 _client = None
 _client_failed = False
 
-DEFAULT_MODEL = "gpt-5-mini"
+DEFAULT_MODEL = os.environ.get("AI_MODEL") or os.environ.get("OPENAI_MODEL") or os.environ.get("AI_INTEGRATIONS_OPENAI_MODEL") or "gemini-3.5-flash"
 
 
 def _get_client():
