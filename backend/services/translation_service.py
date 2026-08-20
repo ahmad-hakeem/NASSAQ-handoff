@@ -52,10 +52,11 @@ async def translate_text(text: str, source_lang: str, target_lang: str) -> Optio
         lang_names = {"ar": "Arabic", "en": "English"}
         src = lang_names.get(source_lang, source_lang)
         tgt = lang_names.get(target_lang, target_lang)
+        model_name = os.environ.get("AI_MODEL") or os.environ.get("OPENAI_MODEL") or "gemini-3.5-flash"
         response = await ai_chat_completion(
             client,
             purpose=PURPOSE_INTERACTIVE,
-            model="gpt-5-mini",
+            model=model_name,
             messages=[
                 {
                     "role": "system",

@@ -63,6 +63,18 @@ _CONNECT_ENV = ("AI_CONNECT_TIMEOUT_SECONDS", 10.0)
 _MAX_RETRIES_ENV = ("AI_MAX_RETRIES", 1)
 _MAX_CONCURRENCY_ENV = ("AI_MAX_CONCURRENT_CALLS", 8)
 
+DEFAULT_MODEL = os.environ.get("AI_MODEL") or os.environ.get("OPENAI_MODEL") or os.environ.get("AI_INTEGRATIONS_OPENAI_MODEL") or "gemini-3.5-flash"
+
+
+def resolve_model(override: Optional[str] = None) -> str:
+    """Resolve effective AI model (env override or default)."""
+    env_model = os.environ.get("AI_MODEL") or os.environ.get("OPENAI_MODEL") or os.environ.get("AI_INTEGRATIONS_OPENAI_MODEL")
+    if env_model:
+        return env_model
+    if override and override != "gpt-5-mini":
+        return override
+    return DEFAULT_MODEL
+
 # Absolute sanity bounds — a misconfigured env var must never reintroduce an
 # effectively unbounded call.
 _MIN_TIMEOUT_S = 1.0
@@ -399,7 +411,8 @@ async def ai_chat_completion(
       :class:`AIProviderError` instead of leaking SDK internals.
     """
     timeout_s = resolve_timeout(purpose, timeout)
-    model = kwargs.get("model")
+    model = resolve_model(kwargs.get("model"))
+    kwargs["model"] = model
     call_client = client
     # Per-call timeout on the SDK itself, so the socket is actually aborted.
     with_options = getattr(client, "with_options", None)

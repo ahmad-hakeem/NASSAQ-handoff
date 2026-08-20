@@ -773,10 +773,11 @@ async def import_calendar_ai(
         if instructions:
             user_msg += f"\n\nAdditional instructions: {instructions}"
 
+        model_name = os.getenv("AI_MODEL") or os.getenv("OPENAI_MODEL") or "gemini-3.5-flash"
         response = await ai_chat_completion(
             client,
             purpose=PURPOSE_BACKGROUND,
-            model="gpt-5-mini",
+            model=model_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_msg}
