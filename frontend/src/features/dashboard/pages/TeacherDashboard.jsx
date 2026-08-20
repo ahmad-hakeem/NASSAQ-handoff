@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/shared/components/ui/avat
 import {
   BookOpen, Users, Calendar, ClipboardCheck, Bell,
   GraduationCap, Clock, CheckCircle2, AlertCircle,
-  CalendarDays, Globe, Sun, Moon
+  CalendarDays, Globe, Sun, Moon, FileText
 } from 'lucide-react';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { formatHijriOnly, formatGregorianArabic } from '@/shared/models/utils/hijriDate';

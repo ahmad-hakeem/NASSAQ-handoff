@@ -29,6 +29,7 @@ import {
   Timer,
   ChevronRight,
   ChevronLeft,
+  TrendingDown,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/shared/contexts/AuthContext';

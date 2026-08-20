@@ -18,7 +18,8 @@ import { maskInternalId } from '@/shared/models/utils/internalId';
 import {
   User, BookOpen, Edit, Save, X, Phone, Mail, Hash, Calendar,
   MapPin, Loader2, Award, Briefcase, Copy, Eye, EyeOff, History,
-  AlertTriangle, CheckCircle, FileText
+  AlertTriangle, CheckCircle, FileText, Key, Settings2, UserCheck,
+  UserX, Shield, Trash2, Clock
 } from 'lucide-react';
 
 export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh }) {

@@ -16,7 +16,7 @@ import {
   Play, RefreshCw, Loader2,
   Target, Award, BarChart3,
   CheckCircle2, Activity, Flame, Building2, MapPin, Star, Briefcase,
-  Bell, Check, CircleDot, Timer, Sparkles, Plus
+  Bell, Check, CircleDot, Timer, Sparkles, Plus, ChevronLeft
 } from 'lucide-react';
 import { formatHijriDate, formatFullDate } from '@/shared/models/utils/hijriDate';
 import ReactivationBanner from '@/features/teachers/components/teacher/ReactivationBanner';

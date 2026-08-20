@@ -21,7 +21,8 @@ import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
 import {
   User, BookOpen, FileText, Edit, Save, X, Shield, Key, UserX, UserCheck, Trash2, Download,
   Phone, Mail, Hash, Calendar, MapPin, AlertTriangle, CheckCircle, Loader2,
-  ArrowRightLeft, Activity, Sparkles, ChevronDown, ChevronUp, Stethoscope, Rocket, Brain
+  ArrowRightLeft, Activity, Sparkles, ChevronDown, ChevronUp, Stethoscope, Rocket, Brain,
+  Clock, Target, Zap
 } from 'lucide-react';
 
 const HAKIM_POSES = {
