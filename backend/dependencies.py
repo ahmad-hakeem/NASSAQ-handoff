@@ -22,6 +22,7 @@ import base64
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR.parent / '.env')
 
 # B-16: do not call logging.basicConfig here — server.py owns the structured
 # JSON formatter. Calling basicConfig before server.py imports this module

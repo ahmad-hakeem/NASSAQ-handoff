@@ -68,11 +68,19 @@ from typing import Literal
 
 router = APIRouter()
 
-AI_INTEGRATIONS_OPENAI_API_KEY = os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY")
-AI_INTEGRATIONS_OPENAI_BASE_URL = os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL")
+def _get_ai_key() -> str:
+    return os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY") or ""
+
+def _get_ai_base_url() -> str:
+    return os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL") or ""
+
+def _get_default_ai_model() -> str:
+    return os.environ.get("AI_MODEL") or os.environ.get("OPENAI_MODEL") or os.environ.get("AI_INTEGRATIONS_OPENAI_MODEL") or "gemini-3.5-flash"
+
+DEFAULT_AI_MODEL = _get_default_ai_model()
 
 def _ai_is_configured() -> bool:
-    return bool(AI_INTEGRATIONS_OPENAI_API_KEY and AI_INTEGRATIONS_OPENAI_BASE_URL)
+    return bool(_get_ai_key() and _get_ai_base_url())
 
 _openai_client = None
 def get_openai_client():
@@ -83,8 +91,8 @@ def get_openai_client():
         # Bounded transport timeout + capped retries (services/ai_client.py).
         _openai_client = build_openai_client(
             PURPOSE_INTERACTIVE,
-            api_key=AI_INTEGRATIONS_OPENAI_API_KEY,
-            base_url=AI_INTEGRATIONS_OPENAI_BASE_URL,
+            api_key=_get_ai_key(),
+            base_url=_get_ai_base_url(),
         )
     return _openai_client
 
@@ -399,7 +407,7 @@ async def hakim_contextual_message(req: HakimContextualRequest, current_user: di
         response = await ai_chat_completion(
             client,
             purpose=PURPOSE_INTERACTIVE,
-            model="gpt-5-mini",
+            model=DEFAULT_AI_MODEL,
             messages=[{"role": "system", "content": system_prompt}],
             max_completion_tokens=400,
             reasoning_effort="minimal",
@@ -942,7 +950,7 @@ async def chat_with_hakim(message: HakimChatRequest, current_user: dict = Depend
         response = await ai_chat_completion(
             client,
             purpose=PURPOSE_INTERACTIVE,
-            model="gpt-5-mini",
+            model=DEFAULT_AI_MODEL,
             messages=messages_list,
             max_completion_tokens=8192,
         )
@@ -1044,7 +1052,7 @@ async def chat_with_hakim_stream(
             stream = client.with_options(
                 timeout=_AI_STREAM_INACTIVITY_S
             ).chat.completions.create(
-                model="gpt-5-mini",
+                model=DEFAULT_AI_MODEL,
                 messages=messages_list,
                 max_completion_tokens=8192,
                 stream=True,
@@ -1102,7 +1110,7 @@ async def chat_with_hakim_stream(
         except Exception as e:
             report_ai_failure(
                 e, purpose=PURPOSE_STREAM, endpoint=_AI_STREAM_ENDPOINT,
-                model="gpt-5-mini",
+                model=DEFAULT_AI_MODEL,
                 elapsed_ms=int((_time.monotonic() - started) * 1000),
                 timeout_s=_AUTH_HAKIM_STREAM_MAX_DURATION_S,
             )
@@ -1498,7 +1506,7 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
             stream = client.with_options(
                 timeout=min(_AI_STREAM_INACTIVITY_S, _PUBLIC_HAKIM_STREAM_MAX_DURATION_S)
             ).chat.completions.create(
-                model="gpt-5-mini",
+                model=DEFAULT_AI_MODEL,
                 messages=messages_list,
                 max_completion_tokens=2048,
                 reasoning_effort="minimal",
@@ -1543,7 +1551,7 @@ async def public_hakim_chat_stream(req: PublicHakimChatRequest, request: Request
         except Exception as e:
             report_ai_failure(
                 e, purpose=PURPOSE_STREAM, endpoint=_AI_STREAM_ENDPOINT,
-                model="gpt-5-mini",
+                model=DEFAULT_AI_MODEL,
                 elapsed_ms=int((_time.monotonic() - started) * 1000),
                 timeout_s=_PUBLIC_HAKIM_STREAM_MAX_DURATION_S,
             )
@@ -1635,7 +1643,7 @@ async def public_hakim_chat(req: PublicHakimChatRequest, request: Request):
         response = await ai_chat_completion(
             client,
             purpose=PURPOSE_INTERACTIVE,
-            model="gpt-5-mini",
+            model=DEFAULT_AI_MODEL,
             messages=messages_list,
             max_completion_tokens=2048,
             reasoning_effort="minimal",
@@ -3430,7 +3438,7 @@ async def _call_openai_for_recommendations(prompt: str) -> str:
     resp = await ai_chat_completion(
         client,
         purpose=PURPOSE_BACKGROUND,
-        model=os.getenv("OPENAI_MODEL", "gpt-5-mini"),
+        model=os.getenv("OPENAI_MODEL", DEFAULT_AI_MODEL),
         messages=[
             {"role": "system", "content": "أنت مستشار تعليمي. أجب حصراً بمصفوفة JSON دون نص إضافي."},
             {"role": "user", "content": prompt},
@@ -3991,7 +3999,7 @@ async def hakim_student_ai_plans(
         response = await ai_chat_completion(
             client,
             purpose=PURPOSE_BACKGROUND,
-            model="gpt-5-mini",
+            model=DEFAULT_AI_MODEL,
             messages=[
                 {"role": "system", "content": "أنت مساعد تعليمي ذكي متخصص في إنشاء خطط تعليمية. أجب بـ JSON فقط."},
                 {"role": "user", "content": prompt}

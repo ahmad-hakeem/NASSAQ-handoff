@@ -174,10 +174,11 @@ Respond in this exact JSON format (Arabic text preferred):
   "impact_assessment": "impact assessment in Arabic"
 }}"""
 
+        model_name = os.environ.get("AI_MODEL") or os.environ.get("OPENAI_MODEL") or "gemini-3.5-flash"
         response = await ai_chat_completion(
             client,
             purpose=PURPOSE_BACKGROUND,
-            model="gpt-5-mini",
+            model=model_name,
             messages=[
                 {"role": "system", "content": "You are a product intelligence AI. Respond ONLY with valid JSON."},
                 {"role": "user", "content": prompt}
@@ -622,8 +623,9 @@ def _llm_generate_engineering_prompt(facts: dict) -> Optional[str]:
     client = build_openai_client(PURPOSE_BACKGROUND)
     if client is None:
         return None
+    model_name = os.environ.get("AI_MODEL") or os.environ.get("OPENAI_MODEL") or "gemini-3.5-flash"
     response = client.chat.completions.create(
-        model="gpt-5-mini",
+        model=model_name,
         messages=[
             {"role": "system", "content": _ENGINEERING_SYSTEM_PROMPT},
             {"role": "user", "content": _build_engineering_user_prompt(facts)},
@@ -2350,10 +2352,11 @@ async def hakim_generate_expected(
 
         context = "\n".join(context_parts)
 
+        model_name = os.environ.get("AI_MODEL") or os.environ.get("OPENAI_MODEL") or "gemini-3.5-flash"
         response = await ai_chat_completion(
             client,
             purpose=PURPOSE_INTERACTIVE,
-            model="gpt-5-mini",
+            model=model_name,
             messages=[
                 {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق التعليمي.
 مهمتك: بناءً على وصف الوضع الحالي والمشكلة، اكتب وصفاً واضحاً ودقيقاً للوضع المتوقع (النتيجة المرجوة).
@@ -2420,10 +2423,11 @@ async def hakim_generate_title(
 
         context = "\n".join(context_parts)
 
+        model_name = os.environ.get("AI_MODEL") or os.environ.get("OPENAI_MODEL") or "gemini-3.5-flash"
         response = await ai_chat_completion(
             client,
             purpose=PURPOSE_INTERACTIVE,
-            model="gpt-5-mini",
+            model=model_name,
             messages=[
                 {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق التعليمي.
 مهمتك: بناءً على تفاصيل التحدي، أنشئ 3 عناوين احترافية مختلفة.
@@ -2488,10 +2492,11 @@ async def hakim_improve_text(
         }
         field_instruction = field_prompts.get(field_type, "تحسين النص ليكون أوضح وأكثر تحديداً")
 
+        model_name = os.environ.get("AI_MODEL") or os.environ.get("OPENAI_MODEL") or "gemini-3.5-flash"
         response = await ai_chat_completion(
             client,
             purpose=PURPOSE_INTERACTIVE,
-            model="gpt-5-mini",
+            model=model_name,
             messages=[
                 {"role": "system", "content": f"""أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق. مهمتك: {field_instruction}.
 
