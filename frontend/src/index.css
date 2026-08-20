@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&family=Tajawal:wght@300;400;500;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800;900&family=Tajawal:wght@300;400;500;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -91,36 +91,72 @@
     
     body {
         @apply bg-background text-foreground font-tajawal antialiased;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
     }
     
     h1, h2, h3, h4, h5, h6 {
         @apply font-cairo font-bold;
+        text-rendering: optimizeLegibility;
     }
     
     /* RTL/LTR Support - Global Rules */
     html[dir="rtl"],
     html[data-direction="rtl"],
+    body[dir="rtl"],
     [dir="rtl"] {
-        text-align: right;
         direction: rtl;
+        text-align: right;
     }
     
     html[dir="ltr"],
     html[data-direction="ltr"],
+    body[dir="ltr"],
     [dir="ltr"] {
-        text-align: left;
         direction: ltr;
+        text-align: left;
     }
     
-    /* Ensure all elements inherit direction */
-    html[dir="rtl"] *,
-    [dir="rtl"] * {
-        direction: inherit;
+    /* Bidirectional Isolation & Text Flow Utilities */
+    bdi,
+    [dir="auto"],
+    .bidi-isolate,
+    .bidi-auto {
+        unicode-bidi: isolate;
     }
     
-    html[dir="ltr"] *,
-    [dir="ltr"] * {
-        direction: inherit;
+    [dir="auto"] {
+        text-align: start;
+    }
+    
+    .bidi-plaintext {
+        unicode-bidi: plaintext;
+        text-align: start;
+    }
+    
+    .bidi-embed-ltr {
+        direction: ltr;
+        unicode-bidi: isolate;
+    }
+    
+    .bidi-embed-rtl {
+        direction: rtl;
+        unicode-bidi: isolate;
+    }
+    
+    /* Ensure numbers and codes don't invert in mixed text */
+    .tabular-nums,
+    .font-mono {
+        direction: ltr;
+        unicode-bidi: isolate;
+        font-variant-numeric: tabular-nums;
+    }
+    
+    input[dir="auto"],
+    textarea[dir="auto"] {
+        unicode-bidi: plaintext;
+        text-align: start;
     }
 }
 

@@ -8,9 +8,10 @@ module.exports = {
     theme: {
         extend: {
             fontFamily: {
-                cairo: ['Cairo', 'sans-serif'],
-                tajawal: ['Tajawal', 'sans-serif'],
-                mono: ['IBM Plex Mono', 'monospace'],
+                cairo: ['Cairo', 'Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                tajawal: ['Tajawal', 'Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                sans: ['Tajawal', 'Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
             },
             borderRadius: {
                 lg: 'var(--radius)',

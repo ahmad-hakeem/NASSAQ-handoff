@@ -617,22 +617,26 @@ export default function TeacherMainDashboard() {
                       {/* Prefer the profile-configured title (اللقب) over the
                           hardcoded "أستاذ" prefix so a saved title propagates
                           to the desktop dashboard too (mirrors TeacherHomePage). */}
-                      {user?.title && user.title !== 'none'
-                        ? `${user.title} ${user?.full_name || t('teacher')}`
-                        : t('welcomeTeacher').replace('{0}', user?.full_name || t('teacher'))}
+                      <bdi dir="auto">
+                        {user?.title && user.title !== 'none'
+                          ? `${user.title} ${user?.full_name || t('teacher')}`
+                          : t('welcomeTeacher').replace('{0}', user?.full_name || t('teacher'))}
+                      </bdi>
                     </h2>
                     <p className="text-brand-turquoise font-bold font-cairo text-sm mt-0.5 truncate">
-                      {teacherSubject ? t('teacherOf').replace('{0}', teacherSubject) : t('teacher')}
+                      <bdi dir="auto">
+                        {teacherSubject ? t('teacherOf').replace('{0}', teacherSubject) : t('teacher')}
+                      </bdi>
                     </p>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <div className="flex items-center gap-1.5 text-white/40 text-xs font-tajawal bg-white/5 rounded-lg px-2.5 py-1">
                         <School className="h-3.5 w-3.5 flex-shrink-0" />
-                        <span className="truncate max-w-[200px]">{schoolName || (t('school'))}</span>
+                        <bdi dir="auto" className="truncate max-w-[200px]">{schoolName || (t('school'))}</bdi>
                       </div>
                       {currentLesson && (
                         <div className="flex items-center gap-1.5 text-brand-turquoise/80 text-xs font-tajawal bg-brand-turquoise/10 rounded-lg px-2.5 py-1">
                           <BookOpen className="h-3.5 w-3.5 flex-shrink-0" />
-                          <span className="truncate max-w-[160px]">{currentLesson.subject}</span>
+                          <bdi dir="auto" className="truncate max-w-[160px]">{currentLesson.subject}</bdi>
                         </div>
                       )}
                     </div>
@@ -768,11 +772,11 @@ export default function TeacherMainDashboard() {
                       {t('currentClassNow')}
                     </Badge>
                     <div className="flex md:flex-col items-baseline md:items-end gap-2 md:gap-0">
-                      <span className="font-mono font-bold text-2xl md:text-3xl text-brand-turquoise tabular-nums leading-none">
+                      <span className="font-mono font-bold text-2xl md:text-3xl text-brand-turquoise tabular-nums leading-none" dir="ltr">
                         {currentLesson.time}
                       </span>
                       {currentLesson.end_time && (
-                        <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                        <span className="font-mono text-xs text-muted-foreground tabular-nums" dir="ltr">
                           — {currentLesson.end_time}
                         </span>
                       )}
@@ -782,21 +786,21 @@ export default function TeacherMainDashboard() {
                   {/* Center: Title + meta */}
                   <div className="min-w-0 flex-1">
                     <h3 className="font-cairo font-bold text-2xl md:text-3xl text-foreground mb-1.5 truncate">
-                      {currentLesson.subject}
+                      <bdi dir="auto">{currentLesson.subject}</bdi>
                     </h3>
                     {currentLesson.lesson_topic && (
                       <p className="text-sm text-foreground/70 font-tajawal mb-2 line-clamp-1">
                         <span className="text-muted-foreground">{t('lessonTopic')}:</span>{' '}
-                        <span className="font-medium">{currentLesson.lesson_topic}</span>
+                        <span className="font-medium"><bdi dir="auto">{currentLesson.lesson_topic}</bdi></span>
                       </p>
                     )}
                     <div className="flex items-center gap-3 text-sm text-muted-foreground font-tajawal flex-wrap">
                       <span className="flex items-center gap-1.5">
                         <BookOpen className="h-4 w-4 flex-shrink-0 text-brand-turquoise/70" />
-                        {currentLesson.class}
+                        <bdi dir="auto">{currentLesson.class}</bdi>
                       </span>
                       <span className="text-border">•</span>
-                      <span>{t('periodNumber')} {currentLesson.period}</span>
+                      <span className="tabular-nums">{t('periodNumber')} {currentLesson.period}</span>
                     </div>
                   </div>
 
@@ -848,15 +852,15 @@ export default function TeacherMainDashboard() {
 
                   <div className="min-w-0 flex-1">
                     <h4 className="font-cairo font-bold text-base md:text-lg text-foreground truncate">
-                      {nextLesson.subject}
+                      <bdi dir="auto">{nextLesson.subject}</bdi>
                     </h4>
                     <div className="flex items-center gap-3 text-xs md:text-sm text-muted-foreground font-tajawal mt-0.5 flex-wrap">
                       <span className="flex items-center gap-1.5">
                         <BookOpen className="h-3.5 w-3.5 flex-shrink-0" />
-                        {nextLesson.class}
+                        <bdi dir="auto">{nextLesson.class}</bdi>
                       </span>
                       <span className="text-border">•</span>
-                      <span>{t('periodNumber')} {nextLesson.period}</span>
+                      <span className="tabular-nums">{t('periodNumber')} {nextLesson.period}</span>
                     </div>
                   </div>
 
