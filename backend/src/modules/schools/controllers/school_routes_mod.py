@@ -244,7 +244,7 @@ async def create_school(
     # workspaces, so every school created here is a real school. A failure
     # rolls back the whole creation (atomic) rather than leaving a school
     # with no subjects; the Alembic backfill migration is the safety net.
-    from constants.default_subjects import build_default_subject_docs
+    from src.common.constants.default_subjects import build_default_subject_docs
     await gd_insert_many(
         db.session, "subjects", build_default_subject_docs(school_id, created_at)
     )
