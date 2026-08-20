@@ -266,7 +266,7 @@ async def notify_coverage_candidate(
             priority=NotificationPriority.HIGH.value,
             entity_type="timetable_session",
             entity_id=str(body.original_session_id),
-            action_url="/schedule",
+            action_url=f"/teacher/schedule?day={day_key}&period={period}",
             sender_id=(current_user or {}).get("id"),
             metadata={
                 "kind": "coverage_assignment_notice",

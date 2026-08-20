@@ -142,6 +142,7 @@ async def test_coverage_notification_includes_resolved_class_name(
     assert meta.get("class_name") == "الصف السابع"
     assert meta.get("class_id") == class_id
     assert meta.get("subject_name") == "الرياضيات"
+    assert notif.get("action_url") == "/teacher/schedule?day=wednesday&period=1"
 
 
 async def test_coverage_notification_does_not_disclose_foreign_class(

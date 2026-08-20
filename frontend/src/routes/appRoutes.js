@@ -188,6 +188,30 @@ const SCHOOL_TEACHING_ROLES = [...SCHOOL_ROLES, ...TEACHER_ROLES];
 const ALL_AUTHENTICATED_ROLES = ['platform_admin', ...SCHOOL_ROLES, ...TEACHER_ROLES, 'student', 'parent'];
 const PRODUCT_HUB_ROLES = ['platform_admin', 'platform_operations_manager', 'school_principal', 'school_admin', 'teacher'];
 
+// Role-aware generic /schedule router: routes authenticated users to their
+// role-specific schedule page while preserving any query parameters (e.g. ?day=...&period=...)
+// and hash fragments.
+const RoleScheduleRedirect = () => {
+  const { getEffectiveRole, user } = useAuth();
+  const location = useLocation();
+  const role = (typeof getEffectiveRole === 'function' ? getEffectiveRole() : null) || user?.role;
+
+  if (TEACHER_ROLES.includes(role)) {
+    return <Navigate to={`/teacher/schedule${location.search}${location.hash}`} replace />;
+  }
+  if (SCHOOL_ROLES.includes(role) || role === 'platform_admin') {
+    return <Navigate to={`/principal/schedule${location.search}${location.hash}`} replace />;
+  }
+  if (role === 'student') {
+    return <Navigate to={`/student/schedule${location.search}${location.hash}`} replace />;
+  }
+  if (role === 'parent') {
+    const searchPrefix = location.search ? (location.search.startsWith('?') ? `&${location.search.slice(1)}` : `&${location.search}`) : '';
+    return <Navigate to={`/parent/children?tab=schedule${searchPrefix}${location.hash}`} replace />;
+  }
+  return <Navigate to={`/login${location.search}${location.hash}`} replace />;
+};
+
 // Lightweight RTL-aware fallback shown while a route chunk is loading.
 function RouteFallback() {
   return (
@@ -833,6 +857,10 @@ export default function AppRoutes() {
         <Route path="/account/settings" element={
           <ProtectedRoute allowedRoles={ALL_AUTHENTICATED_ROLES}><AccountSettingsPage /></ProtectedRoute>
         } />
+
+        {/* Role-aware Schedule / Timetable shortcuts & notification targets */}
+        <Route path="/schedule" element={<RoleScheduleRedirect />} />
+        <Route path="/timetable" element={<RoleScheduleRedirect />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

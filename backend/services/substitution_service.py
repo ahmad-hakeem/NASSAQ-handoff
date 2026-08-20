@@ -509,7 +509,7 @@ async def assign_substitute(
                 priority=NotificationPriority.HIGH.value,
                 entity_type="substitute_assignment",
                 entity_id=sub_id,
-                action_url=f"/schedule",
+                action_url=f"/teacher/schedule?day={day}&period={period}",
                 metadata={
                     "absence_date": absence_date,
                     "day_of_week": day,
@@ -962,7 +962,7 @@ async def assign_bulk_substitutes(
                 priority=NotificationPriority.HIGH.value,
                 entity_type="substitute_assignment_batch" if count > 1 else "substitute_assignment",
                 entity_id=batch_id if count > 1 else docs[0].get("id"),
-                action_url="/schedule",
+                action_url=f"/teacher/schedule?day={day_key}" + (f"&period={ctxs[0]['period']}" if count == 1 else ""),
                 metadata=batch_metadata,
             )
             notification_id = notif.get("id")

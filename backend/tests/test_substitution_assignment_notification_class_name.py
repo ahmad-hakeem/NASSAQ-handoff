@@ -140,6 +140,7 @@ async def test_substitution_notification_includes_resolved_class_name(
     assert meta.get("class_id") == class_id
     assert meta.get("subject_name") == "الرياضيات"
     assert meta.get("period_time") == "08:00 - 08:45"
+    assert notif.get("action_url") == "/teacher/schedule?day=wednesday&period=1"
 
 
 async def test_substitution_notification_does_not_disclose_foreign_class(
@@ -225,3 +226,4 @@ async def test_bulk_substitution_notification_includes_resolved_class_name(
     assert meta.get("class_name") == "الصف الثامن"
     assert meta.get("class_id") == class_id
     assert meta.get("subject_name") == "العلوم"
+    assert notif.get("action_url") == "/teacher/schedule?day=wednesday&period=1"

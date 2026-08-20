@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { Card, CardContent } from '@/shared/components/ui/card';
@@ -81,11 +81,17 @@ export default function TeacherSchedulePage() {
   const { t } = useTranslation();
   const { user, api, isRTL } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const rawDayParam = searchParams.get('day');
+  const rawPeriodParam = searchParams.get('period');
+  const dayParam = rawDayParam && DAYS.some(d => d.key === rawDayParam.toLowerCase()) ? rawDayParam.toLowerCase() : null;
+  const periodParam = rawPeriodParam && !isNaN(Number(rawPeriodParam)) ? Number(rawPeriodParam) : null;
+
   const [loading, setLoading] = useState(true);
   const [schedule, setSchedule] = useState([]);
   const [timeSlots, setTimeSlots] = useState([]);
   const [view, setView] = useState('weekly');
-  const [selectedDay, setSelectedDay] = useState(getTodayDayKey() || 'sunday');
+  const [selectedDay, setSelectedDay] = useState(() => dayParam || getTodayDayKey() || 'sunday');
   const [selectedDate, setSelectedDate] = useState('');
   const [showDetail, setShowDetail] = useState(false);
   const [detailSession, setDetailSession] = useState(null);
@@ -162,6 +168,24 @@ export default function TeacherSchedulePage() {
     window.addEventListener('nassaq:schedule_published', onPublished);
     return () => window.removeEventListener('nassaq:schedule_published', onPublished);
   }, [fetchSchedule]);
+
+  useEffect(() => {
+    if (dayParam) {
+      setSelectedDay(dayParam);
+    }
+  }, [dayParam]);
+
+  useEffect(() => {
+    if (!loading && dayParam && periodParam) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`highlighted-slot-${dayParam}-${periodParam}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, dayParam, periodParam]);
 
   const getSessionsForCell = (day, slotId, slotNumber, slotStartTime) => {
     return schedule.filter(s => {
@@ -756,11 +780,31 @@ export default function TeacherSchedulePage() {
                         </td>
                         {(view === 'weekly' ? DAYS : [DAYS.find(d => d.key === selectedDay)]).map(day => {
                           const sessions = getSessionsForCell(day.key, slot.id, slot.slot_number || slot.period_number, slot.start_time);
-                          const slotPeriodKey = `${day.key}_${standbyRowPeriod(slot, idx, standbySlotSpace)}`;
+                          const rowPeriod = slot.slot_number || slot.period_number || (idx + 1);
+                          const standbyPeriod = standbyRowPeriod(slot, idx, standbySlotSpace);
+                          const slotPeriodKey = `${day.key}_${standbyPeriod}`;
                           const standbyEntry = showStandby ? standbyByKey.get(slotPeriodKey) : null;
                           const hasContent = sessions.length > 0 || standbyEntry;
+                          const isHighlightedSlot = Boolean(
+                            dayParam &&
+                            dayParam === day.key &&
+                            periodParam &&
+                            (rowPeriod === periodParam || standbyPeriod === periodParam || sessions.some(s => (s.slot_number || s.period_number) === periodParam))
+                          );
                           return (
-                            <td key={`${day.key}-${slot.id}`} className={`p-2 border-b border-s min-h-[80px] ${getDayTintClass(day.key)} ${day.key === todayKey ? 'ring-1 ring-inset ring-brand-turquoise/30' : ''}`}>
+                            <td
+                              key={`${day.key}-${slot.id}`}
+                              id={isHighlightedSlot ? `highlighted-slot-${day.key}-${periodParam}` : undefined}
+                              data-highlighted={isHighlightedSlot ? 'true' : undefined}
+                              className={`p-2 border-b border-s min-h-[80px] ${getDayTintClass(day.key)} ${day.key === todayKey ? 'ring-1 ring-inset ring-brand-turquoise/30' : ''} ${isHighlightedSlot ? 'ring-2 ring-brand-turquoise ring-inset bg-brand-turquoise/10 dark:bg-brand-turquoise/20' : ''}`}
+                            >
+                              {isHighlightedSlot && (
+                                <div className="mb-1">
+                                  <Badge className="bg-brand-turquoise text-white text-[10px] px-1.5 py-0 shadow-sm animate-pulse">
+                                    {isRTL ? 'حصة مكلّفة' : 'Assigned slot'}
+                                  </Badge>
+                                </div>
+                              )}
                               {hasContent ? (
                                 <div className="space-y-1">
                                   {sessions.map(session => {
