@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation, useTheme } from '@/shared/contexts/ThemeContext';
 import { useAuth } from '@/shared/contexts/AuthContext';
