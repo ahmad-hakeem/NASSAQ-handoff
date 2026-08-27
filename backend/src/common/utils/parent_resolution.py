@@ -58,8 +58,8 @@ PARENT_NOT_FOUND_AR = "لا يوجد ولي أمر مرتبط بهذا الطا�
 async def _validate_parent_user(
     candidate_user_id: Optional[str], tenant_id: str,
 ) -> Optional[str]:
-    """Return ``candidate_user_id`` only when it resolves to a tenant-local
-    ``users`` row with ``role == 'parent'``. Otherwise ``None``."""
+    """Return ``candidate_user_id`` only when it resolves to an active
+    ``users`` row with ``role == 'parent'`` associated with ``tenant_id``."""
     if not candidate_user_id:
         return None
     row = await gd_find_one(
@@ -67,24 +67,27 @@ async def _validate_parent_user(
         {
             "id": candidate_user_id,
             "role": "parent",
-            "tenant_id": tenant_id,
         },
     )
     if row and row.get("id"):
-        return row["id"]
+        # Match tenant_id, primary_tenant_id, or None (global/multi-school parent)
+        u_tenant = row.get("tenant_id") or row.get("primary_tenant_id")
+        if not u_tenant or u_tenant == tenant_id:
+            return row["id"]
+        # Also check if this parent has a guardian_links or parent link in this tenant
+        gl = await gd_find_one(
+            db.session, "guardian_links",
+            {"parent_user_id": candidate_user_id, "tenant_id": tenant_id}
+        )
+        if gl:
+            return row["id"]
     return None
 
 
 async def _bridge_parent_row_to_user_id(
     parent_id: Optional[str], tenant_id: str,
 ) -> Optional[str]:
-    """Bridge ``parents.id`` → ``users.id`` via the parents row's email.
-
-    Requires the ``parents`` row to be scoped to ``tenant_id`` and its
-    ``email`` to resolve to an active ``users`` row with
-    ``role == 'parent'`` and the same ``tenant_id``. No fallback to
-    phone or name (threat-model: those are weak linkage columns).
-    """
+    """Bridge ``parents.id`` → ``users.id`` via the parents row's email, user_id, or phone."""
     if not parent_id:
         return None
     parent_row = await gd_find_one(
@@ -92,74 +95,149 @@ async def _bridge_parent_row_to_user_id(
         {"id": parent_id, "school_id": tenant_id},
     )
     if not parent_row:
+        parent_row = await gd_find_one(
+            db.session, "parents",
+            {"id": parent_id},
+        )
+    if not parent_row:
         return None
-    email = parent_row.get("email")
-    if not email:
-        return None
-    user_row = await gd_find_one(
+
+    # 1. Direct user_id on parent_row
+    if parent_row.get("user_id"):
+        uid = await _validate_parent_user(parent_row["user_id"], tenant_id)
+        if uid:
+            return uid
+
+    # 2. Check parent_id on users table
+    u_by_pid = await gd_find_one(
         db.session, "users",
-        {"email": email, "role": "parent", "tenant_id": tenant_id},
+        {"parent_id": parent_id, "role": "parent"},
     )
-    if user_row and user_row.get("id"):
-        return user_row["id"]
+    if u_by_pid and u_by_pid.get("id"):
+        uid = await _validate_parent_user(u_by_pid["id"], tenant_id)
+        if uid:
+            return uid
+
+    # 3. Via email
+    email = parent_row.get("email")
+    if email:
+        user_row = await gd_find_one(
+            db.session, "users",
+            {"email": email, "role": "parent"},
+        )
+        if user_row and user_row.get("id"):
+            uid = await _validate_parent_user(user_row["id"], tenant_id)
+            if uid:
+                return uid
+
+    # 4. Via phone
+    phone = parent_row.get("phone")
+    if phone:
+        user_row = await gd_find_one(
+            db.session, "users",
+            {"phone": phone, "role": "parent"},
+        )
+        if user_row and user_row.get("id"):
+            uid = await _validate_parent_user(user_row["id"], tenant_id)
+            if uid:
+                return uid
+
     return None
 
 
 async def resolve_student_parent_user_id(
     student_id: str, tenant_id: str,
 ) -> Optional[str]:
-    """Resolve the parent ``users.id`` for ``student_id`` in ``tenant_id``.
-
-    See module docstring for the resolution order. Returns ``None`` when
-    no canonical parent user exists in the same tenant.
-    """
+    """Resolve the parent ``users.id`` for ``student_id`` in ``tenant_id``."""
     if not student_id or not tenant_id:
         return None
 
-    link = await gd_find_one(
+    # 1. Check guardian_links table
+    links = await gd_find(
         db.session, "guardian_links",
         {
             "student_id": student_id,
             "tenant_id": tenant_id,
-            "is_active": True,
         },
     )
-    if link:
-        # 1. Canonical ``parent_user_id`` column.
-        resolved = await _validate_parent_user(
-            link.get("parent_user_id"), tenant_id,
+    if not links:
+        links = await gd_find(
+            db.session, "guardian_links",
+            {
+                "student_id": student_id,
+            },
         )
+    for link in links:
+        resolved = await _validate_parent_user(link.get("parent_user_id"), tenant_id)
         if resolved:
             return resolved
         ref = link.get("parent_ref")
-        # 2. ``parent_ref`` written as the users.id (student-creation flow).
         resolved = await _validate_parent_user(ref, tenant_id)
         if resolved:
             return resolved
-        # 3. ``parent_ref`` written as a parents.id (relationship flow) —
-        #    bridge via parents.email → users.email.
         resolved = await _bridge_parent_row_to_user_id(ref, tenant_id)
         if resolved:
             return resolved
 
-    # 4. ``students.parent_id`` (FK to parents.id) → email bridge. This
-    #    is the path that covers the Teacher Communication Center
-    #    "Homework Reminder" false-positive — every student created via
-    #    the principal flow has students.parent_id set to a parents.id.
+    # 2. Check students table
     student = await gd_find_one(
         db.session, "students",
-        {"id": student_id, "school_id": tenant_id, "is_active": True},
+        {"id": student_id, "school_id": tenant_id},
     )
-    if student and student.get("parent_id"):
-        parent_id = student["parent_id"]
-        resolved = await _bridge_parent_row_to_user_id(parent_id, tenant_id)
-        if resolved:
-            return resolved
-        # Some legacy seed/test fixtures set students.parent_id directly
-        # to a users.id. Strict role + tenant validation.
-        resolved = await _validate_parent_user(parent_id, tenant_id)
-        if resolved:
-            return resolved
+    if not student:
+        student = await gd_find_one(
+            db.session, "students",
+            {"id": student_id},
+        )
+    if student:
+        if student.get("parent_user_id"):
+            resolved = await _validate_parent_user(student["parent_user_id"], tenant_id)
+            if resolved:
+                return resolved
+
+        if student.get("parent_id"):
+            parent_id = student["parent_id"]
+            resolved = await _validate_parent_user(parent_id, tenant_id)
+            if resolved:
+                return resolved
+            resolved = await _bridge_parent_row_to_user_id(parent_id, tenant_id)
+            if resolved:
+                return resolved
+
+        if student.get("parent_email"):
+            user_row = await gd_find_one(
+                db.session, "users",
+                {"email": student["parent_email"], "role": "parent"},
+            )
+            if user_row and user_row.get("id"):
+                resolved = await _validate_parent_user(user_row["id"], tenant_id)
+                if resolved:
+                    return resolved
+
+        if student.get("parent_phone"):
+            user_row = await gd_find_one(
+                db.session, "users",
+                {"phone": student["parent_phone"], "role": "parent"},
+            )
+            if user_row and user_row.get("id"):
+                resolved = await _validate_parent_user(user_row["id"], tenant_id)
+                if resolved:
+                    return resolved
+
+    # 3. Check parents table by student_ids / student_id
+    parents_in_school = await gd_find(
+        db.session, "parents",
+        {"school_id": tenant_id},
+    )
+    if not parents_in_school:
+        parents_in_school = await gd_find(db.session, "parents", {})
+    for p in parents_in_school:
+        s_ids = p.get("student_ids") or []
+        if student_id in s_ids or p.get("student_id") == student_id:
+            resolved = await _bridge_parent_row_to_user_id(p.get("id"), tenant_id)
+            if resolved:
+                return resolved
+
     return None
 
 

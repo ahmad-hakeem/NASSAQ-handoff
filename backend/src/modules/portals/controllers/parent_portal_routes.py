@@ -3709,35 +3709,42 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PARENT]))
     ):
         """رسائل ولي الأمر"""
-        parent_id = current_user.get("id")
+        parent_user_id = current_user.get("id")
+        parent_record_id = current_user.get("parent_id")
         school_id = current_user.get("tenant_id")
+
+        p_ids = [parent_user_id]
+        if parent_record_id and parent_record_id != parent_user_id:
+            p_ids.append(parent_record_id)
 
         msg_query = {
             "$or": [
-                {"sender_id": parent_id},
-                {"receiver_id": parent_id},
-                {"recipient_ids": parent_id}
+                {"sender_id": {"$in": p_ids}},
+                {"receiver_id": {"$in": p_ids}},
+                {"recipient_id": {"$in": p_ids}},
+                {"recipient_ids": {"$in": p_ids}},
+                {"user_id": {"$in": p_ids}},
             ]
         }
         if school_id:
             msg_query["school_id"] = school_id
-        messages = await gd_find(db.session, "messages", msg_query, order_by="created_at", desc_order=True, limit=50)
+        messages = await gd_find(db.session, "messages", msg_query, order_by="created_at", desc_order=True, limit=100)
 
         return {
             "messages": [
                 {
                     "id": m.get("id"),
-                    "subject": m.get("subject"),
-                    "content": m.get("content") or m.get("body", ""),
+                    "subject": m.get("subject") or m.get("title", ""),
+                    "content": m.get("content") or m.get("body") or m.get("message", ""),
                     "sender_id": m.get("sender_id"),
-                    "sender_name": m.get("sender_name"),
+                    "sender_name": m.get("sender_name") or "إدارة المدرسة",
                     "sender_type": m.get("sender_type"),
-                    "receiver_id": m.get("receiver_id"),
+                    "receiver_id": m.get("receiver_id") or m.get("recipient_id"),
                     "receiver_name": m.get("receiver_name"),
                     "student_name": m.get("student_name"),
-                    "type": m.get("type"),
-                    "is_sent": m.get("sender_id") == parent_id,
-                    "read_status": m.get("read_status", False),
+                    "type": m.get("type", "note"),
+                    "is_sent": m.get("sender_id") in p_ids,
+                    "read_status": m.get("read_status", False) or m.get("is_read", False),
                     "created_at": m.get("created_at")
                 }
                 for m in messages

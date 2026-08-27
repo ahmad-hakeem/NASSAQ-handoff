@@ -3352,18 +3352,95 @@ async def post_intervention(
         message = (d.get("message") or "").strip()
         if not message:
             raise HTTPException(400, "نص الرسالة مطلوب")
+
+        student_name = student.get("name") or student.get("full_name") or ""
+        sender_name = current_user.get("full_name") or "إدارة المدرسة"
+        msg_title = "متابعة أداء الطالب"
+        now_iso = now.isoformat()
+        msg_id = str(uuid.uuid4())
+
         from src.modules.notifications.controllers.notification_routes_mod import create_notification_internal
         await create_notification_internal(
-            title="متابعة أداء الطالب",
+            title=msg_title,
             message=message,
             recipient_id=parent_user_id,
-            notification_type=d.get("issue_type", "general"),
+            notification_type="announcement",
             priority="high",
             sender_id=current_user.get("id"),
             related_entity="student",
             related_entity_id=body.student_id,
             school_id=school_id,
+            student_id=body.student_id,
+            category="parent_message",
+            action_url=f"/parent/children?child_id={body.student_id}",
         )
+
+        # Create record in messages table so it appears in the Parent's Message Inbox (/parent-portal/messages)
+        msg_doc = {
+            "id": msg_id,
+            "school_id": school_id,
+            "sender_id": current_user.get("id"),
+            "sender_name": sender_name,
+            "sender_type": "school_admin",
+            "receiver_id": parent_user_id,
+            "recipient_id": parent_user_id,
+            "recipient_ids": [parent_user_id],
+            "subject": f"متابعة أداء الطالب: {student_name}" if student_name else msg_title,
+            "title": msg_title,
+            "content": message,
+            "body": message,
+            "student_id": body.student_id,
+            "student_name": student_name,
+            "type": d.get("issue_type", "note"),
+            "status": "sent",
+            "is_sent": True,
+            "read_status": False,
+            "is_read": False,
+            "created_at": now_iso,
+            "sent_at": now_iso,
+        }
+        await gd_insert(db.session, "messages", msg_doc)
+
+        # Create intervention record
+        intv_doc = {
+            "id": intervention_id,
+            "school_id": school_id,
+            "student_id": body.student_id,
+            "type": "notify_parent",
+            "status": "completed",
+            "title": "إرسال رسالة لولي الأمر",
+            "description": message,
+            "data": {
+                "issue_type": d.get("issue_type", "general"),
+                "message": message,
+                "parent_user_id": parent_user_id,
+                "message_id": msg_id,
+            },
+            "created_by": current_user.get("id"),
+            "created_at": now,
+            "updated_at": now,
+        }
+        await gd_insert(db.session, "ai_interventions", intv_doc)
+
+        try:
+            from engines.portfolio_evidence_engine import PortfolioEvidenceEngine
+            _pe = PortfolioEvidenceEngine(db)
+            await _pe.capture_evidence(
+                teacher_id=current_user["id"],
+                school_id=school_id or "",
+                evidence_type="parent_communication_log",
+                title_ar=f"تواصل مع ولي الأمر: {student_name}",
+                title_en=f"Parent Communication: {student_name}",
+                description_ar=f"رسالة متابعة أداء للطالب {student_name}",
+                description_en=f"Performance follow-up message for student {student_name}",
+                source="auto",
+                source_entity_type="intervention",
+                source_entity_id=intervention_id,
+                metadata={"student_id": body.student_id, "parent_user_id": parent_user_id, "message_id": msg_id},
+            )
+        except Exception as _pe_err:
+            logger.debug("Portfolio evidence capture failed on intervention: %s", _pe_err)
+
         msg_ar = "تم إرسال الرسالة لولي الأمر بنجاح"
 
     elif body.action_type == "remedial_plan":

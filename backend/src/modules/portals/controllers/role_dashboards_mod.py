@@ -2653,9 +2653,9 @@ async def get_messages(
             _msg_target_user = await gd_find_one(db.session, "users", {"id": recipient_id})
             if _msg_tenant and _msg_target_user and _msg_target_user.get("tenant_id") != _msg_tenant:
                 raise HTTPException(status_code=403, detail="لا يمكنك الوصول لرسائل مستخدم من مدرسة أخرى")
-        query["$or"] = [{"recipient_ids": recipient_id}, {"recipient_id": recipient_id}]
+        query["$or"] = [{"recipient_ids": recipient_id}, {"recipient_id": recipient_id}, {"receiver_id": recipient_id}, {"user_id": recipient_id}]
     else:
-        query["$or"] = [{"sender_id": caller_id}, {"recipient_ids": caller_id}, {"recipient_id": caller_id}]
+        query["$or"] = [{"sender_id": caller_id}, {"recipient_ids": caller_id}, {"recipient_id": caller_id}, {"receiver_id": caller_id}, {"user_id": caller_id}]
 
     if _msg_role != "platform_admin" and _msg_tenant:
         query["school_id"] = _msg_tenant
