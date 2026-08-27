@@ -603,7 +603,11 @@ async def get_portfolio_sections(current_user: dict = Depends(get_current_user))
 
 # ---- PDF Export ----
 
-_FONT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "fonts", "Amiri-Regular.ttf")
+# Resolve backend/fonts/ — 4 levels up from this file's directory
+# (controllers → portfolio → modules → src → backend)
+_FONTS_BASE = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "fonts")
+_FONT_PATH = os.path.join(_FONTS_BASE, "Amiri-Regular.ttf")
+_FONT_BOLD_PATH = os.path.join(_FONTS_BASE, "Amiri-Bold.ttf")
 _FONT_REGISTERED = False
 
 
@@ -615,7 +619,10 @@ def _ensure_arabic_font():
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
         if os.path.exists(_FONT_PATH):
-            pdfmetrics.registerFont(TTFont("Amiri", _FONT_PATH))
+            if "Amiri" not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont("Amiri", _FONT_PATH))
+            if os.path.exists(_FONT_BOLD_PATH) and "Amiri-Bold" not in pdfmetrics.getRegisteredFontNames():
+                pdfmetrics.registerFont(TTFont("Amiri-Bold", _FONT_BOLD_PATH))
             _FONT_REGISTERED = True
             return "Amiri"
     except Exception as e:
