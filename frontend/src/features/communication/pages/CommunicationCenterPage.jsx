@@ -1063,10 +1063,10 @@ export const CommunicationCenterPage = () => {
                       onClick={() => { setSelectedMessage(msg); setViewMessageOpen(true); }}>
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-2">
-                          <p className="font-medium font-cairo">{msg.title}</p>
-                          <Badge variant="default" className="bg-green-500">{t('sent2')}</Badge>
+                          <p className="font-medium font-cairo truncate break-words [overflow-wrap:anywhere]">{msg.title}</p>
+                          <Badge variant="default" className="bg-green-500 shrink-0">{t('sent2')}</Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2">{msg.content}</p>
+                        <p className="text-sm text-muted-foreground line-clamp-2 break-words [overflow-wrap:anywhere]">{msg.content}</p>
                         <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground font-tajawal">
                           <span>{t('audience')} {getAudienceLabel(msg.audience)}</span>
                           <span>{t('recipients2')} {msg.recipient_count || msg.sent_count || 0}</span>
@@ -1112,13 +1112,13 @@ export const CommunicationCenterPage = () => {
                     <Card key={msg.id} className="card-nassaq border-yellow-200 dark:border-yellow-800/50">
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-2">
-                          <p className="font-medium font-cairo">{msg.title}</p>
-                          <Badge variant="outline" className="text-yellow-700 border-yellow-500">
+                          <p className="font-medium font-cairo truncate break-words [overflow-wrap:anywhere]">{msg.title}</p>
+                          <Badge variant="outline" className="text-yellow-700 border-yellow-500 shrink-0">
                             <Clock className="h-3 w-3 me-1" />
                             {t('scheduled2')}
                           </Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2">{msg.content}</p>
+                        <p className="text-sm text-muted-foreground line-clamp-2 break-words [overflow-wrap:anywhere]">{msg.content}</p>
                         <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground font-tajawal">
                           <span>{t('audience')} {getAudienceLabel(msg.audience)}</span>
                           <span>•</span>
@@ -1157,11 +1157,14 @@ export const CommunicationCenterPage = () => {
 
         {/* Edit Scheduled Message Dialog */}
         <Dialog open={editScheduledOpen} onOpenChange={setEditScheduledOpen}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto w-full" dir={isRTL ? 'rtl' : 'ltr'}>
             <DialogHeader>
-              <DialogTitle className="font-cairo">
+              <DialogTitle className="font-cairo break-words [overflow-wrap:anywhere]">
                 {t('editScheduledMessage')}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t('editScheduledMessage')}
+              </DialogDescription>
             </DialogHeader>
             {selectedMessage && (
               <div className="space-y-4 mt-4">
@@ -1175,7 +1178,7 @@ export const CommunicationCenterPage = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {audienceGroups.map((group) => (
+                      {(Array.isArray(audienceGroups) ? audienceGroups : []).map((group) => (
                         <SelectItem key={group.id} value={group.id}>
                           {isRTL ? group.name : group.name_en}
                         </SelectItem>
@@ -1196,15 +1199,15 @@ export const CommunicationCenterPage = () => {
                   <Textarea
                     value={selectedMessage.content}
                     onChange={(e) => setSelectedMessage({...selectedMessage, content: e.target.value})}
-                    className="rounded-xl mt-1"
+                    className="rounded-xl mt-1 resize-none"
                     rows={4}
                   />
                 </div>
                 <div>
-                  <Label>{t('scheduledTime')}</Label>
+                  <Label>{t('scheduleTime')}</Label>
                   <Input
                     type="datetime-local"
-                    value={selectedMessage.scheduled_at?.slice(0, 16) || ''}
+                    value={selectedMessage.scheduled_at ? new Date(selectedMessage.scheduled_at).toISOString().slice(0, 16) : ''}
                     onChange={(e) => setSelectedMessage({...selectedMessage, scheduled_at: e.target.value})}
                     className="rounded-xl mt-1"
                   />
@@ -1213,9 +1216,9 @@ export const CommunicationCenterPage = () => {
                   <Button variant="outline" onClick={() => setEditScheduledOpen(false)}>
                     {t('cancel')}
                   </Button>
-                  <Button onClick={handleUpdateScheduledMessage} disabled={sending}>
-                    {sending ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <CheckCircle className="h-4 w-4 me-2" />}
-                    {t('saveChanges2')}
+                  <Button onClick={handleUpdateScheduledMessage} disabled={sending} className="bg-brand-navy hover:bg-brand-navy/90">
+                    {sending ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : null}
+                    {t('save')}
                   </Button>
                 </DialogFooter>
               </div>
@@ -1225,19 +1228,24 @@ export const CommunicationCenterPage = () => {
 
         {/* View Message Dialog */}
         <Dialog open={viewMessageOpen} onOpenChange={setViewMessageOpen}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden w-full" dir={isRTL ? 'rtl' : 'ltr'}>
             <DialogHeader>
-              <DialogTitle className="font-cairo">
+              <DialogTitle className="font-cairo text-base leading-snug break-words [overflow-wrap:anywhere] text-start">
                 {selectedMessage?.title}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t('messageDetails') || 'تفاصيل الرسالة'}
+              </DialogDescription>
             </DialogHeader>
             {selectedMessage && (
-              <div className="space-y-4 mt-4">
-                <div className="flex items-center gap-2">
+              <div className="space-y-4 mt-4 overflow-y-auto max-h-[60vh] pe-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="secondary">{getAudienceLabel(selectedMessage.audience)}</Badge>
                   <Badge variant="outline">{selectedMessage.recipient_count || 0} {t('recipients3')}</Badge>
                 </div>
-                <p className="text-sm whitespace-pre-wrap">{selectedMessage.content}</p>
+                <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-relaxed text-foreground/90" data-testid="view-message-content">
+                  {selectedMessage.content}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {t('sentAt')} {formatDate(selectedMessage.sent_at || selectedMessage.created_at)}
                 </p>
