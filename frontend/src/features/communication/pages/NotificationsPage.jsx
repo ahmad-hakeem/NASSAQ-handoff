@@ -776,11 +776,25 @@ export const NotificationsPage = ({ embedded = false }) => {
                         ].map(pref => (
                           <div
                             key={pref.key}
+                            dir={isRTL ? 'rtl' : 'ltr'}
                             className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-border/50 bg-background/50 hover:bg-muted/30 transition-colors"
                           >
-                            <div className="min-w-0 flex-1 text-start rtl:text-right ltr:text-left pe-4">
-                              <p className="text-sm font-semibold font-cairo text-foreground rtl:text-right ltr:text-left">{pref.label}</p>
-                              <p className="text-xs text-muted-foreground font-tajawal mt-0.5 rtl:text-right ltr:text-left">{pref.desc}</p>
+                            <div
+                              className="min-w-0 flex-1"
+                              style={{ textAlign: isRTL ? 'right' : 'left' }}
+                            >
+                              <p
+                                className="text-sm font-semibold font-cairo text-foreground"
+                                style={{ textAlign: isRTL ? 'right' : 'left' }}
+                              >
+                                {pref.label}
+                              </p>
+                              <p
+                                className="text-xs text-muted-foreground font-tajawal mt-0.5"
+                                style={{ textAlign: isRTL ? 'right' : 'left' }}
+                              >
+                                {pref.desc}
+                              </p>
                             </div>
                             <div className="shrink-0 flex items-center">
                               <Switch
