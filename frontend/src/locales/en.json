@@ -5537,5 +5537,16 @@
   "newColumn": "New Column",
   "checkType": "Check",
   "textType": "Text",
-  "done": "Done"
+  "done": "Done",
+  "scheduleTime": "Schedule Time",
+  "messageDetails": "Message Details",
+  "shortTest": "Short Test",
+  "finalExam": "Final Exam",
+  "sum": "Sum",
+  "absenceRecord": "Absence Record",
+  "noAbsencesRecorded": "No absences recorded",
+  "exampleActivity": "Sample Activity",
+  "noColumns": "No columns",
+  "show": "Show",
+  "hide": "Hide"
 }

@@ -5537,5 +5537,16 @@
   "newColumn": "عمود جديد",
   "checkType": "تحقق",
   "textType": "نص",
-  "done": "تم"
+  "done": "تم",
+  "scheduleTime": "وقت الجدولة",
+  "messageDetails": "تفاصيل الرسالة",
+  "shortTest": "اختبار قصير",
+  "finalExam": "اختبار نهائي",
+  "sum": "المجموع",
+  "absenceRecord": "سجل الغياب",
+  "noAbsencesRecorded": "لا يوجد غياب مسجل",
+  "exampleActivity": "نشاط نموذجي",
+  "noColumns": "لا توجد أعمدة",
+  "show": "إظهار",
+  "hide": "إخفاء"
 }

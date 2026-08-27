@@ -383,9 +383,36 @@ async def startup_tasks():
     except Exception as e:
         logger.warning(f"Could not schedule end-of-day auto-close loop: {e}")
 
+    # Background task: Automated scheduled message and notification dispatch loop.
+    # Runs every 30 seconds to automatically deliver scheduled communications when due.
+    async def _scheduled_dispatch_loop():
+        try:
+            await _asyncio.sleep(10)
+            while True:
+                try:
+                    async def _dispatch_job():
+                        from src.modules.communication.services.scheduled_dispatch_service import dispatch_all_due_communications
+                        await dispatch_all_due_communications(db)
+
+                    await _run_with_session("Scheduled communication dispatch", _dispatch_job)
+                except Exception as e:
+                    logger.warning(f"Scheduled communication dispatch loop: {e}")
+                await _asyncio.sleep(30)
+        except _asyncio.CancelledError:
+            logger.info("Scheduled communication dispatch loop cancelled (shutdown)")
+            raise
+
+    try:
+        global _scheduled_dispatch_task
+        _scheduled_dispatch_task = _asyncio.create_task(_scheduled_dispatch_loop())
+        logger.info("Scheduled communication dispatch loop scheduled (every 30s)")
+    except Exception as e:
+        logger.warning(f"Could not schedule communication dispatch loop: {e}")
+
 
 _revoked_token_cleanup_task = None
 _rate_limit_sweep_task = None
+_scheduled_dispatch_task = None
 
 
 async def _rate_limit_sweep_loop(initial_delay_s: float = 60.0,
@@ -1189,6 +1216,19 @@ async def shutdown_tasks():
             _auto_close_task = None
     except Exception as e:
         logger.debug(f"Auto-close loop cancellation: {e}")
+
+    # Cancel the scheduled communication dispatch loop cleanly.
+    try:
+        global _scheduled_dispatch_task
+        if _scheduled_dispatch_task is not None and not _scheduled_dispatch_task.done():
+            _scheduled_dispatch_task.cancel()
+            try:
+                await _scheduled_dispatch_task
+            except Exception:
+                pass
+            _scheduled_dispatch_task = None
+    except Exception as e:
+        logger.debug(f"Scheduled dispatch loop cancellation: {e}")
 
     # Cancel the deferred startup-maintenance task if it's still running.
     try:

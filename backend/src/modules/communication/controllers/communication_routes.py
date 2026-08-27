@@ -154,6 +154,13 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Get communication statistics"""
+        # Opportunistically dispatch any due scheduled messages
+        try:
+            from src.modules.communication.services.scheduled_dispatch_service import dispatch_due_scheduled_messages
+            await dispatch_due_scheduled_messages(db)
+        except Exception as disp_err:
+            logger.debug(f"Opportunistic scheduled dispatch on stats failed: {disp_err}")
+
         # Strict, fail-closed school scope. A plain platform-admin token with a
         # stale X-School-Context header raises 403 here instead of counting
         # every tenant's messages into a previewed school.
@@ -320,6 +327,13 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN]))
     ):
         """Get list of messages"""
+        # Opportunistically dispatch any due scheduled messages
+        try:
+            from src.modules.communication.services.scheduled_dispatch_service import dispatch_due_scheduled_messages
+            await dispatch_due_scheduled_messages(db)
+        except Exception as disp_err:
+            logger.debug(f"Opportunistic scheduled dispatch on get_messages failed: {disp_err}")
+
         # Strict, fail-closed school scope (see _comm_read_scope): a previewed
         # brand-new school returns no sent/scheduled/draft rows, and a plain
         # admin token + stale X-School-Context header raises 403.
@@ -451,6 +465,12 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
     ):
         """Get scheduled messages"""
+        try:
+            from src.modules.communication.services.scheduled_dispatch_service import dispatch_due_scheduled_messages
+            await dispatch_due_scheduled_messages(db)
+        except Exception as disp_err:
+            logger.debug(f"Opportunistic scheduled dispatch on get_scheduled_messages failed: {disp_err}")
+
         messages = await gd_find(db.session, "messages", {"status": "scheduled"}, order_by="scheduled_at", desc_order=False, limit=50)
         
         return {
@@ -746,7 +766,8 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
     ):
         """Send a scheduled message immediately"""
         query = {"id": message_id}
-        if current_user['role'] != 'platform_admin':
+        is_platform_admin = current_user.get('role') == UserRole.PLATFORM_ADMIN.value or current_user.get('role') == 'platform_admin'
+        if not is_platform_admin:
             tenant_id = current_user.get("tenant_id")
             if tenant_id:
                 query["school_id"] = tenant_id
@@ -758,33 +779,21 @@ def create_communication_routes(db, get_current_user, require_roles, UserRole):
         if message.get("status") != "scheduled":
             raise HTTPException(status_code=400, detail="هذه الرسالة ليست مجدولة")
         
+        from src.modules.communication.services.scheduled_dispatch_service import dispatch_single_scheduled_message
         now = datetime.now(timezone.utc).isoformat()
-        
-        # Update status to sent
-        await gd_update_one(db.session, "messages", {"id": message_id}, {
-                "status": "sent",
-                "sent_at": now,
-                "sent_count": message.get("recipient_count", 0)
-            })
-        
-        # Create notification
-        notification_doc = {
-            "id": str(uuid.uuid4()),
-            "message_id": message_id,
-            "title": message.get("title"),
-            "content": message.get("content"),
-            "type": "announcement",
-            "school_id": message.get("school_id"),
-            "audience": message.get("audience"),
-            "created_at": now,
-            "read_by": []
-        }
-        await gd_insert(db.session, "notifications", notification_doc)
-        
+        result = await dispatch_single_scheduled_message(
+            db,
+            message_id,
+            now_iso=now,
+            caller_is_platform_admin=is_platform_admin,
+        )
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "فشل إرسال الرسالة"))
+
         return {
             "success": True,
             "message": "تم إرسال الرسالة بنجاح",
-            "sent_count": message.get("recipient_count", 0)
+            "sent_count": result.get("sent_count", 0),
         }
     
     @router.delete("/{message_id}")
