@@ -178,7 +178,7 @@ webpackConfig.devServer = (devServerConfig) => {
       "font-src 'self' https://fonts.gstatic.com data:; " +
       "img-src 'self' data: blob: https:; " +
       "media-src 'self' https:; " +
-      "connect-src 'self' wss: ws: http://localhost:8000; " +
+      "connect-src 'self' wss: ws: http://localhost:8000 http://localhost:5000 https://uat.nassaqapp.com https://*.nassaqapp.com wss://*.nassaqapp.com; " +
       "frame-ancestors 'none';",
     "Cache-Control": "public, max-age=0, must-revalidate",
   };
