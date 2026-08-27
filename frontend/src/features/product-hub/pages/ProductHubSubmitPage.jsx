@@ -168,7 +168,7 @@ const HAKIM_REACTION_POSES = {
 };
 
 export function ProductHubSubmitPage() {
-  const { user } = useAuth();
+  const { api, user } = useAuth();
   const navigate = useNavigate();
   const [config, setConfig] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -206,10 +206,10 @@ export function ProductHubSubmitPage() {
   });
 
   useEffect(() => {
-    axios.get('/api/product-hub/config', { headers: authHeaders() })
+    api.get('/product-hub/config')
       .then(r => setConfig(r.data))
       .catch(err => { if (process.env.NODE_ENV === 'development') console.warn('Failed to fetch product hub config:', err.message); });
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentDateTime(new Date()), 30000);
@@ -266,14 +266,16 @@ export function ProductHubSubmitPage() {
     }
     setImprovingField(fieldName);
     try {
-      const res = await axios.post('/api/product-hub/hakim-improve-text', {
+      const res = await api.post('/product-hub/hakim-improve-text', {
         text: text.trim(),
         field_type: fieldName,
-      }, { headers: authHeaders() });
-      if (res.data.improved_text && res.data.improved_text !== text.trim()) {
+      });
+      if (res.data?.success !== false && res.data?.improved_text && res.data.improved_text !== text.trim()) {
         setForm(f => ({ ...f, [fieldName]: res.data.improved_text }));
         toast.success('حكيم حسّن النص بنجاح');
         triggerHakimReaction('improved');
+      } else if (res.data?.success === false) {
+        toast.error('خدمة الذكاء الاصطناعي مشغولة حالياً أو تجاوزت حد الاستخدام — يرجى المحاولة بعد لحظات');
       } else {
         toast.success('النص واضح ولا يحتاج تحسين');
         triggerHakimReaction('already_good');
@@ -284,7 +286,7 @@ export function ProductHubSubmitPage() {
     } finally {
       setImprovingField(null);
     }
-  }, [form, triggerHakimReaction]);
+  }, [api, form, triggerHakimReaction]);
 
   const generateExpected = useCallback(async () => {
     if (!form.current_behavior || form.current_behavior.trim().length < 10) {
@@ -294,13 +296,13 @@ export function ProductHubSubmitPage() {
     setGeneratingExpected(true);
     triggerHakimReaction(null);
     try {
-      const res = await axios.post('/api/product-hub/hakim-generate-expected', {
+      const res = await api.post('/product-hub/hakim-generate-expected', {
         title: form.title,
         current_behavior: form.current_behavior,
         issue_type: form.issue_type,
         page: form.page,
-      }, { headers: authHeaders() });
-      if (res.data.success && res.data.generated_text) {
+      });
+      if (res.data?.success && res.data?.generated_text) {
         setForm(f => ({ ...f, expected_behavior: res.data.generated_text }));
         toast.success('حكيم أنشأ الوضع المتوقع — يمكنك تعديله');
         triggerHakimReaction('improved');
@@ -317,7 +319,7 @@ export function ProductHubSubmitPage() {
     } finally {
       setGeneratingExpected(false);
     }
-  }, [form, triggerHakimReaction]);
+  }, [api, form, triggerHakimReaction]);
 
   const generateTitle = useCallback(async () => {
     if (!form.current_behavior || form.current_behavior.trim().length < 10 ||
@@ -328,14 +330,14 @@ export function ProductHubSubmitPage() {
     setGeneratingTitle(true);
     setTitleSuggestions([]);
     try {
-      const res = await axios.post('/api/product-hub/hakim-generate-title', {
+      const res = await api.post('/product-hub/hakim-generate-title', {
         current_behavior: form.current_behavior,
         expected_behavior: form.expected_behavior,
         additional_info: form.additional_info || '',
         issue_type: form.issue_type,
         page: form.page,
-      }, { headers: authHeaders() });
-      if (res.data.success && res.data.titles?.length > 0) {
+      });
+      if (res.data?.success && res.data?.titles?.length > 0) {
         setTitleSuggestions(res.data.titles);
         setForm(f => ({ ...f, title: f.title?.trim() ? f.title : res.data.titles[0] }));
         toast.success('حكيم أنشأ اقتراحات للعنوان — اختر الأنسب');
@@ -353,7 +355,7 @@ export function ProductHubSubmitPage() {
     } finally {
       setGeneratingTitle(false);
     }
-  }, [form, triggerHakimReaction]);
+  }, [api, form, triggerHakimReaction]);
 
   const handleEvidenceUpload = useCallback(async (files) => {
     if (!files || files.length === 0) return;
@@ -383,8 +385,8 @@ export function ProductHubSubmitPage() {
         const fd = new FormData();
         fd.append('file', file);
         try {
-          const res = await axios.post('/api/product-hub/upload-evidence', fd, {
-            headers: { ...authHeaders(), 'Content-Type': 'multipart/form-data' },
+          const res = await api.post('/product-hub/upload-evidence', fd, {
+            headers: { 'Content-Type': 'multipart/form-data' },
           });
           if (res.data?.file_url) uploaded.push(res.data.file_url);
         } catch (err) {
@@ -403,7 +405,7 @@ export function ProductHubSubmitPage() {
     } finally {
       setUploadingEvidence(false);
     }
-  }, [form.attachments, triggerHakimReaction]);
+  }, [api, form.attachments, triggerHakimReaction]);
 
   const removeEvidence = useCallback((idx) => {
     setForm(f => ({
@@ -451,7 +453,7 @@ export function ProductHubSubmitPage() {
       if (!payload.reproducibility) delete payload.reproducibility;
       if (payload.attachments && payload.attachments.length === 0) delete payload.attachments;
       if (!payload.employee_id?.trim()) delete payload.employee_id;
-      const res = await axios.post('/api/product-hub/issues', payload, { headers: authHeaders() });
+      const res = await api.post('/product-hub/issues', payload);
       const newId = res.data?.id || '';
       toast.success('تم إرسال التحدي بنجاح — حكيم يحلله الآن');
       navigate(`/admin/product-hub?tab=issues${newId ? `&highlight=${newId}` : ''}`);

@@ -2,21 +2,17 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/shared/components/ui/button';
 import { Avatar, AvatarFallback } from '@/shared/components/ui/avatar';
 import { Send, Loader2, AtSign, Pencil, Trash2, X, Check } from 'lucide-react';
-import axios from 'axios';
-
-const authHeaders = () => {
-  const t = localStorage.getItem('nassaq_token');
-  return t ? { Authorization: `Bearer ${t}` } : {};
-};
+import { useAuth } from '@/shared/contexts/AuthContext';
 
 function useMentionableUsers(isAdmin) {
+  const { api } = useAuth();
   const [users, setUsers] = useState([]);
   useEffect(() => {
-    if (!isAdmin) return;
-    axios.get('/api/product-hub/mentionable-users', { headers: authHeaders() })
+    if (!isAdmin || !api) return;
+    api.get('/product-hub/mentionable-users')
       .then(res => setUsers(res.data.users || []))
       .catch(err => { if (process.env.NODE_ENV === 'development') console.warn('Failed to fetch mentionable users:', err.message); });
-  }, [isAdmin]);
+  }, [isAdmin, api]);
   return users;
 }
 

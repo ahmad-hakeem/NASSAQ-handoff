@@ -4448,24 +4448,15 @@ async def export_student_plans_pdf(
         HRFlowable, KeepTogether
     )
     from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    from engines.export_engine import _register_arabic_fonts, FONT_NAME, FONT_BOLD, _reshape_ar
 
-    try:
-        pdfmetrics.registerFont(TTFont('DejaVuSans', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
-        pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
-    except Exception as e:
-        logger.debug(f"DejaVu font registration failed (PDF will use fallback fonts): {e}")
+    _register_arabic_fonts()
+    font_regular = FONT_NAME
+    font_bold = FONT_BOLD
 
     def ar(text):
-        if not text:
-            return ""
-        try:
-            reshaped = arabic_reshaper.reshape(str(text))
-            return get_display(reshaped)
-        except Exception as e:
-            logger.debug(f"Arabic text reshaping failed for '{str(text)[:30]}': {e}")
-            return str(text)
+        return _reshape_ar(text)
 
     body = await request.json()
     plan_type = body.get("plan_type", "both")
@@ -4537,16 +4528,16 @@ async def export_student_plans_pdf(
     MED_GRAY_CLR = HexColor("#666666")
     DARK_GRAY_CLR = HexColor("#333333")
 
-    style_title = ParagraphStyle('Title', fontName='DejaVuSans-Bold', fontSize=18, alignment=TA_CENTER, textColor=white, leading=24)
-    style_subtitle = ParagraphStyle('Subtitle', fontName='DejaVuSans-Bold', fontSize=12, alignment=TA_CENTER, textColor=HexColor("#A0D0D0"), leading=16)
-    style_label = ParagraphStyle('Label', fontName='DejaVuSans-Bold', fontSize=10, alignment=TA_RIGHT, textColor=NAVY, leading=14)
-    style_value = ParagraphStyle('Value', fontName='DejaVuSans', fontSize=10, alignment=TA_RIGHT, textColor=DARK_GRAY_CLR, leading=14)
-    style_section = ParagraphStyle('Section', fontName='DejaVuSans-Bold', fontSize=14, alignment=TA_RIGHT, textColor=NAVY, leading=18)
-    style_body = ParagraphStyle('Body', fontName='DejaVuSans', fontSize=10, alignment=TA_RIGHT, textColor=DARK_GRAY_CLR, leading=14, wordWrap='RTL')
-    style_body_italic = ParagraphStyle('BodyItalic', fontName='DejaVuSans', fontSize=10, alignment=TA_RIGHT, textColor=MED_GRAY_CLR, leading=14)
-    style_footer = ParagraphStyle('Footer', fontName='DejaVuSans', fontSize=8, alignment=TA_CENTER, textColor=MED_GRAY_CLR, leading=12)
-    style_table_header = ParagraphStyle('TH', fontName='DejaVuSans-Bold', fontSize=9, alignment=TA_CENTER, textColor=white, leading=12)
-    style_table_cell = ParagraphStyle('TD', fontName='DejaVuSans', fontSize=9, alignment=TA_RIGHT, textColor=DARK_GRAY_CLR, leading=12)
+    style_title = ParagraphStyle('Title', fontName=font_bold, fontSize=18, alignment=TA_CENTER, textColor=white, leading=24)
+    style_subtitle = ParagraphStyle('Subtitle', fontName=font_bold, fontSize=12, alignment=TA_CENTER, textColor=HexColor("#A0D0D0"), leading=16)
+    style_label = ParagraphStyle('Label', fontName=font_bold, fontSize=10, alignment=TA_RIGHT, textColor=NAVY, leading=14)
+    style_value = ParagraphStyle('Value', fontName=font_regular, fontSize=10, alignment=TA_RIGHT, textColor=DARK_GRAY_CLR, leading=14)
+    style_section = ParagraphStyle('Section', fontName=font_bold, fontSize=14, alignment=TA_RIGHT, textColor=NAVY, leading=18)
+    style_body = ParagraphStyle('Body', fontName=font_regular, fontSize=10, alignment=TA_RIGHT, textColor=DARK_GRAY_CLR, leading=14, wordWrap='RTL')
+    style_body_italic = ParagraphStyle('BodyItalic', fontName=font_regular, fontSize=10, alignment=TA_RIGHT, textColor=MED_GRAY_CLR, leading=14)
+    style_footer = ParagraphStyle('Footer', fontName=font_regular, fontSize=8, alignment=TA_CENTER, textColor=MED_GRAY_CLR, leading=12)
+    style_table_header = ParagraphStyle('TH', fontName=font_bold, fontSize=9, alignment=TA_CENTER, textColor=white, leading=12)
+    style_table_cell = ParagraphStyle('TD', fontName=font_regular, fontSize=9, alignment=TA_RIGHT, textColor=DARK_GRAY_CLR, leading=12)
 
     # CPU-bound from here down (Arabic shaping + ReportLab layout, no awaits):
     # build it on the render pool so the event loop stays free — inline this
@@ -4597,7 +4588,7 @@ async def export_student_plans_pdf(
             story.append(HRFlowable(width="100%", thickness=1, color=HexColor("#CCCCCC")))
             story.append(Spacer(1, 10))
 
-            section_style = ParagraphStyle('PlanTitle', fontName='DejaVuSans-Bold', fontSize=14, alignment=TA_RIGHT, textColor=color, leading=18)
+            section_style = ParagraphStyle('PlanTitle', fontName=font_bold, fontSize=14, alignment=TA_RIGHT, textColor=color, leading=18)
             title_text = plan.get("title", type_label) if plan else type_label
             story.append(Paragraph(ar(title_text), section_style))
             story.append(Spacer(1, 6))
@@ -4661,7 +4652,7 @@ async def export_student_plans_pdf(
             outcome = plan.get("expected_outcome", "") if plan else ""
             if outcome:
                 story.append(Spacer(1, 8))
-                outcome_style = ParagraphStyle('Outcome', fontName='DejaVuSans-Bold', fontSize=10, alignment=TA_RIGHT, textColor=color, leading=14)
+                outcome_style = ParagraphStyle('Outcome', fontName=font_bold, fontSize=10, alignment=TA_RIGHT, textColor=color, leading=14)
                 story.append(Paragraph(ar(f"النتيجة المتوقعة: {outcome}"), outcome_style))
 
         if plan_type in ("remedial", "both") and remedial_plan:
@@ -5264,24 +5255,15 @@ async def export_student_full_profile_pdf(
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
     from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    from engines.export_engine import _register_arabic_fonts, FONT_NAME, FONT_BOLD, _reshape_ar
 
-    try:
-        pdfmetrics.registerFont(TTFont('DejaVuSans', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
-        pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'))
-    except Exception as e:
-        logger.debug(f"DejaVu font registration failed (PDF will use fallback fonts): {e}")
+    _register_arabic_fonts()
+    font_regular = FONT_NAME
+    font_bold = FONT_BOLD
 
     def ar(text):
-        if not text:
-            return ""
-        try:
-            reshaped = arabic_reshaper.reshape(str(text))
-            return get_display(reshaped)
-        except Exception as e:
-            logger.debug(f"Arabic text reshaping failed for '{str(text)[:30]}': {e}")
-            return str(text)
+        return _reshape_ar(text)
 
     body = await request.json()
     sections = body.get("sections", [])
@@ -5312,13 +5294,13 @@ async def export_student_full_profile_pdf(
     TURQUOISE = HexColor("#46C1BE")
     LIGHT_GRAY = HexColor("#F3F4F6")
 
-    style_title = ParagraphStyle('PTitle', fontName='DejaVuSans-Bold', fontSize=18, alignment=TA_CENTER, textColor=white, leading=24)
-    style_subtitle = ParagraphStyle('PSubtitle', fontName='DejaVuSans-Bold', fontSize=12, alignment=TA_CENTER, textColor=TURQUOISE, leading=16)
-    style_section = ParagraphStyle('PSection', fontName='DejaVuSans-Bold', fontSize=13, alignment=TA_RIGHT, textColor=NAVY, leading=18)
-    style_label = ParagraphStyle('PLabel', fontName='DejaVuSans-Bold', fontSize=10, alignment=TA_RIGHT, textColor=NAVY, leading=14)
-    style_value = ParagraphStyle('PValue', fontName='DejaVuSans', fontSize=10, alignment=TA_RIGHT, textColor=HexColor("#333333"), leading=14)
-    style_body = ParagraphStyle('PBody', fontName='DejaVuSans', fontSize=9, alignment=TA_RIGHT, textColor=HexColor("#333333"), leading=13)
-    style_footer = ParagraphStyle('PFooter', fontName='DejaVuSans', fontSize=8, alignment=TA_CENTER, textColor=HexColor("#999999"), leading=10)
+    style_title = ParagraphStyle('PTitle', fontName=font_bold, fontSize=18, alignment=TA_CENTER, textColor=white, leading=24)
+    style_subtitle = ParagraphStyle('PSubtitle', fontName=font_bold, fontSize=12, alignment=TA_CENTER, textColor=TURQUOISE, leading=16)
+    style_section = ParagraphStyle('PSection', fontName=font_bold, fontSize=13, alignment=TA_RIGHT, textColor=NAVY, leading=18)
+    style_label = ParagraphStyle('PLabel', fontName=font_bold, fontSize=10, alignment=TA_RIGHT, textColor=NAVY, leading=14)
+    style_value = ParagraphStyle('PValue', fontName=font_regular, fontSize=10, alignment=TA_RIGHT, textColor=HexColor("#333333"), leading=14)
+    style_body = ParagraphStyle('PBody', fontName=font_regular, fontSize=9, alignment=TA_RIGHT, textColor=HexColor("#333333"), leading=13)
+    style_footer = ParagraphStyle('PFooter', fontName=font_regular, fontSize=8, alignment=TA_CENTER, textColor=HexColor("#999999"), leading=10)
 
     elements = []
 
@@ -5335,7 +5317,7 @@ async def export_student_full_profile_pdf(
     elements.append(Spacer(1, 10))
 
     info_text = f"{ar(student.get('full_name', ''))} | {ar(student.get('grade', ''))} - {ar(class_name)} | {export_date}"
-    elements.append(Paragraph(info_text, ParagraphStyle('Info', fontName='DejaVuSans', fontSize=10, alignment=TA_CENTER, textColor=HexColor("#555555"), leading=14)))
+    elements.append(Paragraph(info_text, ParagraphStyle('Info', fontName=font_regular, fontSize=10, alignment=TA_CENTER, textColor=HexColor("#555555"), leading=14)))
     elements.append(Spacer(1, 10))
     elements.append(HRFlowable(width="100%", thickness=1, color=TURQUOISE))
     elements.append(Spacer(1, 10))

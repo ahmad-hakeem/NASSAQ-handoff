@@ -308,10 +308,14 @@ def build_openai_client(
     Returns ``None`` when no API key is configured, so callers keep their
     existing "AI not configured" behaviour instead of raising.
     """
-    key = api_key if api_key is not None else os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY", "")
+    key = api_key if api_key is not None else (
+        os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY", "") or os.environ.get("OPENAI_API_KEY", "")
+    )
     if not key:
         return None
-    url = base_url if base_url is not None else os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL", "")
+    url = base_url if base_url is not None else (
+        os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL", "") or os.environ.get("OPENAI_BASE_URL", "")
+    )
     try:
         from openai import OpenAI
 

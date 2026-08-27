@@ -40,7 +40,7 @@ PLAN_BODY = {
 
 def _force_fallback(monkeypatch):
     """Force the deterministic fallback path — no live LLM calls in tests."""
-    from routes import ai_routes_mod
+    from src.modules.ai.controllers import ai_routes_mod
     monkeypatch.setattr(ai_routes_mod, "get_openai_client", lambda: None)
 
 

@@ -50,6 +50,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Body, UploadFile, 
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import asyncio
+import os
 import re
 import time
 import uuid
@@ -2359,16 +2360,13 @@ async def hakim_generate_expected(
             model=model_name,
             messages=[
                 {"role": "system", "content": """أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق التعليمي.
-مهمتك: بناءً على وصف الوضع الحالي والمشكلة، اكتب وصفاً واضحاً ودقيقاً للوضع المتوقع (النتيجة المرجوة).
+مهمتك: بناءً على وصف الوضع الحالي والمشكلة، اكتب وصفاً واضحاً ودقيقاً للوضع المتوقع (النتيجة المرجوة) مباشرة.
 
-قواعد:
-- صِغ النتيجة المتوقعة كخطوات واضحة وقابلة للتنفيذ
-- استخدم صيغة "يجب أن..." أو "المتوقع أن..."
-- كن محدداً وعملياً — لا تكتب عبارات عامة
-- اكتب بالعربية بأسلوب تقني مهني
-- اجعل الوصف بين 2-4 جمل
-- لا تكرر وصف المشكلة — ركز على الحل المطلوب
-- أرجع النص المولّد فقط بدون مقدمات أو شرح"""},
+قواعد صارمة:
+- أرجع النص البديل للوضع المتوقع مباشرة بدون أي مقدمات أو تحيات أو هوامش
+- اكتب بأسلوب تقني مهني ومباشر (من 2 إلى 4 جمل أو نقاط محددة)
+- لا تكرر المشكلة بل ركز على السلوك الصحيح والحل المتوقع
+- اكتب باللغة العربية الفصحى"""},
                 {"role": "user", "content": context}
             ],
             max_completion_tokens=400,
@@ -2470,6 +2468,7 @@ async def hakim_improve_text(
 ):
     text = (data.get("text") or "").strip()
     field_type = data.get("field_type", "general")
+    logger.info(f"[Hakim] hakim_improve_text invoked: field_type={field_type}, len={len(text)}")
     if not text or len(text) < 5:
         _hub_error(422, "TEXT_TOO_SHORT", "النص قصير جداً للتحسين")
 
@@ -2482,31 +2481,32 @@ async def hakim_improve_text(
 
         client = build_openai_client(PURPOSE_INTERACTIVE)
         if client is None:
-            return {"improved_text": text, "suggestions": []}
+            logger.warning("[Hakim] build_openai_client returned None — AI not configured")
+            return {"improved_text": text, "original_text": text, "success": False, "error": "AI not configured"}
 
         field_prompts = {
             "title": "إعادة صياغة عنوان التحدي ليكون مختصراً وواضحاً ودقيقاً، بحد أقصى جملة واحدة قصيرة تصف المشكلة أو الطلب",
-            "current_behavior": "تحسين وصف الوضع الحالي/المشكلة ليكون أوضح وأكثر تحديداً تقنياً",
-            "expected_behavior": "تحسين وصف الوضع المتوقع/الحل المطلوب ليكون أوضح وقابلاً للتنفيذ",
+            "current_behavior": "تحسين وصف الوضع الحالي/المشكلة ليكون أوضح وأكثر تحديداً تقنياً وبشكل مباشر كفقرة واحدة مركزة دون أي مقدمات",
+            "expected_behavior": "تحسين وصف الوضع المتوقع/الحل المطلوب ليكون أوضح وقابلاً للتنفيذ كفقرة أو نقاط محددة دون أي مقدمات",
             "additional_info": "تحسين المعلومات الإضافية لتكون أكثر فائدة للفريق التقني",
         }
         field_instruction = field_prompts.get(field_type, "تحسين النص ليكون أوضح وأكثر تحديداً")
 
         model_name = os.environ.get("AI_MODEL") or os.environ.get("OPENAI_MODEL") or "gemini-3.5-flash"
+        logger.info(f"[Hakim] Calling AI with model={model_name} for text: {text[:30]}...")
         response = await ai_chat_completion(
             client,
             purpose=PURPOSE_INTERACTIVE,
             model=model_name,
             messages=[
-                {"role": "system", "content": f"""أنت حكيم، مساعد ذكاء المنتج في نظام نَسَّق. مهمتك: {field_instruction}.
+                {"role": "system", "content": f"""أنت حكيم، المساعد الذكي لنظام نَسَّق التعليمي.
+مهمتك: {field_instruction}.
 
-قواعد:
-- حافظ على المعنى الأصلي
-- اجعل النص أوضح وأكثر تنظيماً
-- أضف تفاصيل تقنية إن أمكن
-- اكتب بالعربية
-- لا تضف معلومات من عندك
-- أرجع النص المحسّن فقط بدون مقدمات"""},
+قواعد صارمة:
+- أرجع فقط النص المحسّن البديل مباشرة بدون أي مقدمات أو تحيات أو هوامش أو محادثة
+- حافظ على المعنى الأصلي وأعد صياغته بأسلوب تقني مهني واضح
+- لا تبدأ أبداً بـ "أهلاً" أو "بصفتي" أو أي تحيات
+- أرجع النص المحسّن فقط لا غير"""},
                 {"role": "user", "content": text}
             ],
             max_completion_tokens=500,
@@ -2514,7 +2514,8 @@ async def hakim_improve_text(
         )
 
         improved = response.choices[0].message.content.strip()
-        return {"improved_text": improved, "original_text": text}
+        logger.info(f"[Hakim] AI improvement success: len={len(improved)}")
+        return {"improved_text": improved, "original_text": text, "success": True}
     except Exception as e:
-        logger.warning(f"[Hakim] Text improvement failed: {e}")
-        return {"improved_text": text, "original_text": text}
+        logger.error(f"[Hakim] Text improvement failed with exception: {type(e).__name__}: {e}", exc_info=True)
+        return {"improved_text": text, "original_text": text, "success": False, "error": str(e)}

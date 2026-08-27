@@ -39,7 +39,7 @@ const authHeaders = () => {
 
 export function ProductHubIssuePage() {
   const { issueId } = useParams();
-  const { user } = useAuth();
+  const { api, user } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [issue, setIssue] = useState(null);
@@ -81,7 +81,7 @@ export function ProductHubIssuePage() {
     setLoading(true);
     setError(false);
     try {
-      const res = await axios.get(`/api/product-hub/issues/${issueId}`, { headers: authHeaders() });
+      const res = await api.get(`/product-hub/issues/${issueId}`);
       setIssue(res.data);
     } catch (e) {
       console.error('Error loading issue:', e);
@@ -90,7 +90,7 @@ export function ProductHubIssuePage() {
     } finally {
       setLoading(false);
     }
-  }, [issueId]);
+  }, [api, issueId]);
 
   useEffect(() => { fetchIssue(); }, [fetchIssue]);
 
@@ -101,9 +101,9 @@ export function ProductHubIssuePage() {
     }
     setUpdatingStatus(true);
     try {
-      await axios.put(`/api/product-hub/issues/${issueId}/status`, {
+      await api.put(`/product-hub/issues/${issueId}/status`, {
         status: newStatus, note: statusNote
-      }, { headers: authHeaders() });
+      });
       toast.success('تم تحديث الحالة');
       setStatusNote('');
       fetchIssue();
@@ -118,7 +118,7 @@ export function ProductHubIssuePage() {
   const handleAssign = async () => {
     if (!assignTeam) return;
     try {
-      await axios.put(`/api/product-hub/issues/${issueId}/assign`, { assigned_team: assignTeam }, { headers: authHeaders() });
+      await api.put(`/product-hub/issues/${issueId}/assign`, { assigned_team: assignTeam });
       toast.success('تم التعيين');
       setAssignTeam('');
       fetchIssue();
@@ -132,9 +132,9 @@ export function ProductHubIssuePage() {
     if (!content.trim()) return;
     setSubmittingComment(true);
     try {
-      await axios.post(`/api/product-hub/issues/${issueId}/comments`, {
+      await api.post(`/product-hub/issues/${issueId}/comments`, {
         content, comment_type: isMainAdmin ? commentType : 'general', mentions
-      }, { headers: authHeaders() });
+      });
       toast.success('تم إضافة التعليق');
       setCommentType('general');
       fetchIssue();
@@ -149,7 +149,7 @@ export function ProductHubIssuePage() {
 
   const handleEditComment = async (commentId, content, mentions = []) => {
     try {
-      await axios.put(`/api/product-hub/issues/${issueId}/comments/${commentId}`, { content, mentions }, { headers: authHeaders() });
+      await api.put(`/product-hub/issues/${issueId}/comments/${commentId}`, { content, mentions });
       toast.success('تم تعديل التعليق');
       fetchIssue();
     } catch (err) {
@@ -161,7 +161,7 @@ export function ProductHubIssuePage() {
 
   const handleDeleteComment = async (commentId) => {
     try {
-      await axios.delete(`/api/product-hub/issues/${issueId}/comments/${commentId}`, { headers: authHeaders() });
+      await api.delete(`/product-hub/issues/${issueId}/comments/${commentId}`);
       toast.success('تم حذف التعليق');
       fetchIssue();
     } catch (e) {
@@ -172,7 +172,7 @@ export function ProductHubIssuePage() {
 
   const handleFeedback = async (resolved) => {
     try {
-      await axios.post(`/api/product-hub/issues/${issueId}/feedback`, { resolved }, { headers: authHeaders() });
+      await api.post(`/product-hub/issues/${issueId}/feedback`, { resolved });
       toast.success(resolved ? 'شكراً — تم تأكيد الحل' : 'تم إعادة فتح التحدي');
       fetchIssue();
     } catch (err) {
@@ -183,7 +183,7 @@ export function ProductHubIssuePage() {
   const handleGeneratePrompt = async () => {
     setGeneratingPrompt(true);
     try {
-      await axios.post(`/api/product-hub/issues/${issueId}/generate-prompt`, {}, { headers: authHeaders() });
+      await api.post(`/product-hub/issues/${issueId}/generate-prompt`, {});
       toast.success('تم إنشاء البرومبت');
       fetchIssue();
     } catch (err) {
@@ -233,7 +233,7 @@ export function ProductHubIssuePage() {
     }
     setEditSaving(true);
     try {
-      await axios.patch(`/api/product-hub/issues/${issueId}`, payload, { headers: authHeaders() });
+      await api.patch(`/product-hub/issues/${issueId}`, payload);
       toast.success('تم حفظ التعديلات');
       setEditOpen(false);
       setVersionsLoaded(false);
@@ -250,7 +250,7 @@ export function ProductHubIssuePage() {
     if (versionsLoaded) return;
     setVersionsLoading(true);
     try {
-      const res = await axios.get(`/api/product-hub/issues/${issueId}/versions`, { headers: authHeaders() });
+      const res = await api.get(`/product-hub/issues/${issueId}/versions`);
       setVersions(res.data.versions || []);
       setVersionsLoaded(true);
     } catch {
@@ -263,7 +263,7 @@ export function ProductHubIssuePage() {
   const reloadVersions = async () => {
     setVersionsLoading(true);
     try {
-      const res = await axios.get(`/api/product-hub/issues/${issueId}/versions`, { headers: authHeaders() });
+      const res = await api.get(`/product-hub/issues/${issueId}/versions`);
       setVersions(res.data.versions || []);
       setVersionsLoaded(true);
     } catch {
@@ -280,7 +280,7 @@ export function ProductHubIssuePage() {
       `هل تريد استعادة هذه المراجعة؟ سيتم تطبيق القيم السابقة من المراجعة ${version.revision ?? ''} وتسجيل تعديل جديد في السجل.`,
       async () => {
         try {
-          await axios.patch(`/api/product-hub/issues/${issueId}`, prevVals, { headers: authHeaders() });
+          await api.patch(`/product-hub/issues/${issueId}`, prevVals);
           toast.success('تم استعادة المراجعة السابقة');
           fetchIssue();
           reloadVersions();

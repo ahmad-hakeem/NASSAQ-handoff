@@ -159,3 +159,24 @@ async def test_attendance_summary_returns_days_keys(client):
     assert body["present_days"] == 2, body
     assert body["absent_days"] == 1, body
     assert "excused_days" in body, body
+
+
+@pytest.mark.asyncio
+async def test_export_student_full_profile_pdf_success(client):
+    tenant = str(uuid.uuid4())
+    await _mk_school(tenant)
+    principal = await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant)
+    hdrs = _headers(principal)
+
+    class_id = str(uuid.uuid4())
+    await gd_insert(db.session, "classes", {"id": class_id, "school_id": tenant, "name": "1A"})
+    student_id = await _seed_student(tenant, class_id)
+
+    payload = {
+        "sections": ["personal", "academic", "talents", "behaviour", "activities", "plans", "longitudinal"]
+    }
+    resp = await client.post(f"/export/student-profile/{student_id}/pdf", json=payload, headers=hdrs)
+    assert resp.status_code == 200, f"{resp.status_code} {resp.text}"
+    assert resp.headers.get("content-type") == "application/pdf"
+    assert resp.content.startswith(b"%PDF-")
+    assert len(resp.content) > 1000
