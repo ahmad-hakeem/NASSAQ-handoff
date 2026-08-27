@@ -50,7 +50,7 @@ import { getApiErrorMessage } from '@/shared/models/utils/apiError';
 import { PageHeader } from '@/shared/components/layout/PageHeader';
 import { LoadingState } from '@/shared/components/ui/LoadingState';
 import { ImageCropModal } from '@/shared/components/ui/ImageCropModal';
-const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+import { API_URL } from '@/shared/config/apiConfig';
 
 // Role configurations
 const USER_ROLES = {

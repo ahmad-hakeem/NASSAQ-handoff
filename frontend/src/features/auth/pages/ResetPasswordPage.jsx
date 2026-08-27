@@ -22,8 +22,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
-
-const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+import { API_URL } from '@/shared/config/apiConfig';
 
 const LOGO_WHITE = '/nassaq-logo-white.png';
 const BG_PATTERN = '/nassaq-pattern.png';

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { API_BASE_URL } from '@/shared/config/apiConfig';
 import arLocale from '@/locales/ar.json';
 import enLocale from '@/locales/en.json';
 
@@ -113,8 +114,7 @@ export const ThemeProvider = ({ children }) => {
       applyTheme(newTheme);
       const token = localStorage.getItem('nassaq_token');
       if (token) {
-        const baseUrl = (window.location.hostname === 'localhost' ? '' : '') + '/api';
-        fetch(`${baseUrl}/auth/preferences?preferred_theme=${newTheme}`, {
+        fetch(`${API_BASE_URL}/auth/preferences?preferred_theme=${newTheme}`, {
           method: 'PUT',
           headers: { 'Authorization': `Bearer ${token}` },
         }).catch(() => {});
@@ -131,8 +131,7 @@ export const ThemeProvider = ({ children }) => {
     window.dispatchEvent(new CustomEvent('nassaq-language-sync', { detail: { language: newLang } }));
     const token = localStorage.getItem('nassaq_token');
     if (token) {
-      const baseUrl = (window.location.hostname === 'localhost' ? '' : '') + '/api';
-      fetch(`${baseUrl}/auth/preferences?preferred_language=${newLang}`, {
+      fetch(`${API_BASE_URL}/auth/preferences?preferred_language=${newLang}`, {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}` },
       }).catch(() => {});
@@ -147,8 +146,7 @@ export const ThemeProvider = ({ children }) => {
       window.dispatchEvent(new CustomEvent('nassaq-language-sync', { detail: { language: newLang } }));
       const token = localStorage.getItem('nassaq_token');
       if (token) {
-        const baseUrl = (window.location.hostname === 'localhost' ? '' : '') + '/api';
-        fetch(`${baseUrl}/auth/preferences?preferred_language=${newLang}`, {
+        fetch(`${API_BASE_URL}/auth/preferences?preferred_language=${newLang}`, {
           method: 'PUT',
           headers: { 'Authorization': `Bearer ${token}` },
         }).catch(() => {});

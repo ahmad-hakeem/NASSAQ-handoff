@@ -13,6 +13,7 @@ import {
 import { WORKSPACE_NOT_MATERIALISED_AR_FE } from '@/shared/models/constants/auth';
 import { isIdempotentWriteRetry } from '@/shared/models/utils/retryableWrite';
 import { ThemeContext } from '@/shared/contexts/ThemeContext';
+import { API_URL } from '@/shared/config/apiConfig';
 import arLocale from '@/locales/ar.json';
 import enLocale from '@/locales/en.json';
 
@@ -24,10 +25,9 @@ function _decodeJwtPayload(token) {
   try {
     const part = token.split('.')[1];
     if (!part) return null;
-    const padded = part.replace(/-/g, '+').replace(/_/g, '/');
-    const pad = padded.length % 4 === 0 ? '' : '='.repeat(4 - (padded.length % 4));
-    const json = atob(padded + pad);
-    return JSON.parse(decodeURIComponent(escape(json)));
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(atob(b64).split('').map((c) => `%${(`00${c.charCodeAt(0).toString(16)}`).slice(-2)}`).join(''));
+    return JSON.parse(json);
   } catch {
     return null;
   }
@@ -36,11 +36,11 @@ function _decodeJwtPayload(token) {
 // Lightweight translator that does not depend on a React hook — used by the
 // axios interceptor which lives outside React's render tree. Falls back to
 // Arabic (default app language) when a key is missing.
-const translateToast = (key, params) => {
-  const lang = (typeof window !== 'undefined' && localStorage.getItem('nassaq_language')) || 'ar';
-  const dict = lang === 'en' ? enLocale : arLocale;
-  let text = dict[key] || arLocale[key] || key;
-  if (params) {
+const _t = (key, params = {}) => {
+  const storedLang = typeof window !== 'undefined' ? localStorage.getItem('nassaq_language') || 'ar' : 'ar';
+  const dict = storedLang === 'en' ? enLocale : arLocale;
+  let text = dict[key] || key;
+  if (params && typeof params === 'object') {
     Object.entries(params).forEach(([k, v]) => {
       text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
     });
@@ -49,8 +49,6 @@ const translateToast = (key, params) => {
 };
 
 export const AuthContext = createContext(null);
-
-const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 const RETRY_STATUS_CODES = new Set([502, 503]);
 const MAX_RETRIES = 2;

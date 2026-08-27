@@ -91,8 +91,7 @@ import {
   List,
   X,
 } from 'lucide-react';
-
-const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+import { API_URL } from '@/shared/config/apiConfig';
 
 // Translations
 // Integration categories

@@ -4,11 +4,13 @@ if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID) {
 }
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
+const backendTarget = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+
 module.exports = function (app) {
   app.use(
     '/api',
     createProxyMiddleware({
-      target: 'http://localhost:8000',
+      target: backendTarget,
       changeOrigin: true,
       ws: true,
       timeout: 30000,
@@ -28,7 +30,7 @@ module.exports = function (app) {
   app.use(
     '/system',
     createProxyMiddleware({
-      target: 'http://localhost:8000',
+      target: backendTarget,
       changeOrigin: true,
     })
   );

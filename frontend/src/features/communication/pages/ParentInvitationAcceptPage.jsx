@@ -29,8 +29,9 @@ import { Button } from '@/shared/components/ui/button';
 import { useTheme, useTranslation } from '@/shared/contexts/ThemeContext';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import { formatFullDate } from '@/shared/models/utils/hijriDate';
+import { API_URL } from '@/shared/config/apiConfig';
 
-const RESOLVED_BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
+const RESOLVED_BACKEND_URL = API_URL;
 
 const LOGO_WHITE = '/nassaq-logo-white.png';
 

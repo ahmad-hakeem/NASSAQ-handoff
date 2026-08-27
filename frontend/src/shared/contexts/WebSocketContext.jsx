@@ -13,18 +13,19 @@ import {
   markBootstrapDialogShownThisSession,
   isPerimeterGateHandlerRegistered,
 } from '@/shared/services/perimeterGateBridge';
+import { getBackendOrigin } from '@/shared/config/apiConfig';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 const getWsUrl = () => {
-  if (API_URL) {
-    const wsUrl = API_URL.replace('https://', 'wss://').replace('http://', 'ws://');
-    if (window.location.protocol === 'https:') {
+  const backendOrigin = getBackendOrigin();
+  if (backendOrigin) {
+    const wsUrl = backendOrigin.replace('https://', 'wss://').replace('http://', 'ws://');
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
       return wsUrl.replace('ws://', 'wss://');
     }
     return wsUrl;
   }
-  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${window.location.host}`;
+  const proto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${proto}//${typeof window !== 'undefined' ? window.location.host : 'localhost:8000'}`;
 };
 const WS_URL = getWsUrl();
 

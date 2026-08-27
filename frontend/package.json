@@ -74,7 +74,10 @@
   },
   "scripts": {
     "start": "craco start",
+    "start:uat": "REACT_APP_BACKEND_URL=https://uat.nassaqapp.com craco start",
     "build": "craco build",
+    "build:uat": "REACT_APP_BACKEND_URL=https://uat.nassaqapp.com craco build",
+    "build:prod": "REACT_APP_BACKEND_URL=https://app.nassaqapp.com craco build",
     "test": "craco test",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
