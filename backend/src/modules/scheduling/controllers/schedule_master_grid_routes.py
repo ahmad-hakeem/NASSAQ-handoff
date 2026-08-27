@@ -251,6 +251,17 @@ def _jains_fairness(values: list[float]) -> float:
 
 
 _VALID_RANKS = {"expert", "advanced", "practitioner", "assistant"}
+
+# Default weekly-period caps per rank — mirrors RANK_TOTAL_PERIODS in school_settings_mod.
+# Used when a teacher has no explicit weekly_periods set so the master-grid quota cell
+# shows the constraint-defined maximum instead of a blank dash.
+_RANK_DEFAULT_QUOTA = {
+    "expert": 24,
+    "advanced": 22,
+    "practitioner": 20,
+    "assistant": 18,
+}
+
 _RANK_ALIASES = {
     "خبير": "expert",
     "متقدم": "advanced",
@@ -772,7 +783,8 @@ async def get_master_grid(
     fairness_values: list[float] = []
     for t in teachers:
         tid = t.get("id")
-        quota = t.get("weekly_periods") or 0
+        normalized_rank = _normalize_rank(t.get("rank"))
+        quota = t.get("weekly_periods") or _RANK_DEFAULT_QUOTA.get(normalized_rank, 0)
         assigned = assigned_count.get(tid, 0)
         is_absent = tid in absent_ids
         absence_meta = absent_ids.get(tid) if is_absent else None
@@ -780,7 +792,7 @@ async def get_master_grid(
             "id": tid,
             "full_name": t.get("full_name") or "",
             "subject": _clean_label(t.get("specialization") or t.get("subject") or ""),
-            "rank": _normalize_rank(t.get("rank")),
+            "rank": normalized_rank,
             "weekly_quota": quota,
             "assigned_periods": assigned,
             "is_absent_today": is_absent,
