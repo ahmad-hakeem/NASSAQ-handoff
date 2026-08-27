@@ -39,6 +39,14 @@ from shared_models import (
 
 router = APIRouter()
 
+# Rank-based weekly period caps — mirrors RANK_TOTAL_PERIODS in school_settings_mod.
+_RANK_MAX_PERIODS = {
+    "expert": 24, "advanced": 22, "practitioner": 20, "assistant": 18,
+    "خبير": 24, "متقدم": 22, "ممارس": 20, "مساعد": 18,
+    "معلم خبير": 24, "معلم متقدم": 22, "معلم ممارس": 20, "معلم مساعد": 18,
+    "senior": 24, "junior": 18,
+}
+
 # Class-scoped teaching endpoints (curriculum lessons + grade columns).
 # These live on a SEPARATE router so they can be mounted WITHOUT the
 # full-school-tenant capability gate that the smart-scheduling router
@@ -652,10 +660,29 @@ async def add_smart_session(
         class_id=class_id,
     )
 
+    # Hard quota enforcement — not bypassable by the force flag.
+    teacher_doc = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    if teacher_doc:
+        teacher_rank = teacher_doc.get("rank", "")
+        max_quota = teacher_doc.get("weekly_periods") or _RANK_MAX_PERIODS.get(teacher_rank, 0)
+        if max_quota:
+            current_count = await gd_count(
+                db.session, "timetable_sessions",
+                {"timetable_id": timetable_id, "teacher_id": teacher_id}
+            )
+            if current_count >= max_quota:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"لا يمكن إسناد الحصة، لقد تجاوز المعلم الحد الأقصى للنصاب "
+                        f"({current_count}/{max_quota})"
+                    )
+                )
+
     # Get class info (already validated above; safe to re-resolve for grade).
     cls = await gd_find_one(db.session, "classes", {"id": class_id})
     grade_id = cls.get("grade_id", "") if cls else ""
-    
+
     # Check for conflicts
     conflicts = []
     

@@ -1707,15 +1707,31 @@ async def get_workload_summary(
         raise HTTPException(status_code=403, detail="المستخدم غير مرتبط بمدرسة")
 
     teachers = await gd_find(db.session, "teachers", {"school_id": school_id, "is_active": True}, limit=200)
-    assignments = await gd_find(db.session, "teacher_assignments", {"school_id": school_id}, limit=2000)
     duties = await gd_find(db.session, "teacher_other_duties", {"school_id": school_id}, limit=500)
 
-    assignments_by_teacher: Dict[str, int] = {}
-    for a in assignments:
-        tid = a.get("teacher_id")
-        if tid:
-            sessions = int(a.get("periods_per_week") or a.get("weekly_sessions") or 0)
-            assignments_by_teacher[tid] = assignments_by_teacher.get(tid, 0) + sessions
+    # Use actual placed sessions from the active timetable so the summary
+    # stays in sync with what the master grid displays (which also counts
+    # timetable_sessions rows, not teacher_assignments).
+    timetables = await gd_find(
+        db.session, "timetables", {"school_id": school_id},
+        order_by="updated_at", desc_order=True, limit=10
+    )
+    active_timetable = (
+        next((t for t in timetables if t.get("status") == "draft"), None)
+        or next((t for t in timetables if t.get("is_published")), None)
+        or (timetables[0] if timetables else None)
+    )
+    session_counts_by_teacher: Dict[str, int] = {}
+    if active_timetable:
+        placed_sessions = await gd_find(
+            db.session, "timetable_sessions",
+            {"timetable_id": active_timetable.get("id")},
+            limit=10000
+        )
+        for s in placed_sessions:
+            tid = s.get("teacher_id")
+            if tid:
+                session_counts_by_teacher[tid] = session_counts_by_teacher.get(tid, 0) + 1
 
     duties_by_teacher: Dict[str, list] = {}
     for d in duties:
@@ -1733,7 +1749,7 @@ async def get_workload_summary(
         tid = teacher.get("id")
         rank = teacher.get("rank", "")
         total_periods = RANK_TOTAL_PERIODS.get(rank, 20)
-        teaching_periods = assignments_by_teacher.get(tid, 0)
+        teaching_periods = session_counts_by_teacher.get(tid, 0)
         teacher_duties = duties_by_teacher.get(tid, [])
         other_duty_periods = sum(int(d.get("equivalent_periods", 0)) for d in teacher_duties)
         used_periods = teaching_periods + other_duty_periods
