@@ -7,13 +7,38 @@ from typing import List, Optional
 from datetime import datetime, timezone
 import uuid
 
-from dependencies import db, get_current_user, logger
+from dependencies import db, get_current_user, logger, UserRole, _user_role_value
+from src.core.guards.tenant_guard import independent_workspace_id as _itw_id
 
 router = APIRouter(prefix="/activities", tags=["activities"])
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
 
 
 ACTIVITY_TYPES = ["academic", "sports", "arts", "community", "scientific", "cultural", "other"]
+
+ACTIVITY_WRITE_ROLES = {
+    UserRole.PLATFORM_ADMIN.value,
+    UserRole.PLATFORM_SUB_ADMIN.value,
+    UserRole.SCHOOL_PRINCIPAL.value,
+    UserRole.SCHOOL_ADMIN.value,
+    UserRole.SCHOOL_SUB_ADMIN.value,
+    UserRole.TEACHER.value,
+    UserRole.INDEPENDENT_TEACHER.value,
+    "admin",
+    "super_admin",
+}
+
+ACTIVITY_DELETE_ROLES = {
+    UserRole.PLATFORM_ADMIN.value,
+    UserRole.PLATFORM_SUB_ADMIN.value,
+    UserRole.SCHOOL_PRINCIPAL.value,
+    UserRole.SCHOOL_ADMIN.value,
+    UserRole.SCHOOL_SUB_ADMIN.value,
+    UserRole.TEACHER.value,
+    UserRole.INDEPENDENT_TEACHER.value,
+    "admin",
+    "super_admin",
+}
 
 
 class ActivityCreate(BaseModel):
@@ -65,7 +90,7 @@ async def list_student_activities(
     school admin. Cross-tenant access is rejected first; then an
     object-level check via can_view_student enforces the relationship.
     """
-    tenant = current_user.get("tenant_id")
+    tenant = current_user.get("tenant_id") or _itw_id(current_user)
     if tenant and tenant != school_id:
         raise HTTPException(403, "غير مصرح")
     from src.common.utils.tenant_scope import can_view_student, require_can_view_student_sync_check
@@ -84,12 +109,13 @@ async def create_student_activity(
     school_id: str = Query(...),
     current_user: dict = Depends(get_current_user),
 ):
-    tenant = current_user.get("tenant_id")
+    role = _user_role_value(current_user)
+    if role not in ACTIVITY_WRITE_ROLES:
+        raise HTTPException(403, "ليس لديك صلاحية")
+    tenant = current_user.get("tenant_id") or _itw_id(current_user)
     if tenant and tenant != school_id:
         raise HTTPException(403, "غير مصرح")
-    role = current_user.get("role", "")
-    if role not in ("school_admin", "admin", "teacher", "super_admin"):
-        raise HTTPException(403, "ليس لديك صلاحية")
+
     doc = {
         "id": str(uuid.uuid4()),
         "student_id": student_id,
@@ -100,7 +126,7 @@ async def create_student_activity(
         "date": data.date,
         "role": data.role,
         "description": data.description,
-        "created_by": current_user.get("user_id"),
+        "created_by": current_user.get("id") or current_user.get("user_id"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -115,20 +141,23 @@ async def update_activity(
     data: ActivityUpdate,
     current_user: dict = Depends(get_current_user),
 ):
-    role = current_user.get("role", "")
-    if role not in ("school_admin", "admin", "teacher", "super_admin"):
+    role = _user_role_value(current_user)
+    if role not in ACTIVITY_WRITE_ROLES:
         raise HTTPException(403, "ليس لديك صلاحية")
-    tenant = current_user.get("tenant_id")
-    if not tenant:
-        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    tenant = current_user.get("tenant_id") or _itw_id(current_user)
+    query = {"id": activity_id}
+    if tenant:
+        query["school_id"] = tenant
+    existing = await gd_find_one(db.session, "student_activities", query)
+    if not existing:
+        raise HTTPException(404, "النشاط غير موجود")
+
     update_fields = {"updated_at": datetime.now(timezone.utc).isoformat()}
     for field in ["name", "name_en", "activity_type", "date", "role", "description"]:
         val = getattr(data, field, None)
         if val is not None:
             update_fields[field] = val
-    result = await gd_update_one(db.session, "student_activities", {"id": activity_id, "school_id": tenant}, update_fields)
-    if result == 0:
-        raise HTTPException(404, "النشاط غير موجود")
+    await gd_update_one(db.session, "student_activities", {"id": activity_id}, update_fields)
     return {"success": True, "message": "تم تحديث النشاط"}
 
 
@@ -137,15 +166,18 @@ async def delete_activity(
     activity_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    role = current_user.get("role", "")
-    if role not in ("school_admin", "admin", "super_admin"):
+    role = _user_role_value(current_user)
+    if role not in ACTIVITY_DELETE_ROLES:
         raise HTTPException(403, "ليس لديك صلاحية")
-    tenant = current_user.get("tenant_id")
-    if not tenant:
-        raise HTTPException(400, "لم يتم تحديد المدرسة")
-    result = await gd_delete_one(db.session, "student_activities", {"id": activity_id, "school_id": tenant})
-    if result == 0:
+    tenant = current_user.get("tenant_id") or _itw_id(current_user)
+    query = {"id": activity_id}
+    if tenant:
+        query["school_id"] = tenant
+    existing = await gd_find_one(db.session, "student_activities", query)
+    if not existing:
         raise HTTPException(404, "النشاط غير موجود")
+
+    await gd_delete_one(db.session, "student_activities", {"id": activity_id})
     return {"success": True, "message": "تم حذف النشاط"}
 
 
@@ -162,7 +194,7 @@ async def list_student_certificates(
     school admin. Cross-tenant access is rejected first; then an
     object-level check via can_view_student enforces the relationship.
     """
-    tenant = current_user.get("tenant_id")
+    tenant = current_user.get("tenant_id") or _itw_id(current_user)
     if tenant and tenant != school_id:
         raise HTTPException(403, "غير مصرح")
     from src.common.utils.tenant_scope import can_view_student, require_can_view_student_sync_check
@@ -181,12 +213,13 @@ async def create_student_certificate(
     school_id: str = Query(...),
     current_user: dict = Depends(get_current_user),
 ):
-    tenant = current_user.get("tenant_id")
+    role = _user_role_value(current_user)
+    if role not in ACTIVITY_WRITE_ROLES:
+        raise HTTPException(403, "ليس لديك صلاحية")
+    tenant = current_user.get("tenant_id") or _itw_id(current_user)
     if tenant and tenant != school_id:
         raise HTTPException(403, "غير مصرح")
-    role = current_user.get("role", "")
-    if role not in ("school_admin", "admin", "teacher", "super_admin"):
-        raise HTTPException(403, "ليس لديك صلاحية")
+
     doc = {
         "id": str(uuid.uuid4()),
         "student_id": student_id,
@@ -197,7 +230,7 @@ async def create_student_certificate(
         "issuing_body": data.issuing_body,
         "description": data.description,
         "image_url": data.image_url,
-        "created_by": current_user.get("user_id"),
+        "created_by": current_user.get("id") or current_user.get("user_id"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -212,20 +245,23 @@ async def update_certificate(
     data: CertificateUpdate,
     current_user: dict = Depends(get_current_user),
 ):
-    role = current_user.get("role", "")
-    if role not in ("school_admin", "admin", "teacher", "super_admin"):
+    role = _user_role_value(current_user)
+    if role not in ACTIVITY_WRITE_ROLES:
         raise HTTPException(403, "ليس لديك صلاحية")
-    tenant = current_user.get("tenant_id")
-    if not tenant:
-        raise HTTPException(400, "لم يتم تحديد المدرسة")
+    tenant = current_user.get("tenant_id") or _itw_id(current_user)
+    query = {"id": certificate_id}
+    if tenant:
+        query["school_id"] = tenant
+    existing = await gd_find_one(db.session, "student_certificates", query)
+    if not existing:
+        raise HTTPException(404, "الشهادة غير موجودة")
+
     update_fields = {"updated_at": datetime.now(timezone.utc).isoformat()}
     for field in ["title", "title_en", "date", "issuing_body", "description", "image_url"]:
         val = getattr(data, field, None)
         if val is not None:
             update_fields[field] = val
-    result = await gd_update_one(db.session, "student_certificates", {"id": certificate_id, "school_id": tenant}, update_fields)
-    if result == 0:
-        raise HTTPException(404, "الشهادة غير موجودة")
+    await gd_update_one(db.session, "student_certificates", {"id": certificate_id}, update_fields)
     return {"success": True, "message": "تم تحديث الشهادة"}
 
 
@@ -234,13 +270,16 @@ async def delete_certificate(
     certificate_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    role = current_user.get("role", "")
-    if role not in ("school_admin", "admin", "super_admin"):
+    role = _user_role_value(current_user)
+    if role not in ACTIVITY_DELETE_ROLES:
         raise HTTPException(403, "ليس لديك صلاحية")
-    tenant = current_user.get("tenant_id")
-    if not tenant:
-        raise HTTPException(400, "لم يتم تحديد المدرسة")
-    result = await gd_delete_one(db.session, "student_certificates", {"id": certificate_id, "school_id": tenant})
-    if result == 0:
+    tenant = current_user.get("tenant_id") or _itw_id(current_user)
+    query = {"id": certificate_id}
+    if tenant:
+        query["school_id"] = tenant
+    existing = await gd_find_one(db.session, "student_certificates", query)
+    if not existing:
         raise HTTPException(404, "الشهادة غير موجودة")
+
+    await gd_delete_one(db.session, "student_certificates", {"id": certificate_id})
     return {"success": True, "message": "تم حذف الشهادة"}
