@@ -31,7 +31,7 @@ export function formatTimeStr(timeStr, timeFormat = '12h', t = null) {
   const pmLabel = t ? t('pm') : 'م';
   const period = h < 12 ? amLabel : pmLabel;
   const h12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
-  return `${h12}:${m} ${period}`;
+  return `\u200E${h12}:${m} ${period}`;
 }
 
 /**

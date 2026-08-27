@@ -12,6 +12,7 @@ import {
 } from '@/shared/services/perimeterGateBridge';
 import { WORKSPACE_NOT_MATERIALISED_AR_FE } from '@/shared/models/constants/auth';
 import { isIdempotentWriteRetry } from '@/shared/models/utils/retryableWrite';
+import { ThemeContext } from '@/shared/contexts/ThemeContext';
 import arLocale from '@/locales/ar.json';
 import enLocale from '@/locales/en.json';
 
@@ -662,6 +663,7 @@ export const AuthProvider = ({ children }) => {
       }
       if (userData?.preferred_language) {
         localStorage.setItem('nassaq_language', userData.preferred_language);
+        window.dispatchEvent(new CustomEvent('nassaq-language-sync', { detail: { language: userData.preferred_language } }));
       }
       
       return { success: true, user: userData };
@@ -809,6 +811,7 @@ export const AuthProvider = ({ children }) => {
       }
       if (userData?.preferred_language) {
         localStorage.setItem('nassaq_language', userData.preferred_language);
+        window.dispatchEvent(new CustomEvent('nassaq-language-sync', { detail: { language: userData.preferred_language } }));
       }
 
       return { success: true, user: userData, raw: res.data };
@@ -867,6 +870,7 @@ export const AuthProvider = ({ children }) => {
     }
     if (userData?.preferred_language) {
       localStorage.setItem('nassaq_language', userData.preferred_language);
+      window.dispatchEvent(new CustomEvent('nassaq-language-sync', { detail: { language: userData.preferred_language } }));
     }
   }, []);
 
@@ -1082,14 +1086,21 @@ export const AuthProvider = ({ children }) => {
     return user?.tenant_id;
   };
   
-  // Language preference - Default to Arabic for teachers, use user preference if set
-  const preferredLanguage = user?.preferred_language || (user?.role === 'teacher' ? 'ar' : 'ar');
-  const isRTL = preferredLanguage === 'ar';
+  // Language preference - Dynamically synchronized with ThemeContext
+  const themeContext = useContext(ThemeContext);
+  const activeLanguage = themeContext?.language || (typeof window !== 'undefined' ? localStorage.getItem('nassaq_language') : null) || user?.preferred_language || 'ar';
+  const isRTL = themeContext ? themeContext.isRTL : activeLanguage === 'ar';
+  const preferredLanguage = activeLanguage;
 
   const updatePreferences = async (preferences) => {
     try {
       await api.put('/auth/preferences', null, { params: preferences });
       setUser((prev) => ({ ...prev, ...preferences }));
+      if (preferences.preferred_language || preferences.language) {
+        const lang = preferences.preferred_language || preferences.language;
+        localStorage.setItem('nassaq_language', lang);
+        window.dispatchEvent(new CustomEvent('nassaq-language-sync', { detail: { language: lang } }));
+      }
       return { success: true };
     } catch (error) {
       return { success: false, error: 'فشل تحديث الإعدادات' };

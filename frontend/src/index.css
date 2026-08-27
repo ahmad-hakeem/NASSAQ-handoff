@@ -101,6 +101,30 @@
         text-rendering: optimizeLegibility;
     }
     
+    /* Typography & Font Harmonization by Language */
+    html[lang="en"] body,
+    html[data-language="en"] body,
+    [dir="ltr"] body {
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    html[lang="en"] h1, html[lang="en"] h2, html[lang="en"] h3, html[lang="en"] h4, html[lang="en"] h5, html[lang="en"] h6,
+    html[data-language="en"] h1, html[data-language="en"] h2, html[data-language="en"] h3, html[data-language="en"] h4, html[data-language="en"] h5, html[data-language="en"] h6 {
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        letter-spacing: -0.015em;
+    }
+
+    html[lang="ar"] body,
+    html[data-language="ar"] body,
+    [dir="rtl"] body {
+        font-family: 'Tajawal', 'Cairo', 'Inter', system-ui, sans-serif;
+    }
+
+    html[lang="ar"] h1, html[lang="ar"] h2, html[lang="ar"] h3, html[lang="ar"] h4, html[lang="ar"] h5, html[lang="ar"] h6,
+    html[data-language="ar"] h1, html[data-language="ar"] h2, html[data-language="ar"] h3, html[data-language="ar"] h4, html[data-language="ar"] h5, html[data-language="ar"] h6 {
+        font-family: 'Cairo', 'Tajawal', sans-serif;
+    }
+    
     /* RTL/LTR Support - Global Rules */
     html[dir="rtl"],
     html[data-direction="rtl"],
@@ -145,9 +169,10 @@
         unicode-bidi: isolate;
     }
     
-    /* Ensure numbers and codes don't invert in mixed text */
+    /* Ensure numbers, times, and codes don't invert in mixed text */
     .tabular-nums,
-    .font-mono {
+    .font-mono,
+    .time-display {
         direction: ltr;
         unicode-bidi: isolate;
         font-variant-numeric: tabular-nums;
@@ -241,14 +266,27 @@
     /* Custom Scrollbar */
     .custom-scrollbar::-webkit-scrollbar {
         width: 6px;
+        height: 6px;
     }
     
     .custom-scrollbar::-webkit-scrollbar-track {
-        @apply bg-muted rounded-full;
+        background: transparent;
+        border-radius: 9999px;
     }
     
     .custom-scrollbar::-webkit-scrollbar-thumb {
-        @apply bg-brand-navy/30 rounded-full hover:bg-brand-navy/50;
+        background: hsl(var(--muted-foreground) / 0.25);
+        border-radius: 9999px;
+        transition: background 0.2s ease;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: hsl(var(--muted-foreground) / 0.45);
+    }
+
+    .custom-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: hsl(var(--muted-foreground) / 0.25) transparent;
     }
 
     /* Sidebar scrollbar — white, hidden until hover/active-scroll, no arrow buttons */

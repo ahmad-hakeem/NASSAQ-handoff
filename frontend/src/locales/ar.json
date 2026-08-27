@@ -5522,5 +5522,20 @@
   "insightConfidence": "موثوقية القراءة",
   "insightBasisLabel": "مصدر القراءة",
   "recommendationAppliesTo": "يخص",
-  "recommendationWhyNow": "لماذا الآن"
+  "recommendationWhyNow": "لماذا الآن",
+  "studentsRecord": "سجل الطلاب",
+  "student": "طالب",
+  "students": "طلاب",
+  "visibleColumns": "عمود ظاهر",
+  "recordedAbsences": "غياب مسجّل",
+  "addNewColumn": "إضافة عمود جديد",
+  "columnName": "اسم العمود",
+  "columnType": "نوع العمود",
+  "maxGrade": "الدرجة القصوى",
+  "shortQuiz": "اختبار قصير",
+  "periodFinalExam": "اختبار نهاية الفترة",
+  "newColumn": "عمود جديد",
+  "checkType": "تحقق",
+  "textType": "نص",
+  "done": "تم"
 }

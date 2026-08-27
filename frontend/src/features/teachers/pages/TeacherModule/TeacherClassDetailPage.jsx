@@ -51,12 +51,12 @@ const GRADE_COLORS = {
 };
 
 export default function TeacherClassDetailPage() {
-  const { t } = useTranslation();
+  const { t, isRTL, dir } = useTranslation();
   const { nassaqError } = useNassaqAlert();
   const { classId } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user, api, isRTL } = useAuth();
+  const { user, api } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [classData, setClassData] = useState(null);
@@ -1304,7 +1304,7 @@ export default function TeacherClassDetailPage() {
               </Badge>
             ) : null}
             <div className="text-xs text-muted-foreground font-cairo">
-              {students.length} طالب
+              {students.length} {students.length === 1 ? (t('student') || 'طالب') : (t('students') || 'طلاب')}
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -1314,7 +1314,7 @@ export default function TeacherClassDetailPage() {
             </Button>
             <Button size="sm" variant="outline" className="gap-1.5 font-cairo" onClick={() => setShowColumnSettings(true)}>
               <Settings className="h-3.5 w-3.5" />
-              إعدادات الأعمدة
+              {t('columnSettings') || 'إعدادات الأعمدة'}
             </Button>
             <Button
               size="sm"
@@ -1322,7 +1322,7 @@ export default function TeacherClassDetailPage() {
               onClick={() => setShowQuickAddCol(true)}
             >
               <Plus className="h-3.5 w-3.5" />
-              إضافة عمود
+              {t('addColumn') || 'إضافة عمود'}
             </Button>
           </div>
         </div>
@@ -1372,7 +1372,7 @@ export default function TeacherClassDetailPage() {
         {/* Footer chip — visible columns count */}
         <div className="flex items-center justify-end px-1">
           <span className="text-xs text-muted-foreground font-cairo">
-            {visibleColCount} عمود ظاهر
+            {visibleColCount} {t('visibleColumns') || 'عمود ظاهر'}
           </span>
         </div>
       </div>
@@ -1393,44 +1393,47 @@ export default function TeacherClassDetailPage() {
         if (!o) resetNewColumnForm();
       }}
     >
-      <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+      <DialogContent className="max-w-md" dir={dir}>
         <DialogHeader>
           <DialogTitle className="font-cairo flex items-center gap-2">
             <Plus className="h-5 w-5 text-brand-turquoise" />
-            إضافة عمود جديد
+            {t('addNewColumn') || 'إضافة عمود جديد'}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div>
-            <label className="block text-xs font-cairo font-semibold mb-1">اسم العمود</label>
+            <label className="block text-xs font-cairo font-semibold mb-1">{t('columnName') || 'اسم العمود'}</label>
             <Input
               type="text"
+              dir="auto"
               value={newColName}
               onChange={(e) => setNewColName(e.target.value)}
-              placeholder="مثال: نشاط صفي"
+              placeholder={t('exampleActivity') || 'مثال: نشاط صفي'}
               onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()}
             />
           </div>
           <div>
-            <label className="block text-xs font-cairo font-semibold mb-1">نوع العمود</label>
+            <label className="block text-xs font-cairo font-semibold mb-1">{t('columnType') || 'نوع العمود'}</label>
             <Select value={newColType} onValueChange={setNewColType}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="coursework">أعمال سنة</SelectItem>
-                <SelectItem value="exams">اختبارات</SelectItem>
+                <SelectItem value="coursework">{t('coursework') || 'أعمال سنة'}</SelectItem>
+                <SelectItem value="exams">{t('exams') || 'اختبارات'}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div>
-            <label className="block text-xs font-cairo font-semibold mb-1">الدرجة القصوى</label>
+            <label className="block text-xs font-cairo font-semibold mb-1">{t('maxGrade') || 'الدرجة القصوى'}</label>
             <Input
               type="number"
+              dir="ltr"
               min={1}
               max={100}
               value={newColMax}
               onChange={(e) => setNewColMax(parseInt(e.target.value) || 10)}
+              className="tabular-nums"
             />
           </div>
         </div>

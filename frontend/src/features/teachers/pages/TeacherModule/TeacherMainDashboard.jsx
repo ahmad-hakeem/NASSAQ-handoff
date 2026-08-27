@@ -189,8 +189,8 @@ const localTodayISODate = () => {
 };
 
 export default function TeacherMainDashboard() {
-  const { t } = useTranslation();
-  const { user, api, isRTL } = useAuth();
+  const { t, isRTL, dir } = useTranslation();
+  const { user, api } = useAuth();
   const canViewInternalIds = useCanViewInternalIds();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -487,7 +487,7 @@ export default function TeacherMainDashboard() {
       <Sidebar>
         <div
           className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50/50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950"
-          dir={isRTL ? 'rtl' : 'ltr'}
+          dir={dir}
         >
           <div className="p-4 md:p-6 max-w-[1400px] mx-auto space-y-5">
             <ReactivationBanner />
@@ -537,7 +537,7 @@ export default function TeacherMainDashboard() {
 
   return (
     <Sidebar>
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50/50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50/50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950" dir={dir}>
         <div className="p-4 md:p-6 space-y-5 max-w-[1400px] mx-auto">
 
           {/* Task #222 — IT post-login reactivation banner */}
@@ -694,7 +694,7 @@ export default function TeacherMainDashboard() {
                 ) : (
                 <>
                 <div className="flex items-center justify-between mb-1.5 font-tajawal">
-                  <span className="text-[10px] text-white/40">{formatTimeLabel(dayStart)}</span>
+                  <span className="text-[10px] text-white/40 tabular-nums">{formatTimeLabel(dayStart)}</span>
                   <div className="flex items-center gap-3">
                     {isSchoolTime && !isBreak && (
                       <span className="text-xs text-white/60 flex items-center gap-1.5">
@@ -712,7 +712,7 @@ export default function TeacherMainDashboard() {
                       {progress}%
                     </span>
                   </div>
-                  <span className="text-[10px] text-white/40">{formatTimeLabel(dayEnd)}</span>
+                  <span className="text-[10px] text-white/40 tabular-nums">{formatTimeLabel(dayEnd)}</span>
                 </div>
                 <div className="h-2 bg-white/5 rounded-full overflow-hidden">
                   <div

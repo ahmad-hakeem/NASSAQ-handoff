@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo } 
 import arLocale from '@/locales/ar.json';
 import enLocale from '@/locales/en.json';
 
-const ThemeContext = createContext(null);
+export const ThemeContext = createContext(null);
 
 const locales = { ar: arLocale, en: enLocale };
 
@@ -89,6 +89,24 @@ export const ThemeProvider = ({ children }) => {
     return () => window.removeEventListener('nassaq-theme-sync', handleThemeSync);
   }, []);
 
+  useEffect(() => {
+    const handleLangSync = (e) => {
+      const newLang = e.detail?.language;
+      if (newLang && (newLang === 'ar' || newLang === 'en')) {
+        setLanguage((current) => {
+          if (current !== newLang) {
+            applyLanguageDirection(newLang);
+            setForceUpdate((n) => n + 1);
+            return newLang;
+          }
+          return current;
+        });
+      }
+    };
+    window.addEventListener('nassaq-language-sync', handleLangSync);
+    return () => window.removeEventListener('nassaq-language-sync', handleLangSync);
+  }, []);
+
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
       const newTheme = prev === 'light' ? 'dark' : 'light';
@@ -105,11 +123,36 @@ export const ThemeProvider = ({ children }) => {
     });
   }, []);
 
+  const setLanguageAndApply = useCallback((newLang) => {
+    if (newLang !== 'ar' && newLang !== 'en') return;
+    setLanguage(newLang);
+    applyLanguageDirection(newLang);
+    setForceUpdate((n) => n + 1);
+    window.dispatchEvent(new CustomEvent('nassaq-language-sync', { detail: { language: newLang } }));
+    const token = localStorage.getItem('nassaq_token');
+    if (token) {
+      const baseUrl = (window.location.hostname === 'localhost' ? '' : '') + '/api';
+      fetch(`${baseUrl}/auth/preferences?preferred_language=${newLang}`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` },
+      }).catch(() => {});
+    }
+  }, []);
+
   const toggleLanguage = useCallback(() => {
     setLanguage((prev) => {
       const newLang = prev === 'ar' ? 'en' : 'ar';
       applyLanguageDirection(newLang);
-      setForceUpdate(n => n + 1);
+      setForceUpdate((n) => n + 1);
+      window.dispatchEvent(new CustomEvent('nassaq-language-sync', { detail: { language: newLang } }));
+      const token = localStorage.getItem('nassaq_token');
+      if (token) {
+        const baseUrl = (window.location.hostname === 'localhost' ? '' : '') + '/api';
+        fetch(`${baseUrl}/auth/preferences?preferred_language=${newLang}`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${token}` },
+        }).catch(() => {});
+      }
       return newLang;
     });
   }, []);
@@ -119,12 +162,13 @@ export const ThemeProvider = ({ children }) => {
     setTheme,
     toggleTheme,
     language,
-    setLanguage,
+    setLanguage: setLanguageAndApply,
     toggleLanguage,
     isRTL: language === 'ar',
     isDark: theme === 'dark',
+    dir: language === 'ar' ? 'rtl' : 'ltr',
     direction: language === 'ar' ? 'rtl' : 'ltr',
-  }), [theme, language, toggleTheme, toggleLanguage]);
+  }), [theme, language, toggleTheme, toggleLanguage, setLanguageAndApply]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 };
@@ -138,7 +182,7 @@ export const useTheme = () => {
 };
 
 export const useTranslation = () => {
-  const { language } = useTheme();
+  const { language, isRTL, dir, direction } = useTheme();
 
   const t = useCallback((key, params) => {
     let text = locales[language]?.[key] || locales.ar[key] || key;
@@ -159,7 +203,15 @@ export const useTranslation = () => {
     return item[`${field}_ar`] || item[field] || item[`${field}_en`] || '';
   }, [language]);
 
-  return { t, language, localizedValue };
+  return {
+    t,
+    language,
+    isRTL: isRTL !== undefined ? isRTL : language === 'ar',
+    dir: dir || (language === 'ar' ? 'rtl' : 'ltr'),
+    direction: direction || (language === 'ar' ? 'rtl' : 'ltr'),
+    localizedValue,
+  };
 };
 
 export const translations = locales;
+

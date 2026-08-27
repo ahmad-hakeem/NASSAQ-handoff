@@ -681,8 +681,8 @@ export const NotificationsPage = ({ embedded = false }) => {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <ScrollArea className="max-h-[600px]">
+                <CardContent className="p-4 sm:p-6">
+                  <div className="max-h-[600px] overflow-y-auto pe-1 sm:pe-2 custom-scrollbar space-y-5">
                     {loading ? (
                       <div className="flex items-center justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-brand-turquoise" /></div>
                     ) : filteredNotifications.length === 0 ? (
@@ -702,7 +702,7 @@ export const NotificationsPage = ({ embedded = false }) => {
                         ))}
                       </div>
                     )}
-                  </ScrollArea>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -710,11 +710,13 @@ export const NotificationsPage = ({ embedded = false }) => {
             <TabsContent value="unread">
               <Card>
                 <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><AlertCircle className="h-4 w-4 text-red-500" />{t('unreadNotifications')}<Badge className="bg-red-500 text-white border-0">{unreadCount}</Badge></CardTitle></CardHeader>
-                <CardContent>
+                <CardContent className="p-4 sm:p-6">
                   {unreadCount === 0 ? (
                     <div className="flex flex-col items-center py-16 text-center"><Check className="h-14 w-14 mb-4 text-green-400" /><p className="text-muted-foreground font-cairo font-medium">{t('noUnreadNotifications')}</p><p className="text-xs text-muted-foreground/60 mt-1">{t('youreAllCaughtUp')}</p></div>
                   ) : (
-                    <div className="space-y-2.5">{notifications.filter(n => !n.read_status).map(renderNotificationCard)}</div>
+                    <div className="max-h-[600px] overflow-y-auto pe-1 sm:pe-2 custom-scrollbar space-y-2.5">
+                      {notifications.filter(n => !n.read_status).map(renderNotificationCard)}
+                    </div>
                   )}
                 </CardContent>
               </Card>

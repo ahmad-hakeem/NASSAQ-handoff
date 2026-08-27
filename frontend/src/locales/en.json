@@ -5522,5 +5522,20 @@
   "insightConfidence": "Reading reliability",
   "insightBasisLabel": "Based on",
   "recommendationAppliesTo": "Applies to",
-  "recommendationWhyNow": "Why now"
+  "recommendationWhyNow": "Why now",
+  "studentsRecord": "Students Record",
+  "student": "Student",
+  "students": "Students",
+  "visibleColumns": "visible columns",
+  "recordedAbsences": "recorded absences",
+  "addNewColumn": "Add New Column",
+  "columnName": "Column Name",
+  "columnType": "Column Type",
+  "maxGrade": "Max Grade",
+  "shortQuiz": "Short Quiz",
+  "periodFinalExam": "Term Final Exam",
+  "newColumn": "New Column",
+  "checkType": "Check",
+  "textType": "Text",
+  "done": "Done"
 }

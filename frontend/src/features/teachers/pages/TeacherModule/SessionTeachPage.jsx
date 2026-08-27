@@ -4270,7 +4270,7 @@ export default function SessionTeachPage() {
 }
 
 function FollowupRecordDialog({
-  open, onOpenChange, isRTL, students,
+  open, onOpenChange, isRTL: isRTLProp, students,
   followupColumns, setFollowupColumns,
   followupData, setFollowupData,
   followupStreakBonus,
@@ -4288,10 +4288,11 @@ function FollowupRecordDialog({
   onDeleteColumn,
   onGradeChange,
 }) {
-  const { t } = useTranslation();
+  const { t, isRTL: isRTLHook, dir } = useTranslation();
+  const isRTL = isRTLProp !== undefined ? isRTLProp : isRTLHook;
   const allStudents = students || [];
 
-  // Used only for the footer "X عمود ظاهر" counter — table rendering itself
+  // Used only for the footer "X visible columns" counter — table rendering itself
   // lives in FollowupGradesTable now.
   const visibleColumns = followupColumns.filter(c => !c.hidden);
 
@@ -4421,7 +4422,7 @@ function FollowupRecordDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-hidden flex flex-col p-0" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] overflow-hidden flex flex-col p-0" dir={dir}>
           <DialogHeader className="px-5 pt-5 pb-3 border-b">
             <DialogTitle className="font-cairo flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5 text-brand-turquoise" />
@@ -4441,7 +4442,7 @@ function FollowupRecordDialog({
             >
               <span className="inline-flex items-center gap-2">
                 <Table2 className="h-4 w-4" />
-                سجل الطلاب
+                {t('studentsRecord') || 'سجل الطلاب'}
               </span>
             </button>
             {/* "سجل الغياب" tab hidden by request — absences are now managed
@@ -4452,16 +4453,16 @@ function FollowupRecordDialog({
           {followupTab === 'students' && (
             <div className="flex items-center justify-between gap-2 px-5 py-2.5 bg-muted/40 dark:bg-card/40 border-b">
               <div className="text-xs text-muted-foreground font-cairo">
-                {allStudents.length} طالب
+                {allStudents.length} {allStudents.length === 1 ? (t('student') || 'طالب') : (t('students') || 'طلاب')}
               </div>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline" onClick={() => setShowColumnSettings(true)} className="font-cairo">
                   <Settings className="h-4 w-4 me-1.5" />
-                  إعدادات الأعمدة
+                  {t('columnSettings') || 'إعدادات الأعمدة'}
                 </Button>
                 <Button size="sm" onClick={() => setShowAddColumnModal(true)} className="font-cairo bg-brand-turquoise hover:bg-brand-turquoise/90">
                   <Plus className="h-4 w-4 me-1.5" />
-                  إضافة عمود
+                  {t('addColumn') || 'إضافة عمود'}
                 </Button>
               </div>
             </div>
@@ -4485,9 +4486,9 @@ function FollowupRecordDialog({
                   <thead className="sticky top-0 bg-muted dark:bg-card z-10">
                     <tr>
                       <th className="border px-2 py-2 text-center font-cairo font-bold text-xs w-12">#</th>
-                      <th className="border px-3 py-2 text-start font-cairo font-bold text-xs min-w-[160px]">اسم الطالب</th>
-                      <th className="border px-3 py-2 text-start font-cairo font-bold text-xs">سجل الغياب</th>
-                      <th className="border px-3 py-2 text-center font-cairo font-bold text-xs w-32">إجراء</th>
+                      <th className="border px-3 py-2 text-start font-cairo font-bold text-xs min-w-[160px]">{t('studentName') || 'اسم الطالب'}</th>
+                      <th className="border px-3 py-2 text-start font-cairo font-bold text-xs">{t('absenceRecord') || 'سجل الغياب'}</th>
+                      <th className="border px-3 py-2 text-center font-cairo font-bold text-xs w-32">{t('action') || 'إجراء'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4495,24 +4496,24 @@ function FollowupRecordDialog({
                       const dates = followupAbsences[student.id] || [];
                       return (
                         <tr key={student.id} className="hover:bg-muted/40 dark:hover:bg-card/40">
-                          <td className="border px-2 py-2 text-center text-[11px] text-muted-foreground">{si + 1}</td>
-                          <td className="border px-3 py-2 text-xs font-medium">{student.full_name}</td>
+                          <td className="border px-2 py-2 text-center text-[11px] text-muted-foreground tabular-nums">{si + 1}</td>
+                          <td className="border px-3 py-2 text-xs font-medium"><bdi dir="auto">{student.full_name}</bdi></td>
                           <td className="border px-3 py-2">
                             {dates.length === 0 ? (
-                              <span className="text-xs text-muted-foreground italic">لم يسجل عليه غياب</span>
+                              <span className="text-xs text-muted-foreground italic">{t('noAbsencesRecorded') || 'لم يسجل عليه غياب'}</span>
                             ) : (
                               <div className="flex flex-wrap gap-1.5">
                                 {dates.map(d => (
                                   <span
                                     key={d}
-                                    className="group relative inline-flex items-center justify-center min-w-[52px] h-12 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/60 text-[11px] font-bold font-cairo px-2"
+                                    className="group relative inline-flex items-center justify-center min-w-[52px] h-12 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/60 text-[11px] font-bold font-cairo px-2 tabular-nums"
                                     title={d}
                                   >
                                     {formatAbsence(d)}
                                     <button
                                       onClick={() => removeAbsence(student.id, d)}
-                                      className="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-red-500 text-foreground text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
-                                      aria-label="حذف"
+                                      className="absolute -top-1 -end-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                                      aria-label={t('delete') || 'حذف'}
                                     >
                                       ×
                                     </button>
@@ -4532,14 +4533,14 @@ function FollowupRecordDialog({
                               }}
                             >
                               <Plus className="h-3 w-3 me-1" />
-                              تسجيل غياب
+                              {t('recordAbsence') || 'تسجيل غياب'}
                             </Button>
                           </td>
                         </tr>
                       );
                     })}
                     {allStudents.length === 0 && (
-                      <tr><td colSpan={4} className="text-center text-sm text-muted-foreground py-8">لا يوجد طلاب</td></tr>
+                      <tr><td colSpan={4} className="text-center text-sm text-muted-foreground py-8">{t('noStudents') || 'لا يوجد طلاب'}</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -4550,8 +4551,8 @@ function FollowupRecordDialog({
           <div className="flex-none px-5 py-3 border-t flex items-center justify-between bg-muted/40 dark:bg-card/40">
             <span className="text-xs text-muted-foreground font-cairo">
               {followupTab === 'students'
-                ? `${visibleColumns.length} عمود ظاهر`
-                : `${Object.values(followupAbsences).reduce((s, arr) => s + arr.length, 0)} غياب مسجّل`}
+                ? `${visibleColumns.length} ${t('visibleColumns') || 'عمود ظاهر'}`
+                : `${Object.values(followupAbsences).reduce((s, arr) => s + arr.length, 0)} ${t('recordedAbsences') || 'غياب مسجّل'}`}
             </span>
             <Button size="sm" onClick={() => onOpenChange(false)}>{t('close') || 'إغلاق'}</Button>
           </div>
@@ -4560,65 +4561,67 @@ function FollowupRecordDialog({
 
       {/* Add Column Modal */}
       <Dialog open={showAddColumnModal} onOpenChange={setShowAddColumnModal}>
-        <DialogContent className="max-w-md" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogContent className="max-w-md" dir={dir}>
           <DialogHeader>
             <DialogTitle className="font-cairo flex items-center gap-2">
               <Plus className="h-5 w-5 text-brand-turquoise" />
-              إضافة عمود جديد
+              {t('addNewColumn') || 'إضافة عمود جديد'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div>
-              <label className="block text-xs font-cairo font-semibold mb-1">اسم العمود</label>
+              <label className="block text-xs font-cairo font-semibold mb-1">{t('columnName') || 'اسم العمود'}</label>
               <input
                 type="text"
+                dir="auto"
                 value={newColumnDraft.name}
                 onChange={e => setNewColumnDraft(d => ({ ...d, name: e.target.value }))}
-                placeholder="مثال: نشاط صفي"
+                placeholder={t('exampleActivity') || 'مثال: نشاط صفي'}
                 className="w-full text-sm bg-card dark:bg-card border border-border dark:border-border rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
               />
             </div>
             <div>
-              <label className="block text-xs font-cairo font-semibold mb-1">نوع العمود</label>
+              <label className="block text-xs font-cairo font-semibold mb-1">{t('columnType') || 'نوع العمود'}</label>
               <select
                 value={newColumnDraft.group}
                 onChange={e => setNewColumnDraft(d => ({ ...d, group: e.target.value }))}
                 className="w-full text-sm bg-card dark:bg-card border border-border dark:border-border rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
               >
-                <option value="coursework">أعمال سنة</option>
-                <option value="exams">اختبارات</option>
+                <option value="coursework">{t('coursework') || 'أعمال سنة'}</option>
+                <option value="exams">{t('exams') || 'اختبارات'}</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-cairo font-semibold mb-1">الدرجة القصوى</label>
+              <label className="block text-xs font-cairo font-semibold mb-1">{t('maxGrade') || 'الدرجة القصوى'}</label>
               <input
                 type="number"
+                dir="ltr"
                 min={1}
                 value={newColumnDraft.maxGrade}
                 onChange={e => setNewColumnDraft(d => ({ ...d, maxGrade: e.target.value }))}
-                className="w-full text-sm bg-card dark:bg-card border border-border dark:border-border rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise"
+                className="w-full text-sm bg-card dark:bg-card border border-border dark:border-border rounded-lg px-3 py-2 outline-none focus:border-brand-turquoise tabular-nums"
               />
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <Button variant="outline" size="sm" onClick={() => setShowAddColumnModal(false)}>إلغاء</Button>
-            <Button size="sm" onClick={handleAddColumn} className="bg-brand-turquoise hover:bg-brand-turquoise/90">حفظ</Button>
+            <Button variant="outline" size="sm" onClick={() => setShowAddColumnModal(false)}>{t('cancel') || 'إلغاء'}</Button>
+            <Button size="sm" onClick={handleAddColumn} className="bg-brand-turquoise hover:bg-brand-turquoise/90">{t('save') || 'حفظ'}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Column Settings Panel */}
       <Dialog open={showColumnSettings} onOpenChange={setShowColumnSettings}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden flex flex-col" dir={isRTL ? 'rtl' : 'ltr'}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-hidden flex flex-col" dir={dir}>
           <DialogHeader>
             <DialogTitle className="font-cairo flex items-center gap-2">
               <Settings className="h-5 w-5 text-brand-turquoise" />
-              إعدادات الأعمدة
+              {t('columnSettings') || 'إعدادات الأعمدة'}
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-auto space-y-2 py-2">
             {followupColumns.length === 0 && (
-              <div className="text-center text-sm text-muted-foreground py-6">لا توجد أعمدة</div>
+              <div className="text-center text-sm text-muted-foreground py-6">{t('noColumns') || 'لا توجد أعمدة'}</div>
             )}
             {followupColumns.map(col => (
               <div key={col.id} className="flex items-center gap-2 p-2 rounded-lg border border-border dark:border-border bg-card dark:bg-card/40">
@@ -4629,12 +4632,13 @@ function FollowupRecordDialog({
                       ? 'bg-muted dark:bg-muted text-muted-foreground'
                       : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600'
                   }`}
-                  title={col.hidden ? 'إظهار' : 'إخفاء'}
+                  title={col.hidden ? (t('show') || 'إظهار') : (t('hide') || 'إخفاء')}
                 >
                   {col.hidden ? <PanelRightClose className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
                 </button>
                 <input
                   type="text"
+                  dir="auto"
                   value={getDraftValue(col, 'name')}
                   onChange={e => handleEditColumnName(col.id, e.target.value)}
                   onBlur={() => flushDraft(col, 'name')}
@@ -4645,23 +4649,24 @@ function FollowupRecordDialog({
                     ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
                     : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
                 }`}>
-                  {col.group === 'exams' ? 'اختبارات' : 'أعمال سنة'}
+                  {col.group === 'exams' ? (t('exams') || 'اختبارات') : (t('coursework') || 'أعمال سنة')}
                 </span>
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] text-muted-foreground">/</span>
                   <input
                     type="number"
+                    dir="ltr"
                     min={1}
                     value={getDraftValue(col, 'maxGrade')}
                     onChange={e => handleEditMaxGrade(col.id, e.target.value)}
                     onBlur={() => flushDraft(col, 'maxGrade')}
-                    className="w-14 text-xs text-center bg-transparent border border-border dark:border-border rounded px-1 py-1.5 outline-none focus:border-brand-turquoise"
+                    className="w-14 text-xs text-center bg-transparent border border-border dark:border-border rounded px-1 py-1.5 outline-none focus:border-brand-turquoise tabular-nums"
                   />
                 </div>
                 <button
                   onClick={() => handleDeleteColumn(col.id)}
                   className="w-9 h-9 rounded-lg flex items-center justify-center bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100"
-                  title="حذف"
+                  title={t('delete') || 'حذف'}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -4669,7 +4674,7 @@ function FollowupRecordDialog({
             ))}
           </div>
           <div className="flex justify-end pt-2 border-t">
-            <Button size="sm" onClick={() => setShowColumnSettings(false)}>تم</Button>
+            <Button size="sm" onClick={() => setShowColumnSettings(false)}>{t('done') || 'تم'}</Button>
           </div>
         </DialogContent>
       </Dialog>

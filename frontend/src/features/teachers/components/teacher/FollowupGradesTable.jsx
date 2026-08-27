@@ -40,6 +40,25 @@ export default function FollowupGradesTable({
   const examMax = maxSum(examCols);
   const grandMax = courseworkMax + examMax;
 
+  const getColumnDisplayName = (col) => {
+    if (!col) return '';
+    const standardNames = {
+      participation: t('participation') || 'المشاركة',
+      homework: t('homework') || 'الواجبات',
+      performance_task: t('performanceTasks') || 'المهام الأدائية',
+      short_test: t('shortQuiz') || t('shortTest') || 'اختبار قصير',
+      final_test: t('periodFinalExam') || t('finalExam') || 'اختبار نهاية الفترة',
+      'المشاركة': t('participation') || 'المشاركة',
+      'الواجبات': t('homework') || 'الواجبات',
+      'المهام الأدائية': t('performanceTasks') || 'المهام الأدائية',
+      'الاختبار القصير': t('shortQuiz') || t('shortTest') || 'اختبار قصير',
+      'اختبار قصير': t('shortQuiz') || t('shortTest') || 'اختبار قصير',
+      'اختبار نهاية الفترة': t('periodFinalExam') || t('finalExam') || 'اختبار نهاية الفترة',
+      'عمود جديد': t('newColumn') || 'عمود جديد',
+    };
+    return standardNames[col.id] || standardNames[col.name] || col.name;
+  };
+
   const renderGroupedHeader = () => (
     <thead className="sticky top-0 z-20 bg-muted dark:bg-card">
       <tr>
@@ -73,7 +92,7 @@ export default function FollowupGradesTable({
       <tr>
         {courseworkCols.map(col => (
           <th key={col.id} className="border px-2 py-2 text-center font-cairo font-bold text-[11px] min-w-[90px]">
-            <bdi dir="auto" className="truncate block">{col.name}</bdi>
+            <bdi dir="auto" className="truncate block">{getColumnDisplayName(col)}</bdi>
             <div className="text-[10px] text-muted-foreground font-normal tabular-nums">
               {isScorable(col) ? <span dir="ltr">/{col.maxGrade}</span> : (col.type === 'check' ? (t('checkType') || 'تحقق') : (t('textType') || 'نص'))}
             </div>
@@ -87,7 +106,7 @@ export default function FollowupGradesTable({
         )}
         {examCols.map(col => (
           <th key={col.id} className="border px-2 py-2 text-center font-cairo font-bold text-[11px] min-w-[90px]">
-            <bdi dir="auto" className="truncate block">{col.name}</bdi>
+            <bdi dir="auto" className="truncate block">{getColumnDisplayName(col)}</bdi>
             <div className="text-[10px] text-muted-foreground font-normal tabular-nums">
               {isScorable(col) ? <span dir="ltr">/{col.maxGrade}</span> : (col.type === 'check' ? (t('checkType') || 'تحقق') : (t('textType') || 'نص'))}
             </div>

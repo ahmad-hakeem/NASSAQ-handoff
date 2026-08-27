@@ -402,7 +402,7 @@ export const Sidebar = ({ children }) => {
   const onOpenRoleSwitcher = useCallback(() => setShowRoleSwitcher(true), []);
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Mobile Menu Button */}
       <Button
         variant="ghost"
@@ -462,6 +462,7 @@ export const Sidebar = ({ children }) => {
 
       {/* Main Content */}
       <main
+        dir={isRTL ? 'rtl' : 'ltr'}
         className={`
           flex-1 min-w-0 min-h-screen bg-background w-full overflow-x-hidden
           transition-all duration-300 pt-14 lg:pt-0
