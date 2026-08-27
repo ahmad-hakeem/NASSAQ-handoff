@@ -774,13 +774,19 @@ export const NotificationsPage = ({ embedded = false }) => {
                           { key: 'behavior_alerts', label: t('behaviorAlerts'), desc: t('alertsOnBehaviorRecords') },
                           { key: 'announcement_notifications', label: t('announcements2'), desc: t('schoolAnnouncements') },
                         ].map(pref => (
-                          <div key={pref.key} className="flex items-center justify-between p-3.5 sm:p-4 rounded-2xl border border-border/50 bg-background/50 hover:bg-muted/30 transition-colors">
-                            <div className="min-w-0 flex-1 pe-4 text-start">
-                              <p className="text-sm font-semibold font-cairo text-foreground">{pref.label}</p>
-                              <p className="text-xs text-muted-foreground font-tajawal mt-0.5">{pref.desc}</p>
+                          <div
+                            key={pref.key}
+                            className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-border/50 bg-background/50 hover:bg-muted/30 transition-colors"
+                          >
+                            <div className="min-w-0 flex-1 text-start rtl:text-right ltr:text-left pe-4">
+                              <p className="text-sm font-semibold font-cairo text-foreground rtl:text-right ltr:text-left">{pref.label}</p>
+                              <p className="text-xs text-muted-foreground font-tajawal mt-0.5 rtl:text-right ltr:text-left">{pref.desc}</p>
                             </div>
                             <div className="shrink-0 flex items-center">
-                              <Switch checked={prefSettings[pref.key] !== false} onCheckedChange={(checked) => setPrefSettings(prev => ({ ...prev, [pref.key]: checked }))} />
+                              <Switch
+                                checked={prefSettings[pref.key] !== false}
+                                onCheckedChange={(checked) => setPrefSettings(prev => ({ ...prev, [pref.key]: checked }))}
+                              />
                             </div>
                           </div>
                         ))}

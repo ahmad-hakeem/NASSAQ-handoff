@@ -720,15 +720,31 @@
 }
 
 /* Radix Switch Thumb Alignment across RTL & LTR */
-button[role="switch"] > span[data-state="checked"],
 [dir="rtl"] button[role="switch"] > span[data-state="checked"],
-[dir="ltr"] button[role="switch"] > span[data-state="checked"] {
+html[dir="rtl"] button[role="switch"] > span[data-state="checked"],
+body[dir="rtl"] button[role="switch"] > span[data-state="checked"],
+[data-direction="rtl"] button[role="switch"] > span[data-state="checked"] {
+  transform: translateX(-1rem) !important;
+}
+
+[dir="rtl"] button[role="switch"] > span[data-state="unchecked"],
+html[dir="rtl"] button[role="switch"] > span[data-state="unchecked"],
+body[dir="rtl"] button[role="switch"] > span[data-state="unchecked"],
+[data-direction="rtl"] button[role="switch"] > span[data-state="unchecked"] {
+  transform: translateX(0) !important;
+}
+
+[dir="ltr"] button[role="switch"] > span[data-state="checked"],
+html[dir="ltr"] button[role="switch"] > span[data-state="checked"],
+body[dir="ltr"] button[role="switch"] > span[data-state="checked"],
+[data-direction="ltr"] button[role="switch"] > span[data-state="checked"] {
   transform: translateX(1rem) !important;
 }
 
-button[role="switch"] > span[data-state="unchecked"],
-[dir="rtl"] button[role="switch"] > span[data-state="unchecked"],
-[dir="ltr"] button[role="switch"] > span[data-state="unchecked"] {
+[dir="ltr"] button[role="switch"] > span[data-state="unchecked"],
+html[dir="ltr"] button[role="switch"] > span[data-state="unchecked"],
+body[dir="ltr"] button[role="switch"] > span[data-state="unchecked"],
+[data-direction="ltr"] button[role="switch"] > span[data-state="unchecked"] {
   transform: translateX(0) !important;
 }
 
