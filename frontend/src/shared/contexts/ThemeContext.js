@@ -52,56 +52,48 @@ const applyTheme = (theme) => {
 
 export const ThemeProvider = ({ children }) => {
   const [theme, setTheme] = useState(() => {
-    const stored = localStorage.getItem('nassaq_theme');
-    return stored || 'light';
+    try {
+      return localStorage.getItem('nassaq_theme') || 'light';
+    } catch {
+      return 'light';
+    }
   });
 
   const [language, setLanguage] = useState(() => {
-    const stored = localStorage.getItem('nassaq_language');
-    return stored || 'ar';
+    try {
+      return localStorage.getItem('nassaq_language') || 'ar';
+    } catch {
+      return 'ar';
+    }
   });
 
-  const [, setForceUpdate] = useState(0);
-
+  // Apply theme & language direction to DOM whenever theme or language changes
   useEffect(() => {
     applyTheme(theme);
-    applyLanguageDirection(language);
-  }, [theme, language]);
+  }, [theme]);
 
   useEffect(() => {
-    const storedLang = localStorage.getItem('nassaq_language') || 'ar';
-    const storedTheme = localStorage.getItem('nassaq_theme') || 'light';
+    applyLanguageDirection(language);
+  }, [language]);
 
-    applyTheme(storedTheme);
-    applyLanguageDirection(storedLang);
-
-    setTheme(storedTheme);
-    setLanguage(storedLang);
-  }, []);
-
+  // Sync external theme change events (e.g. from login / AuthContext)
   useEffect(() => {
     const handleThemeSync = (e) => {
-      if (e.detail?.theme) {
-        setTheme(e.detail.theme);
-        applyTheme(e.detail.theme);
+      const newTheme = e.detail?.theme;
+      if (newTheme && (newTheme === 'light' || newTheme === 'dark')) {
+        setTheme((curr) => (curr !== newTheme ? newTheme : curr));
       }
     };
     window.addEventListener('nassaq-theme-sync', handleThemeSync);
     return () => window.removeEventListener('nassaq-theme-sync', handleThemeSync);
   }, []);
 
+  // Sync external language change events (e.g. from login / AuthContext)
   useEffect(() => {
     const handleLangSync = (e) => {
       const newLang = e.detail?.language;
       if (newLang && (newLang === 'ar' || newLang === 'en')) {
-        setLanguage((current) => {
-          if (current !== newLang) {
-            applyLanguageDirection(newLang);
-            setForceUpdate((n) => n + 1);
-            return newLang;
-          }
-          return current;
-        });
+        setLanguage((curr) => (curr !== newLang ? newLang : curr));
       }
     };
     window.addEventListener('nassaq-language-sync', handleLangSync);
@@ -111,8 +103,7 @@ export const ThemeProvider = ({ children }) => {
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
       const newTheme = prev === 'light' ? 'dark' : 'light';
-      applyTheme(newTheme);
-      const token = localStorage.getItem('nassaq_token');
+      const token = typeof window !== 'undefined' ? localStorage.getItem('nassaq_token') : null;
       if (token) {
         fetch(`${API_BASE_URL}/auth/preferences?preferred_theme=${newTheme}`, {
           method: 'PUT',
@@ -126,10 +117,7 @@ export const ThemeProvider = ({ children }) => {
   const setLanguageAndApply = useCallback((newLang) => {
     if (newLang !== 'ar' && newLang !== 'en') return;
     setLanguage(newLang);
-    applyLanguageDirection(newLang);
-    setForceUpdate((n) => n + 1);
-    window.dispatchEvent(new CustomEvent('nassaq-language-sync', { detail: { language: newLang } }));
-    const token = localStorage.getItem('nassaq_token');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('nassaq_token') : null;
     if (token) {
       fetch(`${API_BASE_URL}/auth/preferences?preferred_language=${newLang}`, {
         method: 'PUT',
@@ -140,18 +128,15 @@ export const ThemeProvider = ({ children }) => {
 
   const toggleLanguage = useCallback(() => {
     setLanguage((prev) => {
-      const newLang = prev === 'ar' ? 'en' : 'ar';
-      applyLanguageDirection(newLang);
-      setForceUpdate((n) => n + 1);
-      window.dispatchEvent(new CustomEvent('nassaq-language-sync', { detail: { language: newLang } }));
-      const token = localStorage.getItem('nassaq_token');
+      const nextLang = prev === 'ar' ? 'en' : 'ar';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('nassaq_token') : null;
       if (token) {
-        fetch(`${API_BASE_URL}/auth/preferences?preferred_language=${newLang}`, {
+        fetch(`${API_BASE_URL}/auth/preferences?preferred_language=${nextLang}`, {
           method: 'PUT',
           headers: { 'Authorization': `Bearer ${token}` },
         }).catch(() => {});
       }
-      return newLang;
+      return nextLang;
     });
   }, []);
 

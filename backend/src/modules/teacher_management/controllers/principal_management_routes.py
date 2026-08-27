@@ -234,10 +234,10 @@ async def get_teacher_full_profile(
             },
             "professional_info": {
                 "specialization": teacher.get("specialization"),
-                "academic_degree": teacher.get("academic_degree"),
-                "teacher_rank": teacher.get("teacher_rank"),
+                "academic_degree": teacher.get("academic_degree") or teacher.get("qualification"),
+                "teacher_rank": teacher.get("teacher_rank") or teacher.get("rank"),
                 "years_of_experience": teacher.get("years_of_experience"),
-                "contract_type": teacher.get("contract_type"),
+                "contract_type": teacher.get("contract_type") or teacher.get("contract"),
                 "employee_number": teacher.get("employee_number"),
                 "department": teacher.get("department"),
                 "education_stage": teacher.get("education_stage"),
@@ -333,9 +333,24 @@ async def update_teacher_professional_info(
     for field in ["specialization", "academic_degree", "teacher_rank", "years_of_experience",
                   "contract_type", "employee_number", "department", "education_stage", "hire_date"]:
         val = getattr(data, field, None)
-        if val is not None and val != teacher.get(field):
-            updates[field] = val
-            changes[field] = {"old": teacher.get(field), "new": val}
+        if val is not None:
+            old_val = teacher.get(field)
+            if field == "academic_degree" and old_val is None:
+                old_val = teacher.get("qualification")
+            elif field == "teacher_rank" and old_val is None:
+                old_val = teacher.get("rank")
+            elif field == "contract_type" and old_val is None:
+                old_val = teacher.get("contract")
+
+            if val != old_val:
+                updates[field] = val
+                if field == "academic_degree":
+                    updates["qualification"] = val
+                elif field == "teacher_rank":
+                    updates["rank"] = val
+                elif field == "contract_type":
+                    updates["contract"] = val
+                changes[field] = {"old": old_val, "new": val}
 
     if not updates:
         return {"success": True, "message": "لا توجد تغييرات"}

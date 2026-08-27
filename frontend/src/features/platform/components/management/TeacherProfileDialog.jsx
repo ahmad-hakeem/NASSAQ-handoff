@@ -173,7 +173,12 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
     if (section === 'basic') {
       setFormData({ ...p?.basic_info, ...p?.contact_info });
     } else if (section === 'professional') {
-      setFormData({ ...p?.professional_info });
+      setFormData({
+        ...p?.professional_info,
+        academic_degree: p?.professional_info?.academic_degree || teacher.academic_degree || teacher.qualification || '',
+        teacher_rank: p?.professional_info?.teacher_rank || teacher.teacher_rank || teacher.rank || '',
+        contract_type: p?.professional_info?.contract_type || teacher.contract_type || '',
+      });
     }
     setEditSection(section);
     setEditing(true);
@@ -190,7 +195,39 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
     closed: 'bg-red-200 text-red-800 dark:bg-red-900/50 dark:text-red-300'
   };
   const statusLabels = { active: t('active'), suspended: isRTL ? 'معلق' : 'Suspended', inactive: t('inactive'), closed: t('closed') };
-  const rankLabels = { teacher: t('teacher'), senior_teacher: t('seniorTeacher'), expert: t('expert'), department_head: t('departmentHead') };
+  const rankLabels = {
+    teacher: t('teacher') || 'معلم',
+    senior_teacher: t('seniorTeacher') || 'معلم أول',
+    expert: t('expert') || 'خبير',
+    department_head: t('departmentHead') || 'رئيس قسم',
+    'معلم': 'معلم',
+    'معلم ممارس': 'معلم ممارس',
+    'معلم متقدم': 'معلم متقدم',
+    'معلم خبير': 'معلم خبير',
+    'رئيس قسم': 'رئيس قسم',
+  };
+
+  const degreeLabels = {
+    diploma: t('diploma') || 'دبلوم',
+    bachelor: t('bachelors') || 'بكالوريوس',
+    master: t('masters') || 'ماجستير',
+    doctorate: t('doctorate') || 'دكتوراه',
+    'دبلوم': 'دبلوم',
+    'بكالوريوس': 'بكالوريوس',
+    'بكالوريوس تربوي': 'بكالوريوس تربوي',
+    'بكالوريوس تربية': 'بكالوريوس تربية',
+    'ماجستير': 'ماجستير',
+    'دكتوراه': 'دكتوراه',
+  };
+
+  const contractLabels = {
+    permanent: t('permanent') || 'دائم',
+    contract: t('contract2') || 'عقد',
+    part_time: t('parttime') || 'دوام جزئي',
+    'دائم': 'دائم',
+    'عقد': 'عقد',
+    'دوام جزئي': 'دوام جزئي',
+  };
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -205,7 +242,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
               <p className="text-emerald-100 text-sm">{maskInternalId(p?.professional_info?.specialization, canViewInternalIds) || maskInternalId(teacher.specialization, canViewInternalIds) || (t('teacher'))}</p>
               <div className="flex items-center gap-2 mt-1">
                 <Badge className={`text-[10px] ${statusColors[status]}`}>{statusLabels[status]}</Badge>
-                <Badge className="text-[10px] bg-white/20 text-white border-0">{rankLabels[p?.professional_info?.teacher_rank] || teacher.rank || (t('teacher'))}</Badge>
+                <Badge className="text-[10px] bg-white/20 text-white border-0">{rankLabels[p?.professional_info?.teacher_rank] || p?.professional_info?.teacher_rank || rankLabels[teacher.teacher_rank] || rankLabels[teacher.rank] || teacher.teacher_rank || teacher.rank || (t('teacher'))}</Badge>
               </div>
             </div>
           </div>
@@ -362,12 +399,36 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                 ) : (
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     {[
-                      { label: t('specialization'), value: maskInternalId(p?.professional_info?.specialization, canViewInternalIds), icon: BookOpen },
-                      { label: t('degree2'), value: p?.professional_info?.academic_degree, icon: Award },
-                      { label: t('rank'), value: rankLabels[p?.professional_info?.teacher_rank] || p?.professional_info?.teacher_rank, icon: Shield },
-                      { label: t('experience2'), value: p?.professional_info?.years_of_experience ? `${p.professional_info.years_of_experience} ${t('yrs')}` : '-', icon: Clock },
-                      { label: t('contract3'), value: p?.professional_info?.contract_type, icon: FileText },
-                      { label: t('employee'), value: p?.professional_info?.employee_number, icon: Hash },
+                      {
+                        label: t('specialization'),
+                        value: maskInternalId(p?.professional_info?.specialization || teacher.specialization, canViewInternalIds),
+                        icon: BookOpen,
+                      },
+                      {
+                        label: t('degree2'),
+                        value: degreeLabels[p?.professional_info?.academic_degree] || p?.professional_info?.academic_degree || degreeLabels[teacher.academic_degree] || degreeLabels[teacher.qualification] || teacher.academic_degree || teacher.qualification,
+                        icon: Award,
+                      },
+                      {
+                        label: t('rank'),
+                        value: rankLabels[p?.professional_info?.teacher_rank] || p?.professional_info?.teacher_rank || rankLabels[teacher.teacher_rank] || rankLabels[teacher.rank] || teacher.teacher_rank || teacher.rank,
+                        icon: Shield,
+                      },
+                      {
+                        label: t('experience2'),
+                        value: (p?.professional_info?.years_of_experience ?? teacher.years_of_experience) != null && (p?.professional_info?.years_of_experience ?? teacher.years_of_experience) !== '' ? `${p?.professional_info?.years_of_experience ?? teacher.years_of_experience} ${t('yrs')}` : '-',
+                        icon: Clock,
+                      },
+                      {
+                        label: t('contract3'),
+                        value: contractLabels[p?.professional_info?.contract_type] || p?.professional_info?.contract_type || contractLabels[teacher.contract_type] || teacher.contract_type,
+                        icon: FileText,
+                      },
+                      {
+                        label: t('employee'),
+                        value: p?.professional_info?.employee_number || teacher.employee_number,
+                        icon: Hash,
+                      },
                     ].map(({ label, value, icon: Icon }, i) => (
                       <div key={i} className="flex items-start gap-2">
                         <Icon className="h-3.5 w-3.5 mt-0.5 text-muted-foreground shrink-0" />

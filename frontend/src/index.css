@@ -718,3 +718,17 @@
     transform: none !important;
   }
 }
+
+/* Radix Switch Thumb Alignment across RTL & LTR */
+button[role="switch"] > span[data-state="checked"],
+[dir="rtl"] button[role="switch"] > span[data-state="checked"],
+[dir="ltr"] button[role="switch"] > span[data-state="checked"] {
+  transform: translateX(1rem) !important;
+}
+
+button[role="switch"] > span[data-state="unchecked"],
+[dir="rtl"] button[role="switch"] > span[data-state="unchecked"],
+[dir="ltr"] button[role="switch"] > span[data-state="unchecked"] {
+  transform: translateX(0) !important;
+}
+

@@ -312,6 +312,11 @@ def model_to_dict(obj) -> Optional[dict]:
         val = getattr(obj, py_key, None)
         if isinstance(val, datetime):
             val = val.isoformat()
+        if out_key == "preferences":
+            if isinstance(val, dict):
+                for k, v in val.items():
+                    if k not in d or d[k] is None:
+                        d[k] = v
         if out_key == "data":
             has_data_col = True
             if isinstance(val, dict):
@@ -368,13 +373,21 @@ def dict_to_model(model_cls, data: dict):
             kwargs[py_key] = _coerce_model_value(model_cls, py_key, v)
         else:
             extra[k] = v
-    if extra and "data" in cols:
-        data_py_key = col_map["data"]
-        existing = kwargs.get(data_py_key) or {}
-        if isinstance(existing, dict):
-            kwargs[data_py_key] = {**existing, **extra}
-        else:
-            kwargs[data_py_key] = extra
+    if extra:
+        if "preferences" in cols:
+            pref_py_key = col_map["preferences"]
+            existing = kwargs.get(pref_py_key) or {}
+            if isinstance(existing, dict):
+                kwargs[pref_py_key] = {**existing, **extra}
+            else:
+                kwargs[pref_py_key] = extra
+        elif "data" in cols:
+            data_py_key = col_map["data"]
+            existing = kwargs.get(data_py_key) or {}
+            if isinstance(existing, dict):
+                kwargs[data_py_key] = {**existing, **extra}
+            else:
+                kwargs[data_py_key] = extra
     return model_cls(**kwargs)
 
 
@@ -411,22 +424,39 @@ def apply_updates(obj, updates: dict, model_cls=None):
             setattr(obj, py_key, v)
         else:
             extra[k] = v
-    if extra and "data" in cols:
-        data_py_key = col_map["data"]
-        current = getattr(obj, data_py_key, None)
-        current = dict(current) if isinstance(current, dict) else {}
-        for ek, ev in extra.items():
-            if "." in ek:
-                parts = ek.split(".")
-                target = current
-                for p in parts[:-1]:
-                    if p not in target or not isinstance(target[p], dict):
-                        target[p] = {}
-                    target = target[p]
-                target[parts[-1]] = ev
-            else:
-                current[ek] = ev
-        setattr(obj, data_py_key, current)
+    if extra:
+        if "preferences" in cols:
+            pref_py_key = col_map["preferences"]
+            current = getattr(obj, pref_py_key, None)
+            current = dict(current) if isinstance(current, dict) else {}
+            for ek, ev in extra.items():
+                if "." in ek:
+                    parts = ek.split(".")
+                    target = current
+                    for p in parts[:-1]:
+                        if p not in target or not isinstance(target[p], dict):
+                            target[p] = {}
+                        target = target[p]
+                    target[parts[-1]] = ev
+                else:
+                    current[ek] = ev
+            setattr(obj, pref_py_key, current)
+        elif "data" in cols:
+            data_py_key = col_map["data"]
+            current = getattr(obj, data_py_key, None)
+            current = dict(current) if isinstance(current, dict) else {}
+            for ek, ev in extra.items():
+                if "." in ek:
+                    parts = ek.split(".")
+                    target = current
+                    for p in parts[:-1]:
+                        if p not in target or not isinstance(target[p], dict):
+                            target[p] = {}
+                        target = target[p]
+                    target[parts[-1]] = ev
+                else:
+                    current[ek] = ev
+            setattr(obj, data_py_key, current)
 
 
 def _resolve_json_path(model_cls, field_path: str):
