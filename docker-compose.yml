@@ -17,7 +17,8 @@ services:
       retries: 12
 
   app:
-    image: ${REGISTRY_IMAGE:-registry.nassaqapp.com/uat-nassaq/nassaq-app:1.0.4}
+    platform: linux/amd64
+    image: ${REGISTRY_IMAGE:-registry.nassaqapp.com/uat-nassaq/nassaq-app:1.0.5}
     build: .
     restart: unless-stopped
     depends_on:

@@ -1,5 +1,5 @@
 # ---------- Stage 1: build the React frontend ----------
-FROM node:22-slim AS frontend-build
+FROM --platform=linux/amd64 node:22-slim AS frontend-build
 WORKDIR /fe
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --legacy-peer-deps
@@ -15,7 +15,7 @@ RUN rm -f .env .env.local .env.development && \
     test -f build/index.html
 
 # ---------- Stage 2: Python runtime ----------
-FROM python:3.12-slim AS runtime
+FROM --platform=linux/amd64 python:3.12-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 WORKDIR /app
