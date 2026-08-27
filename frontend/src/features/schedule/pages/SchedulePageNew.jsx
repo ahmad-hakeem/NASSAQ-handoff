@@ -793,7 +793,7 @@ export default function SchedulePageNew() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadGrid = useCallback(async (viewOverride, paginationOverride) => {
+  const loadGrid = useCallback(async (viewOverride, paginationOverride, options = {}) => {
     // Returns the payload itself on success (not just a boolean) so callers
     // can compare against an expected timetable id after generation without
     // depending on React state inside the same closure. ``viewOverride``
@@ -805,13 +805,17 @@ export default function SchedulePageNew() {
     const effectiveView = viewOverride || scheduleView;
     const effectivePage = paginationOverride?.page ?? (paginationStateRef.current.pageIndex + 1);
     const effectivePageSize = paginationOverride?.pageSize ?? paginationStateRef.current.pageSize;
-    // Task #142 — every refetch swaps the matrix region to the
-    // structural skeleton while keeping page chrome (header, KPI strip,
-    // view-mode toggle, day-tabs row) mounted. The skeleton matches
-    // the current view-mode/day-count via grid?.days?.length and the
-    // active pageSize, so the operator never sees the chrome flash or
-    // the matrix collapse to a centered spinner.
-    setLoading(true);
+    const isSilent = options?.silent ?? false;
+
+    // Capture current scroll positions so mutations / silent refetches maintain exact scroll offset
+    const prevScrollTop = matrixContainerRef.current?.scrollTop;
+    const prevScrollLeft = matrixContainerRef.current?.scrollLeft;
+
+    if (!isSilent) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     try {
       // ``_t`` busts any stale browser/proxy cache (the backend already
       // sets Cache-Control: no-store but some intermediaries ignore it).
@@ -860,6 +864,20 @@ export default function SchedulePageNew() {
       }
       setGrid(response.data);
       setError('');
+
+      if (prevScrollTop != null || prevScrollLeft != null) {
+        requestAnimationFrame(() => {
+          if (matrixContainerRef.current) {
+            if (prevScrollTop != null && prevScrollTop > 0) {
+              matrixContainerRef.current.scrollTop = prevScrollTop;
+            }
+            if (prevScrollLeft != null && prevScrollLeft > 0) {
+              matrixContainerRef.current.scrollLeft = prevScrollLeft;
+            }
+          }
+        });
+      }
+
       return response.data;
     } catch (e) {
       const msg = e?.response?.data?.error?.message || e?.message || t('failedToLoadGrid');
@@ -1845,9 +1863,9 @@ export default function SchedulePageNew() {
           api={api}
           onClose={() => setEditDrawerOpen(false)}
           onSaved={() => {
-            // Pull the fresh draft so the matrix mirrors the mutation.
-            // No need to clear conflicts here — the drawer already did.
-            loadGrid('draft');
+            // Pull the fresh draft silently so the matrix mirrors the mutation
+            // without unmounting or resetting scroll position.
+            loadGrid('draft', undefined, { silent: true });
           }}
         />
 
@@ -2246,14 +2264,14 @@ export default function SchedulePageNew() {
           // constrained height is the correct architectural pattern.)
           className="relative bg-white border border-slate-200/70 rounded-2xl shadow-[0_1px_2px_rgba(15,42,75,0.04),0_8px_24px_-12px_rgba(15,42,75,0.12)] overflow-x-auto overflow-y-auto flex-grow min-h-0"
         >
-          {loading ? (
+          {loading && !grid ? (
             <MasterMatrixSkeleton
               rows={Math.min(MASTER_GRID_TEACHER_WINDOW, totalTeachersAll || 12)}
               days={viewMode === 'daily' ? 1 : ((grid?.days?.length) || days.length || 5)}
               periods={(grid?.periods?.length) || SKELETON_GRID_COLS}
               isDaily={viewMode === 'daily'}
             />
-          ) : error ? (
+          ) : error && !grid ? (
             <div className="p-6 text-center text-red-600">{error}</div>
           ) : teacherRows.length === 0 ? (
             <div className="p-6 text-center text-slate-500">
@@ -3070,9 +3088,11 @@ function MasterMatrix({ teachers, cells, days, periods, dayLabelMap, onVacantCli
                 const handleNormalClick = (sessionData) => {
                   setSelectedSession({
                     ...sessionData,
-                    day_of_week: dayKey,
+                    teacher_id: sessionData?.teacher_id || teacher.id,
+                    teacher_name: sessionData?.teacher_name || teacher.full_name,
+                    day_of_week: sessionData?.day_of_week || dayKey,
                     slot_number: p,
-                    teacher_name: teacher.full_name,
+                    period_number: sessionData?.period_number || p,
                     teacher_specialty: teacher.subject || '',
                     teacher_avatar_url: teacher.avatar_url,
                     start_time: periodTimes?.[String(p)]?.start,

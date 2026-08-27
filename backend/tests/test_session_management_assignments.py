@@ -64,6 +64,18 @@ async def _mk_teacher(school_id: str) -> str:
     return tid
 
 
+async def _mk_class(school_id: str) -> str:
+    cid = str(uuid.uuid4())
+    await gd_insert(db.session, "classes", {
+        "id": cid,
+        "school_id": school_id,
+        "tenant_id": school_id,
+        "name": f"فصل-{cid[:4]}",
+        "is_active": True,
+    })
+    return cid
+
+
 # ===================== PUT /smart-scheduling/session/{id} =====================
 
 @pytest.mark.asyncio
@@ -85,6 +97,49 @@ async def test_update_session_change_teacher(client, school_principal_headers, t
 
     row = await gd_find_one(db.session, "timetable_sessions", {"id": session_id})
     assert row["teacher_id"] == new_teacher
+
+
+@pytest.mark.asyncio
+async def test_update_session_change_class(client, school_principal_headers, tenant_a):
+    tt = await _mk_timetable(tenant_a)
+    old_class = await _mk_class(tenant_a)
+    session_id = await _mk_session(tenant_a, tt, day="sunday", period=1, class_id=old_class)
+    new_class = await _mk_class(tenant_a)
+    await db.session.flush()
+
+    resp = await client.put(
+        f"/smart-scheduling/session/{session_id}",
+        json={"class_id": new_class},
+        headers=school_principal_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["success"] is True
+
+    row = await gd_find_one(db.session, "timetable_sessions", {"id": session_id})
+    assert row["class_id"] == new_class
+
+
+@pytest.mark.asyncio
+async def test_update_session_class_conflict(client, school_principal_headers, tenant_a):
+    tt = await _mk_timetable(tenant_a)
+    target_class = await _mk_class(tenant_a)
+    # Target class already has a session on sunday period 1
+    await _mk_session(tenant_a, tt, day="sunday", period=1, class_id=target_class)
+    # Another session on sunday period 2
+    session_2 = await _mk_session(tenant_a, tt, day="sunday", period=2)
+    await db.session.flush()
+
+    # Move session 2 to sunday period 1 with target_class -> conflict!
+    resp = await client.put(
+        f"/smart-scheduling/session/{session_2}",
+        json={"class_id": target_class, "period_number": 1, "day_of_week": "sunday"},
+        headers=school_principal_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["success"] is False
+    assert any(c["type"] == "class_overlap" for c in data["conflicts"])
 
 
 @pytest.mark.asyncio

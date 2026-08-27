@@ -154,6 +154,7 @@ class UpdateSmartSessionRequest(BaseModel):
     """طلب تعديل حصة في الجدول الذكي"""
     teacher_id: Optional[str] = None
     subject_id: Optional[str] = None
+    class_id: Optional[str] = None
     day_of_week: Optional[str] = None
     period_number: Optional[int] = None
 
@@ -185,13 +186,14 @@ async def update_smart_session(
     timetable_id = session.get("timetable_id")
     school_id = session.get("school_id")
 
-    # Cross-tenant binding guard: any teacher/subject the client supplies
+    # Cross-tenant binding guard: any teacher/subject/class the client supplies
     # must belong to the same school as the session being edited. Honor
     # tenant_id as a fallback so behavior matches _assert_session_mutable.
     await _assert_entities_in_school(
         school_id or session.get("tenant_id"),
         teacher_id=request.teacher_id,
         subject_id=request.subject_id,
+        class_id=request.class_id,
     )
 
     # Build update
@@ -201,8 +203,9 @@ async def update_smart_session(
     new_day = request.day_of_week or session.get("day_of_week")
     new_period = request.period_number or session.get("period_number")
     new_teacher = request.teacher_id or session.get("teacher_id")
+    new_class = request.class_id or session.get("class_id")
     
-    # Check for conflicts if moving to new slot
+    # Check for conflicts if moving to new slot or changing class/teacher
     if request.day_of_week or request.period_number:
         # Check teacher conflict
         teacher_conflict = await gd_find_one(db.session, "timetable_sessions", {
@@ -223,7 +226,7 @@ async def update_smart_session(
         # Check class conflict
         class_conflict = await gd_find_one(db.session, "timetable_sessions", {
             "timetable_id": timetable_id,
-            "class_id": session.get("class_id"),
+            "class_id": new_class,
             "day_of_week": new_day,
             "period_number": new_period,
             "id": {"$ne": session_id}
@@ -257,6 +260,26 @@ async def update_smart_session(
                     "type": "teacher_overlap",
                     "message_ar": "المعلم الجديد لديه حصة أخرى في هذا الوقت",
                     "message_en": "New teacher has another session at this time"
+                })
+
+    if request.class_id:
+        update_data["class_id"] = request.class_id
+
+        # Check class conflict with new class
+        if not request.day_of_week and not request.period_number:
+            class_conflict = await gd_find_one(db.session, "timetable_sessions", {
+                "timetable_id": timetable_id,
+                "class_id": request.class_id,
+                "day_of_week": session.get("day_of_week"),
+                "period_number": session.get("period_number"),
+                "id": {"$ne": session_id}
+            })
+
+            if class_conflict:
+                conflicts.append({
+                    "type": "class_overlap",
+                    "message_ar": "الفصل الجديد لديه حصة أخرى في هذا الوقت",
+                    "message_en": "New class has another session at this time"
                 })
     
     if request.subject_id:
@@ -306,6 +329,7 @@ async def force_update_smart_session(
         session.get("school_id") or session.get("tenant_id"),
         teacher_id=request.teacher_id,
         subject_id=request.subject_id,
+        class_id=request.class_id,
     )
 
     update_data = {"source_type": "hybrid_adjusted", "updated_at": datetime.now(timezone.utc).isoformat()}
@@ -318,6 +342,8 @@ async def force_update_smart_session(
         update_data["teacher_id"] = request.teacher_id
     if request.subject_id:
         update_data["subject_id"] = request.subject_id
+    if request.class_id:
+        update_data["class_id"] = request.class_id
     
     await gd_update_one(db.session, "timetable_sessions", {"id": session_id}, update_data)
     

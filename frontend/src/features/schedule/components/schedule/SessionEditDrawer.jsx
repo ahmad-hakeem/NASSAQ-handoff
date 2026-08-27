@@ -3,8 +3,8 @@
  *
  * Replaces the old SchedulePage drag-and-drop edit pipeline with an
  * intentional drawer that lives inside the new Grid Matrix. Supports
- * three modes:
- *   - 'edit'   → existing session: change teacher / move day&period / delete
+ * two modes:
+ *   - 'edit'   → existing session: change teacher / subject / class / move day&period / delete
  *   - 'create' → empty cell: pick class + subject + teacher to add a lesson
  *
  * Wires to the existing backend mutation endpoints (no duplication):
@@ -65,21 +65,10 @@ export default function SessionEditDrawer({
   const session = context?.session || null;
   const sessionId = session?.session_id || session?.id || null;
 
-  // Hydrate form from context whenever the drawer opens.
+  // Lookup classes + subjects whenever drawer is open so both create and edit
+  // modes have the complete catalog available.
   useEffect(() => {
-    if (!open) return;
-    setConflicts([]);
-    setTeacherId(context?.teacher_id || session?.teacher_id || '');
-    setClassId(context?.class_id || session?.class_id || '');
-    setSubjectId(context?.subject_id || session?.subject_id || '');
-    setDay(context?.day_of_week || session?.day_of_week || '');
-    setPeriod(Number(context?.period_number || session?.period_number || 0));
-  }, [open, context, session]);
-
-  // Lookup classes + subjects when the drawer is in create mode (lazy
-  // — the master-grid payload doesn't carry the full catalogs).
-  useEffect(() => {
-    if (!open || !isCreate || !schoolId || !api) return;
+    if (!open || !schoolId || !api) return;
     let cancelled = false;
     setLoadingLookups(true);
     Promise.all([
@@ -91,12 +80,86 @@ export default function SessionEditDrawer({
       setSubjects(Array.isArray(ss?.data) ? ss.data : []);
     }).finally(() => { if (!cancelled) setLoadingLookups(false); });
     return () => { cancelled = true; };
-  }, [open, isCreate, schoolId, api]);
+  }, [open, schoolId, api]);
 
-  const teacherOptions = useMemo(
-    () => teachers.map(t2 => ({ value: t2.id, label: t2.full_name || t2.name || t2.id })),
-    [teachers],
-  );
+  // Hydrate form from context whenever the drawer opens or catalogs resolve.
+  useEffect(() => {
+    if (!open) return;
+    setConflicts([]);
+
+    // 1. Teacher ID resolution
+    let resolvedTeacherId = context?.teacher_id || session?.teacher_id || '';
+    if (!resolvedTeacherId && (session?.teacher_name || context?.teacher_name)) {
+      const targetTeacherName = (session?.teacher_name || context?.teacher_name || '').trim().toLowerCase();
+      const matched = teachers.find(t2 =>
+        (t2.full_name && t2.full_name.trim().toLowerCase() === targetTeacherName) ||
+        (t2.name && t2.name.trim().toLowerCase() === targetTeacherName) ||
+        t2.id === targetTeacherName
+      );
+      if (matched) resolvedTeacherId = matched.id;
+    }
+    setTeacherId(resolvedTeacherId);
+
+    // 2. Class ID resolution
+    let resolvedClassId = context?.class_id || session?.class_id || '';
+    if (!resolvedClassId && (session?.class_name || context?.class_name) && classes.length > 0) {
+      const targetClassName = (session?.class_name || context?.class_name || '').trim().toLowerCase();
+      const matchedClass = classes.find(c =>
+        (c.name && c.name.trim().toLowerCase() === targetClassName) ||
+        (c.name_ar && c.name_ar.trim().toLowerCase() === targetClassName) ||
+        c.id === targetClassName
+      );
+      if (matchedClass) resolvedClassId = matchedClass.id;
+    }
+    setClassId(resolvedClassId);
+
+    // 3. Subject ID resolution
+    let resolvedSubjectId = context?.subject_id || session?.subject_id || '';
+    if (!resolvedSubjectId && (session?.subject_name || context?.subject_name) && subjects.length > 0) {
+      const targetSubjectName = (session?.subject_name || context?.subject_name || '').trim().toLowerCase();
+      const matchedSubject = subjects.find(s =>
+        (s.name_ar && s.name_ar.trim().toLowerCase() === targetSubjectName) ||
+        (s.name && s.name.trim().toLowerCase() === targetSubjectName) ||
+        s.id === targetSubjectName
+      );
+      if (matchedSubject) resolvedSubjectId = matchedSubject.id;
+    }
+    setSubjectId(resolvedSubjectId);
+
+    // 4. Day resolution
+    const resolvedDay = context?.day_of_week || session?.day_of_week || '';
+    setDay(resolvedDay);
+
+    // 5. Period resolution (support period_number, slot_number, period)
+    const rawPeriod = context?.period_number ?? session?.period_number
+      ?? context?.slot_number ?? session?.slot_number
+      ?? context?.period ?? session?.period ?? 0;
+    setPeriod(Number(rawPeriod));
+  }, [open, context, session, teachers, classes, subjects]);
+
+  const teacherOptions = useMemo(() => {
+    const opts = teachers.map(t2 => ({ value: t2.id, label: t2.full_name || t2.name || t2.id }));
+    if (teacherId && !opts.some(o => o.value === teacherId)) {
+      opts.unshift({ value: teacherId, label: session?.teacher_name || context?.teacher_name || teacherId });
+    }
+    return opts;
+  }, [teachers, teacherId, session, context]);
+
+  const classOptions = useMemo(() => {
+    const opts = classes.map(c => ({ value: c.id, label: c.name || c.name_ar || c.id }));
+    if (classId && !opts.some(o => o.value === classId)) {
+      opts.unshift({ value: classId, label: session?.class_name || context?.class_name || classId });
+    }
+    return opts;
+  }, [classes, classId, session, context]);
+
+  const subjectOptions = useMemo(() => {
+    const opts = subjects.map(s => ({ value: s.id, label: s.name_ar || s.name || s.id }));
+    if (subjectId && !opts.some(o => o.value === subjectId)) {
+      opts.unshift({ value: subjectId, label: session?.subject_name || context?.subject_name || subjectId });
+    }
+    return opts;
+  }, [subjects, subjectId, session, context]);
 
   const periodOptions = useMemo(
     () => (periods?.length ? periods : [1,2,3,4,5,6,7]).map(p => ({ value: Number(p), label: String(p) })),
@@ -117,8 +180,10 @@ export default function SessionEditDrawer({
       ? `/smart-scheduling/session/${sessionId}/force`
       : `/smart-scheduling/session/${sessionId}`;
     const body = {
-      teacher_id: teacherId,
-      day_of_week: day,
+      teacher_id: teacherId || undefined,
+      class_id: classId || undefined,
+      subject_id: subjectId || undefined,
+      day_of_week: day || undefined,
       period_number: Number(period),
     };
     const resp = await api.put(url, body, {
@@ -171,10 +236,7 @@ export default function SessionEditDrawer({
       else if (detail?.message_ar) msg = detail.message_ar;
       else if (data?.message_ar) msg = data.message_ar;
       else if (data?.error?.message) msg = data.error.message;
-      // Surface field-level validation errors (new error envelope:
-      // { success:false, error:{message}, meta:{validation_errors:[{field,message}]} })
-      // so the user sees *which* field failed instead of an opaque
-      // "Request validation failed".
+      // Surface field-level validation errors
       const fieldErrors = data?.meta?.validation_errors;
       if (Array.isArray(fieldErrors) && fieldErrors.length) {
         const lines = fieldErrors
@@ -235,54 +297,39 @@ export default function SessionEditDrawer({
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
-          {/* ── Class + subject (create mode only) ─────────────────── */}
-          {isCreate && (
-            <>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">{t('classLabel')}</Label>
-                <Select value={classId} onValueChange={setClassId} disabled={loadingLookups}>
-                  <SelectTrigger data-testid="session-edit-class">
-                    <SelectValue placeholder={t('selectClass')} />
-                  </SelectTrigger>
-                  <SelectContent dir={direction}>
-                    {classes.map(c => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name || c.name_ar || c.id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+          {/* ── Class (both create and edit modes) ─────────────────── */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">{t('classLabel')}</Label>
+            <Select value={classId} onValueChange={setClassId} disabled={loadingLookups}>
+              <SelectTrigger data-testid="session-edit-class">
+                <SelectValue placeholder={t('selectClass')} />
+              </SelectTrigger>
+              <SelectContent dir={direction}>
+                {classOptions.map(c => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">{t('subjectLabel')}</Label>
-                <Select value={subjectId} onValueChange={setSubjectId} disabled={loadingLookups}>
-                  <SelectTrigger data-testid="session-edit-subject">
-                    <SelectValue placeholder={t('selectSubject')} />
-                  </SelectTrigger>
-                  <SelectContent dir={direction}>
-                    {subjects.map(s => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name_ar || s.name || s.id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </>
-          )}
-
-          {/* ── Existing session summary (edit mode) ──────────────── */}
-          {!isCreate && session && (
-            <div className="rounded-lg border border-brand-navy/15 bg-white p-3 text-sm">
-              <p className="font-bold text-brand-navy">
-                {session.subject_name || '—'}
-              </p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {session.class_name || '—'}
-              </p>
-            </div>
-          )}
+          {/* ── Subject (both create and edit modes) ───────────────── */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">{t('subjectLabel')}</Label>
+            <Select value={subjectId} onValueChange={setSubjectId} disabled={loadingLookups}>
+              <SelectTrigger data-testid="session-edit-subject">
+                <SelectValue placeholder={t('selectSubject')} />
+              </SelectTrigger>
+              <SelectContent dir={direction}>
+                {subjectOptions.map(s => (
+                  <SelectItem key={s.value} value={s.value}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           {/* ── Teacher ────────────────────────────────────────── */}
           <div className="space-y-1.5">
