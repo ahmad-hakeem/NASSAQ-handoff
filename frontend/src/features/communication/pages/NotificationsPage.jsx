@@ -755,9 +755,14 @@ export const NotificationsPage = ({ embedded = false }) => {
             </TabsContent>
 
             <TabsContent value="preferences">
-              <Card>
-                <CardHeader className="pb-3"><CardTitle className="text-base font-cairo flex items-center gap-2"><Settings className="h-4 w-4 text-brand-turquoise" />{isRTL ? 'إعدادات الإشعارات' : 'Notification Preferences'}</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
+              <Card dir={isRTL ? 'rtl' : 'ltr'} className="rounded-2xl border border-border/60 shadow-sm overflow-hidden">
+                <CardHeader className="pb-4 border-b border-border/40 bg-muted/10">
+                  <CardTitle className="text-base font-cairo font-bold flex items-center gap-2.5 text-foreground">
+                    <Settings className="h-4.5 w-4.5 text-brand-turquoise shrink-0" />
+                    <span>{isRTL ? 'إعدادات الإشعارات' : 'Notification Preferences'}</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 space-y-5">
                   {!prefSettings ? (<div className="flex items-center justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-brand-turquoise" /></div>) : (
                     <>
                       <div className="space-y-3">
@@ -769,15 +774,22 @@ export const NotificationsPage = ({ embedded = false }) => {
                           { key: 'behavior_alerts', label: t('behaviorAlerts'), desc: t('alertsOnBehaviorRecords') },
                           { key: 'announcement_notifications', label: t('announcements2'), desc: t('schoolAnnouncements') },
                         ].map(pref => (
-                          <div key={pref.key} className="flex items-center justify-between p-3 rounded-xl border hover:bg-muted/30 transition-colors">
-                            <div><p className="text-sm font-medium font-cairo">{pref.label}</p><p className="text-xs text-muted-foreground">{pref.desc}</p></div>
-                            <Switch checked={prefSettings[pref.key] !== false} onCheckedChange={(checked) => setPrefSettings(prev => ({ ...prev, [pref.key]: checked }))} />
+                          <div key={pref.key} className="flex items-center justify-between p-3.5 sm:p-4 rounded-2xl border border-border/50 bg-background/50 hover:bg-muted/30 transition-colors">
+                            <div className="min-w-0 flex-1 pe-4 text-start">
+                              <p className="text-sm font-semibold font-cairo text-foreground">{pref.label}</p>
+                              <p className="text-xs text-muted-foreground font-tajawal mt-0.5">{pref.desc}</p>
+                            </div>
+                            <div className="shrink-0 flex items-center">
+                              <Switch checked={prefSettings[pref.key] !== false} onCheckedChange={(checked) => setPrefSettings(prev => ({ ...prev, [pref.key]: checked }))} />
+                            </div>
                           </div>
                         ))}
                       </div>
-                      <Button className="bg-brand-turquoise hover:bg-brand-turquoise/90" onClick={handleSavePreferences} disabled={savingPrefs}>
-                        {savingPrefs && <Loader2 className="h-4 w-4 animate-spin me-2" />}{t('savePreferences')}
-                      </Button>
+                      <div className="pt-2 flex justify-start">
+                        <Button className="bg-brand-turquoise hover:bg-brand-turquoise/90 text-white rounded-xl px-6 h-10 font-cairo shadow-sm" onClick={handleSavePreferences} disabled={savingPrefs}>
+                          {savingPrefs && <Loader2 className="h-4 w-4 animate-spin me-2" />}{t('savePreferences')}
+                        </Button>
+                      </div>
                     </>
                   )}
                 </CardContent>
