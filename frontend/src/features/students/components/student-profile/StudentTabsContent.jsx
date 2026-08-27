@@ -96,13 +96,13 @@ export function OverviewTab({ hook }) {
               <Heart className="h-4 w-4 text-rose-500" />
               {t('guardianEmergency')}
             </h3>
-            {student.parent_name ? (
+            {student.parent?.full_name || student.parent_name ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <DataField label={t('name')} value={student.parent_name} />
-                  <DataField label={t('relationship')} value={relationshipMap[student.parent_relationship] || student.parent_relationship} />
-                  <DataField label={t('phone2')} value={student.parent_phone} icon={User} />
-                  <DataField label={t('email')} value={student.parent_email} icon={User} />
+                  <DataField label={t('name')} value={student.parent?.full_name || student.parent_name} />
+                  <DataField label={t('relationship')} value={relationshipMap[student.parent?.relationship || student.parent_relationship] || (student.parent?.relationship || student.parent_relationship)} />
+                  <DataField label={t('phone2')} value={student.parent?.phone || student.parent_phone} icon={User} />
+                  <DataField label={t('email')} value={student.parent?.email || student.parent_email} icon={User} />
                 </div>
                 {(student.emergency_contact || student.emergency_phone) && (
                   <div className="border-t pt-3">

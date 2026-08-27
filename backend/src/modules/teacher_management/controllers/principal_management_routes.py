@@ -1012,6 +1012,8 @@ async def update_parent_basic_info(
         dup = await gd_find_one(db.session, "parents", {"phone": updates["phone"], "id": {"$ne": parent_id}, **_entity_tenant_filter(tenant_id)})
         if dup:
             raise HTTPException(status_code=400, detail="رقم الجوال مستخدم بالفعل")
+        if user_row:
+            await gd_update_one(db.session, "users", {"id": user_row["id"]}, {"phone": updates["phone"], "updated_at": datetime.now(timezone.utc).isoformat()})
 
     if "full_name" in updates:
         if user_row:
@@ -1020,6 +1022,30 @@ async def update_parent_basic_info(
 
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     await gd_update_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)}, updates)
+
+    # Synchronize updated parent info across all linked students in the school
+    student_updates = {}
+    if "full_name" in updates:
+        student_updates["parent_name"] = updates["full_name"]
+    if "phone" in updates:
+        student_updates["parent_phone"] = updates["phone"]
+    if "email" in updates:
+        student_updates["parent_email"] = updates["email"] if not str(updates["email"]).endswith("@nassaq.local") else None
+    if student_updates:
+        student_updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+        await gd_update_many(
+            db.session, "students",
+            {"parent_id": parent_id, **_entity_tenant_filter(tenant_id)},
+            student_updates,
+        )
+        sids = parent.get("student_ids") or []
+        if sids:
+            await gd_update_many(
+                db.session, "students",
+                {"id": {"$in": sids}, **_entity_tenant_filter(tenant_id)},
+                student_updates,
+            )
+
     await _write_audit(tenant_id, "update_parent_profile", "parent", parent_id, changes, current_user["id"])
 
     return {"success": True, "message": "تم تحديث بيانات ولي الأمر بنجاح", "changes": changes}
@@ -1070,6 +1096,12 @@ async def update_parent_credentials(
         updates["email"] = data.new_email
         changes["email"] = {"old": user.get("email"), "new": data.new_email}
         await gd_update_one(db.session, "parents", {"id": parent_id, **_entity_tenant_filter(tenant_id)}, {"email": data.new_email})
+        if not str(data.new_email).endswith("@nassaq.local"):
+            await gd_update_many(
+                db.session, "students",
+                {"parent_id": parent_id, **_entity_tenant_filter(tenant_id)},
+                {"parent_email": data.new_email, "updated_at": datetime.now(timezone.utc).isoformat()},
+            )
 
     if data.new_password:
         updates["password_hash"] = hash_password(data.new_password)

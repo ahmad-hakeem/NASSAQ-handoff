@@ -1184,6 +1184,23 @@ async def update_user(
         updates["last_password_change"] = datetime.now(timezone.utc).isoformat()
 
     await gd_update_one(db.session, "users", {"id": user_id}, updates)
+
+    # If the user is a parent, synchronize the parents table
+    effective_role = updates.get("role") or user.get("role")
+    if effective_role == UserRole.PARENT.value or user.get("parent_id"):
+        parent_sync = {}
+        if "full_name" in updates:
+            parent_sync["full_name"] = updates["full_name"]
+        if "phone" in updates:
+            parent_sync["phone"] = updates["phone"]
+        if "email" in updates:
+            parent_sync["email"] = updates["email"]
+        if parent_sync:
+            parent_sync["updated_at"] = datetime.now(timezone.utc).isoformat()
+            if user.get("parent_id"):
+                await gd_update_one(db.session, "parents", {"id": user["parent_id"]}, parent_sync)
+            elif user.get("email"):
+                await gd_update_one(db.session, "parents", {"email": user["email"]}, parent_sync)
     
     field_changes = {}
     for field, new_val in updates.items():

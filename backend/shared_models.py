@@ -496,6 +496,20 @@ class StudentCreate(BaseModel):
     talents: Optional[List[str]] = []
     character_traits: Optional[List[str]] = []
 
+class ParentSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
+    id: Optional[str] = None
+    user_id: Optional[str] = None
+    full_name: Optional[str] = None
+    full_name_en: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    national_id: Optional[str] = None
+    relationship: Optional[str] = None
+    address: Optional[str] = None
+    job_title: Optional[str] = None
+    is_active: Optional[bool] = True
+
 class StudentResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str
@@ -516,6 +530,7 @@ class StudentResponse(BaseModel):
     parent_email: Optional[str] = None
     parent_name: Optional[str] = None
     parent_relationship: Optional[str] = None
+    parent: Optional[ParentSummaryResponse] = None
     is_gifted: Optional[bool] = False
     talents: Optional[List[str]] = []
     character_traits: Optional[List[str]] = []

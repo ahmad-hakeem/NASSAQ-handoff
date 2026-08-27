@@ -475,3 +475,250 @@ async def test_cross_tenant_guardian_write_404_no_provision(client):
     assert parents == []
     links = await gd_find(db.session, "guardian_links", {"student_id": sid_b}, limit=5)
     assert links == []
+
+
+# ---------------------------------------------------------------------------
+# 8) Editing newly added parent's info updates in-place (no duplicate parents)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_editing_newly_added_parent_updates_in_place_no_duplicate(client):
+    school_id = f"sch_{uuid.uuid4().hex[:8]}"
+    await _mk_school(school_id)
+    principal = await _mk_principal(school_id)
+    sid = await _mk_empty_guardian_student(school_id)
+    h = _headers(principal["id"], principal["role"], school_id)
+
+    phone1 = f"05{uuid.uuid4().int % 100000000:08d}"
+    phone2 = f"05{uuid.uuid4().int % 100000000:08d}"
+
+    # Step 1: Principal adds parent to student
+    r1 = await client.put(
+        f"/students/{sid}",
+        json={
+            "parent_name": "ابو خليفة",
+            "parent_phone": phone1,
+            "parent_relationship": "father",
+        },
+        headers=h,
+    )
+    assert r1.status_code == 200, r1.text
+
+    parents1 = await gd_find(db.session, "parents", {"school_id": school_id})
+    assert len(parents1) == 1, "Must have exactly 1 parent after step 1"
+    initial_parent_id = parents1[0]["id"]
+    assert parents1[0]["full_name"] == "ابو خليفة"
+    assert parents1[0]["phone"] == phone1
+
+    # Step 2: Principal re-opens student profile and edits parent info (changing name and phone)
+    r2 = await client.put(
+        f"/students/{sid}",
+        json={
+            "parent_name": "ابو خليفة المحدث",
+            "parent_phone": phone2,
+            "parent_relationship": "father",
+        },
+        headers=h,
+    )
+    assert r2.status_code == 200, r2.text
+
+    # Step 3: Verify no duplicate parent is created in parents list
+    parents2 = await gd_find(db.session, "parents", {"school_id": school_id})
+    assert len(parents2) == 1, f"Must have only 1 parent in school, but found {len(parents2)}"
+    updated_parent = parents2[0]
+    assert updated_parent["id"] == initial_parent_id, "Must update the same parent record"
+    assert updated_parent["full_name"] == "ابو خليفة المحدث"
+    assert updated_parent["phone"] == phone2
+
+    # Verify student record reflects updated parent info
+    student_row = await gd_find_one(db.session, "students", {"id": sid, "school_id": school_id})
+    assert student_row["parent_id"] == initial_parent_id
+    assert student_row["parent_name"] == "ابو خليفة المحدث"
+    assert student_row["parent_phone"] == phone2
+
+    # Verify GET /parents returns only 1 parent card
+    parents_resp = await client.get("/parents", headers=h)
+    assert parents_resp.status_code == 200, parents_resp.text
+    parents_list = parents_resp.json()
+    assert len(parents_list) == 1, f"Expected 1 parent card in GET /parents, got {len(parents_list)}"
+    assert parents_list[0]["id"] == initial_parent_id
+    assert parents_list[0]["full_name"] == "ابو خليفة المحدث"
+    assert parents_list[0]["phone"] == phone2
+
+
+# ---------------------------------------------------------------------------
+# 9) Updating parent info via /principal/parent/{id}/basic-info syncs to student profile
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_updating_parent_from_parents_module_syncs_to_student_profile(client):
+    school_id = f"sch_{uuid.uuid4().hex[:8]}"
+    await _mk_school(school_id)
+    principal = await _mk_principal(school_id)
+    sid = await _mk_empty_guardian_student(school_id)
+    h = _headers(principal["id"], principal["role"], school_id)
+
+    old_phone = "0550000422"
+    new_phone = "0550000211"
+
+    # Step 1: Link parent initially to student
+    r1 = await client.put(
+        f"/students/{sid}",
+        json={
+            "parent_name": "ابراهيم زهراني",
+            "parent_phone": old_phone,
+            "parent_relationship": "father",
+        },
+        headers=h,
+    )
+    assert r1.status_code == 200, r1.text
+
+    # Verify student profile GET reflects initial parent phone
+    s_resp1 = await client.get(f"/students/{sid}", headers=h)
+    assert s_resp1.status_code == 200
+    s_data1 = s_resp1.json()
+    assert s_data1["parent_phone"] == old_phone
+    parent_id = s_data1["parent_id"]
+
+    # Step 2: Principal updates parent from Parents module (/principal/parent/{id}/basic-info)
+    p_update_resp = await client.put(
+        f"/principal/parent/{parent_id}/basic-info",
+        json={
+            "full_name": "ابراهيم زهراني المعدل",
+            "phone": new_phone,
+        },
+        headers=h,
+    )
+    assert p_update_resp.status_code == 200, p_update_resp.text
+
+    # Step 3: Verify parent profile in parents module reflects new phone
+    parent_profile_resp = await client.get(f"/principal/parent/{parent_id}/full-profile", headers=h)
+    assert parent_profile_resp.status_code == 200
+    p_prof = parent_profile_resp.json()["profile"]
+    assert p_prof["contact_info"]["phone"] == new_phone
+    assert p_prof["basic_info"]["full_name"] == "ابراهيم زهراني المعدل"
+
+    # Step 4: Verify student profile dynamically reflects new parent phone and name
+    s_resp2 = await client.get(f"/students/{sid}", headers=h)
+    assert s_resp2.status_code == 200
+    s_data2 = s_resp2.json()
+    assert s_data2["parent_phone"] == new_phone, f"Expected {new_phone}, got {s_data2.get('parent_phone')}"
+    assert s_data2["parent_name"] == "ابراهيم زهراني المعدل"
+
+    # Step 5: Verify students DB row is also synced
+    student_row = await gd_find_one(db.session, "students", {"id": sid, "school_id": school_id})
+    assert student_row["parent_phone"] == new_phone
+    assert student_row["parent_name"] == "ابراهيم زهراني المعدل"
+
+
+# ---------------------------------------------------------------------------
+# 10) Editing student data persists National ID and personal fields
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_editing_student_persists_national_id_and_personal_fields(client):
+    school_id = f"sch_{uuid.uuid4().hex[:8]}"
+    await _mk_school(school_id)
+    principal = await _mk_principal(school_id)
+    sid = await _mk_empty_guardian_student(school_id)
+    h = _headers(principal["id"], principal["role"], school_id)
+
+    national_id = "1231654512163"
+
+    # Step 1: Verify student initially has no national_id
+    got1 = await client.get(f"/students/{sid}", headers=h)
+    assert got1.status_code == 200
+    assert got1.json().get("national_id") is None
+
+    # Step 2: Update student with National ID and Gender
+    update_resp = await client.put(
+        f"/students/{sid}",
+        json={
+            "national_id": national_id,
+            "gender": "male",
+            "full_name": "أحمد ابراهيم احمد الخليفه",
+        },
+        headers=h,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    # Step 3: Verify GET /students/{id} returns updated national_id and gender
+    got2 = await client.get(f"/students/{sid}", headers=h)
+    assert got2.status_code == 200
+    s_data = got2.json()
+    assert s_data.get("national_id") == national_id, f"Expected {national_id}, got {s_data.get('national_id')}"
+    assert s_data.get("gender") == "male"
+    assert s_data.get("full_name") == "أحمد ابراهيم احمد الخليفه"
+
+    # Step 4: Verify DB row persists national_id
+    student_row = await gd_find_one(db.session, "students", {"id": sid, "school_id": school_id})
+    assert student_row.get("national_id") == national_id
+    assert student_row.get("gender") == "male"
+
+
+# ---------------------------------------------------------------------------
+# 11) Student API returns parent object relation (Single Source of Truth)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_student_api_returns_parent_object_relation(client):
+    school_id = f"sch_{uuid.uuid4().hex[:8]}"
+    await _mk_school(school_id)
+    principal = await _mk_principal(school_id)
+    sid = await _mk_empty_guardian_student(school_id)
+    h = _headers(principal["id"], principal["role"], school_id)
+
+    # Step 1: Link a parent to student
+    r1 = await client.put(
+        f"/students/{sid}",
+        json={
+            "parent_name": "ابو خليفة 3",
+            "parent_phone": "05454545",
+            "parent_email": "p@gmail.com",
+            "parent_relationship": "guardian",
+        },
+        headers=h,
+    )
+    assert r1.status_code == 200, r1.text
+
+    # Step 2: Fetch student profile and verify `parent` object relation exists
+    res = await client.get(f"/students/{sid}", headers=h)
+    assert res.status_code == 200, res.text
+    data = res.json()
+
+    # Verify flat fields are populated
+    assert data["parent_name"] == "ابو خليفة 3"
+    assert data["parent_phone"] == "05454545"
+    assert data["parent_email"] == "p@gmail.com"
+    assert data["parent_relationship"] == "guardian"
+    assert data["parent_id"]
+
+    # Verify parent object relation
+    assert "parent" in data
+    assert data["parent"] is not None
+    p_obj = data["parent"]
+    assert p_obj["id"] == data["parent_id"]
+    assert p_obj["full_name"] == "ابو خليفة 3"
+    assert p_obj["phone"] == "05454545"
+    assert p_obj["email"] == "p@gmail.com"
+    assert p_obj["relationship"] == "guardian"
+
+    # Step 3: Modify parent in parents table directly or via basic-info
+    p_id = data["parent_id"]
+    await client.put(
+        f"/principal/parent/{p_id}/basic-info",
+        json={
+            "full_name": "ابو خليفة 3 المحدث",
+            "phone": "0545454599",
+        },
+        headers=h,
+    )
+
+    # Step 4: Verify student profile dynamically reflects updated parent object relation
+    res2 = await client.get(f"/students/{sid}", headers=h)
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data2["parent"]["full_name"] == "ابو خليفة 3 المحدث"
+    assert data2["parent"]["phone"] == "0545454599"
+    assert data2["parent_name"] == "ابو خليفة 3 المحدث"
+    assert data2["parent_phone"] == "0545454599"

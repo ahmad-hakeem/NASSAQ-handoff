@@ -314,6 +314,132 @@ async def link_or_update_real_school_guardian(
         # canonical to live — refuse rather than silently drop it.
         raise HTTPException(status_code=422, detail=_MSG_GUARDIAN_REQUIRED)
 
+    # 1. Check if the student already has a linked parent in this school.
+    existing_parent_id = student.get("parent_id")
+    if not existing_parent_id and student_id:
+        existing_link = await gd_find_one(session, "guardian_links", {
+            "student_id": student_id,
+            "tenant_id": school_id,
+            "is_active": True,
+        })
+        if existing_link and existing_link.get("parent_id"):
+            existing_parent_id = existing_link["parent_id"]
+
+    current_parent = None
+    if existing_parent_id:
+        current_parent = await gd_find_one(session, "parents", {
+            "id": existing_parent_id,
+            "school_id": school_id,
+        })
+
+    # 2. If the student ALREADY has a parent record in this school, update in-place
+    #    unless the phone/email explicitly matches a DIFFERENT existing parent in the school.
+    if current_parent:
+        target_parent = current_parent
+
+        # Check if the updated phone belongs to another existing parent in this school (sibling merge)
+        if merged_phone and merged_phone != current_parent.get("phone"):
+            other_parent = await gd_find_one(session, "parents", {
+                "phone": merged_phone,
+                "school_id": school_id,
+            })
+            if other_parent and other_parent.get("id") != current_parent["id"]:
+                target_parent = other_parent
+                # Remove student from old parent student_ids
+                old_sids = [sid for sid in (current_parent.get("student_ids") or []) if sid != student_id]
+                await gd_update_one(
+                    session, "parents",
+                    {"id": current_parent["id"], "school_id": school_id},
+                    {"student_ids": old_sids, "updated_at": _utcnow_iso()},
+                )
+
+        # Update target parent record in `parents` table
+        p_update: Dict[str, Any] = {}
+        if merged_name and merged_name != target_parent.get("full_name"):
+            p_update["full_name"] = merged_name
+        if merged_phone is not None and merged_phone != target_parent.get("phone"):
+            p_update["phone"] = merged_phone
+        if merged_email is not None and merged_email != target_parent.get("email"):
+            p_update["email"] = merged_email
+        if relationship and relationship != target_parent.get("relationship"):
+            p_update["relationship"] = relationship
+        if p_update:
+            p_update["updated_at"] = _utcnow_iso()
+            await gd_update_one(
+                session, "parents",
+                {"id": target_parent["id"], "school_id": school_id},
+                p_update,
+            )
+            target_parent.update(p_update)
+
+        # Ensure parent user account exists and update it
+        parent_user_id = await ensure_parent_user_account(
+            session, target_parent, school_id, created_by,
+            hash_password=hash_password,
+            generate_secure_password=generate_secure_password,
+            parent_role_value=parent_role_value,
+        )
+        u_update: Dict[str, Any] = {}
+        if merged_name:
+            u_update["full_name"] = merged_name
+        if merged_phone is not None:
+            u_update["phone"] = merged_phone
+        if merged_email is not None and not str(merged_email).endswith(_PLACEHOLDER_EMAIL_DOMAIN):
+            existing_email_user = await gd_find_one(session, "users", {"email": merged_email})
+            if existing_email_user and existing_email_user.get("id") != parent_user_id:
+                raise HTTPException(status_code=409, detail=_MSG_EMAIL_CONFLICT)
+            u_update["email"] = merged_email
+        if u_update:
+            u_update["updated_at"] = _utcnow_iso()
+            await gd_update_one(session, "users", {"id": parent_user_id}, u_update)
+
+        # Link student into target parent's student_ids
+        await _gd_addtoset(
+            session, "parents",
+            {"id": target_parent["id"], "school_id": school_id},
+            {"student_ids": student_id},
+        )
+
+        # Canonical guardian_links row — upsert
+        existing_link = await gd_find_one(session, "guardian_links", {
+            "parent_ref": parent_user_id,
+            "student_id": student_id,
+        })
+        if existing_link:
+            await gd_update_one(
+                session, "guardian_links",
+                {"id": existing_link["id"]},
+                {
+                    "relationship": relationship,
+                    "is_active": True,
+                    "tenant_id": school_id,
+                    "parent_id": target_parent["id"],
+                    "updated_at": _utcnow_iso(),
+                },
+            )
+        else:
+            await gd_insert(session, "guardian_links", {
+                "id": str(uuid.uuid4()),
+                "parent_ref": parent_user_id,
+                "parent_id": target_parent["id"],
+                "student_id": student_id,
+                "relationship": relationship,
+                "tenant_id": school_id,
+                "is_active": True,
+                "created_at": _utcnow_iso(),
+                "created_by": created_by,
+            })
+
+        mirror_email = merged_email if (merged_email and not str(merged_email).endswith(_PLACEHOLDER_EMAIL_DOMAIN)) else None
+        return {
+            "parent_id": target_parent.get("id"),
+            "parent_name": target_parent.get("full_name") or merged_name,
+            "parent_phone": target_parent.get("phone") or merged_phone,
+            "parent_email": mirror_email,
+            "parent_relationship": relationship,
+        }
+
+    # 3. Student did NOT have a linked parent: find or create
     result = await find_or_create_parent(
         session, parent_data, school_id, created_by,
         hash_password=hash_password,
@@ -323,8 +449,7 @@ async def link_or_update_real_school_guardian(
     parent = result["parent"]
     is_new = result["is_new"]
 
-    # Conservative fill on an existing matched parent — only NULL columns,
-    # never overwrite established data. Scoped to the tenant.
+    # Fill / update parent record on an existing match
     if not is_new:
         fill: Dict[str, Any] = {}
         for col, val in (
@@ -365,12 +490,13 @@ async def link_or_update_real_school_guardian(
     if existing_link:
         await gd_update_one(
             session, "guardian_links",
-            {"parent_ref": parent_user_id, "student_id": student_id},
+            {"id": existing_link["id"]},
             {
                 "relationship": relationship,
                 "is_active": True,
                 "tenant_id": school_id,
                 "parent_id": parent["id"],
+                "updated_at": _utcnow_iso(),
             },
         )
     else:
@@ -388,7 +514,7 @@ async def link_or_update_real_school_guardian(
 
     # Mirror only the REAL (non-placeholder) contact values onto the
     # students row. Never mirror a synthetic parent_*@nassaq.local email.
-    mirror_email = merged_email
+    mirror_email = merged_email if (merged_email and not str(merged_email).endswith(_PLACEHOLDER_EMAIL_DOMAIN)) else None
     return {
         "parent_id": parent.get("id"),
         "parent_name": parent.get("full_name") or merged_name,
@@ -418,33 +544,58 @@ async def enrich_student_guardian_fields(session, student: dict) -> dict:
     if school_id:
         link_filter["tenant_id"] = school_id
     link = await gd_find_one(session, "guardian_links", link_filter)
-    if not link:
+    if not link and not student.get("parent_id"):
         return student
 
-    if not student.get("parent_relationship") and link.get("relationship"):
-        student["parent_relationship"] = link.get("relationship")
-    if not student.get("parent_id") and link.get("parent_id"):
-        student["parent_id"] = link.get("parent_id")
+    if link:
+        if link.get("relationship"):
+            student["parent_relationship"] = link.get("relationship")
+        if not student.get("parent_id") and link.get("parent_id"):
+            student["parent_id"] = link.get("parent_id")
 
-    pid = student.get("parent_id") or link.get("parent_id")
-    needs_contact = not (
-        student.get("parent_name") and student.get("parent_phone") and student.get("parent_email")
-    )
-    if pid and needs_contact:
+    pid = student.get("parent_id") or (link.get("parent_id") if link else None)
+    parent_obj = None
+    if pid:
         parent_filter = {"id": pid}
         if school_id:
             parent_filter["school_id"] = school_id
         prow = await gd_find_one(session, "parents", parent_filter)
         if prow:
-            if not student.get("parent_name") and prow.get("full_name"):
-                student["parent_name"] = prow.get("full_name")
-            if not student.get("parent_phone") and prow.get("phone"):
-                student["parent_phone"] = prow.get("phone")
+            relationship = (link.get("relationship") if link else None) or prow.get("relationship") or student.get("parent_relationship") or "guardian"
             email = prow.get("email")
-            if (
-                not student.get("parent_email")
-                and email
-                and not str(email).endswith(_PLACEHOLDER_EMAIL_DOMAIN)
-            ):
-                student["parent_email"] = email
+            if not email or str(email).endswith(_PLACEHOLDER_EMAIL_DOMAIN):
+                if prow.get("user_id"):
+                    u = await gd_find_one(session, "users", {"id": prow["user_id"]})
+                    if u and u.get("email") and not str(u.get("email")).endswith(_PLACEHOLDER_EMAIL_DOMAIN):
+                        email = u.get("email")
+                    else:
+                        email = None
+            else:
+                email = str(email)
+
+            parent_name = prow.get("full_name") or student.get("parent_name")
+            parent_phone = prow.get("phone") or student.get("parent_phone")
+            parent_id_val = prow.get("id") or pid
+
+            student["parent_id"] = parent_id_val
+            student["parent_name"] = parent_name
+            student["parent_phone"] = parent_phone
+            student["parent_email"] = email
+            student["parent_relationship"] = relationship
+
+            parent_obj = {
+                "id": parent_id_val,
+                "user_id": prow.get("user_id"),
+                "full_name": parent_name,
+                "full_name_en": prow.get("full_name_en"),
+                "phone": parent_phone,
+                "email": email,
+                "national_id": prow.get("national_id"),
+                "relationship": relationship,
+                "address": prow.get("address"),
+                "job_title": prow.get("job_title"),
+                "is_active": prow.get("is_active", True),
+            }
+
+    student["parent"] = parent_obj
     return student

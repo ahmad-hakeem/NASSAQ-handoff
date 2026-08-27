@@ -694,6 +694,36 @@ async def update_student(
         update_fields["email"] = student_data.email
     if student_data.phone is not None:
         update_fields["phone"] = student_data.phone
+    if student_data.national_id is not None:
+        target_school = school_id or existing.get("school_id")
+        if student_data.national_id:
+            dup_nid = await gd_find_one(
+                db.session, "students",
+                {
+                    "national_id": student_data.national_id,
+                    "school_id": target_school,
+                    "id": {"$ne": student_id},
+                    "is_active": True,
+                }
+            )
+            if dup_nid:
+                raise HTTPException(status_code=400, detail="رقم الهوية الوطنية مسجل لطالب آخر في المدرسة")
+        update_fields["national_id"] = student_data.national_id or None
+    if student_data.student_number is not None:
+        target_school = school_id or existing.get("school_id")
+        if student_data.student_number:
+            dup_sn = await gd_find_one(
+                db.session, "students",
+                {
+                    "student_number": student_data.student_number,
+                    "school_id": target_school,
+                    "id": {"$ne": student_id},
+                    "is_active": True,
+                }
+            )
+            if dup_sn:
+                raise HTTPException(status_code=400, detail="الرقم التعريفي للطالب مسجل بالفعل لطالب آخر")
+        update_fields["student_number"] = student_data.student_number or None
     if student_data.grade is not None:
         update_fields["grade"] = student_data.grade
     if student_data.class_id is not None:
