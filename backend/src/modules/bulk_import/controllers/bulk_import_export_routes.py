@@ -249,7 +249,8 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail="خطأ في معالجة الملف")
+            logger.exception(f"Error processing import: {e}")
+            raise HTTPException(status_code=500, detail=f"خطأ في معالجة الملف: {str(e)}")
     
     # ============= EXPORT DATA =============
     
@@ -347,232 +348,411 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
 # ============= HELPER FUNCTIONS =============
 
 async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):
-    """استيراد الطلاب"""
+    """استيراد الطلاب مع التحقق المسبق والمعاملات المتكاملة (All-or-Nothing Atomic Import)"""
     imported = 0
-    failed = 0
     
     # Column mapping (Arabic to English)
     column_map = {
         'الاسم الأول (مطلوب)': 'first_name',
+        'الاسم الأول': 'first_name',
         'اسم الأب': 'father_name',
         'اسم العائلة (مطلوب)': 'last_name',
+        'اسم العائلة': 'last_name',
+        'الاسم الاخير': 'last_name',
+        'الاسم الأخير': 'last_name',
         'رقم الهوية (مطلوب)': 'national_id',
-        'تاريخ الميلاد (YYYY-MM-DD)': 'birth_date',
+        'رقم الهوية': 'national_id',
+        'تاريخ الميلاد (YYYY-MM-DD)': 'date_of_birth',
+        'تاريخ الميلاد': 'date_of_birth',
         'الجنس (ذكر/أنثى)': 'gender',
+        'الجنس': 'gender',
         'الصف': 'grade',
         'الفصل': 'class_name',
         'البريد الإلكتروني': 'email',
+        'البريد الالكتروني': 'email',
         'رقم الجوال': 'phone',
         'اسم ولي الأمر': 'parent_name',
+        'اسم ولي الامر': 'parent_name',
         'جوال ولي الأمر (مطلوب)': 'parent_phone',
+        'جوال ولي الأمر': 'parent_phone',
+        'جوال ولي الامر': 'parent_phone',
         'بريد ولي الأمر': 'parent_email',
+        'بريد ولي الامر': 'parent_email',
         'الحالة الصحية': 'health_status',
         'ملاحظات': 'notes'
     }
     
-    # Rename columns
-    df = df.rename(columns=column_map)
+    df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
+    
+    seen_national_ids = {}
+    seen_emails = {}
+    valid_records = []
     
     for idx, row in df.iterrows():
         row_num = idx + 2  # Excel row number (1-indexed + header)
+        row_errors = []
         
+        # Check empty row
+        if row.dropna().empty:
+            continue
+            
         try:
-            # Validate required fields
-            first_name = str(row.get('first_name', '')).strip()
-            last_name = str(row.get('last_name', '')).strip()
-            national_id = str(row.get('national_id', '')).strip()
-            parent_phone = str(row.get('parent_phone', '')).strip()
-            
-            if not first_name or first_name == 'nan':
-                errors.append({"row": row_num, "field": "الاسم الأول", "message": "حقل مطلوب"})
-                failed += 1
-                continue
-            
-            if not last_name or last_name == 'nan':
-                errors.append({"row": row_num, "field": "اسم العائلة", "message": "حقل مطلوب"})
-                failed += 1
-                continue
-            
-            if not national_id or national_id == 'nan':
-                errors.append({"row": row_num, "field": "رقم الهوية", "message": "حقل مطلوب"})
-                failed += 1
-                continue
-            
-            # Validate national_id format
-            national_id = re.sub(r'\D', '', national_id)
-            if len(national_id) != 10:
-                errors.append({"row": row_num, "field": "رقم الهوية", "message": "يجب أن يكون 10 أرقام"})
-                failed += 1
-                continue
-            
-            # Check if student already exists
-            existing = await gd_find_one(db.session, "students", {
-                "national_id": national_id,
-                "school_id": school_id
-            })
-            
-            if existing:
-                warnings.append({"row": row_num, "message": f"الطالب موجود مسبقاً (رقم الهوية: {national_id})"})
-                failed += 1
-                continue
-            
-            # Create student record
-            student_id = str(uuid.uuid4())
-            gender = str(row.get('gender', 'ذكر')).strip()
-            gender_en = 'male' if gender == 'ذكر' else 'female'
-            
-            student = {
-                "id": student_id,
-                "school_id": school_id,
-                "first_name": first_name,
-                "father_name": str(row.get('father_name', '')).strip() if pd.notna(row.get('father_name')) else '',
-                "last_name": last_name,
-                "full_name": f"{first_name} {last_name}",
-                "national_id": national_id,
-                "birth_date": str(row.get('birth_date', ''))[:10] if pd.notna(row.get('birth_date')) else None,
-                "gender": gender_en,
-                "grade": str(row.get('grade', '')).strip() if pd.notna(row.get('grade')) else None,
-                "class_name": str(row.get('class_name', '')).strip() if pd.notna(row.get('class_name')) else None,
-                "email": str(row.get('email', '')).strip() if pd.notna(row.get('email')) else None,
-                "phone": str(row.get('phone', '')).strip() if pd.notna(row.get('phone')) else None,
-                "parent_name": str(row.get('parent_name', '')).strip() if pd.notna(row.get('parent_name')) else None,
-                "parent_phone": parent_phone if parent_phone != 'nan' else None,
-                "parent_email": str(row.get('parent_email', '')).strip() if pd.notna(row.get('parent_email')) else None,
-                "health_status": str(row.get('health_status', '')).strip() if pd.notna(row.get('health_status')) else None,
-                "notes": str(row.get('notes', '')).strip() if pd.notna(row.get('notes')) else None,
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "created_by": user.get("id"),
-                "import_source": "bulk_import"
-            }
-            
-            await gd_insert(db.session, "students", student)
-            imported += 1
-            
-        except Exception as e:
-            errors.append({"row": row_num, "message": str(e)})
-            failed += 1
+            # Extract fields cleanly
+            first_name = str(row.get('first_name', '')).strip() if pd.notna(row.get('first_name')) else ''
+            if first_name.lower() == 'nan':
+                first_name = ''
+                
+            last_name = str(row.get('last_name', '')).strip() if pd.notna(row.get('last_name')) else ''
+            if last_name.lower() == 'nan':
+                last_name = ''
+                
+            father_name = str(row.get('father_name', '')).strip() if pd.notna(row.get('father_name')) else ''
+            if father_name.lower() == 'nan':
+                father_name = ''
+                
+            national_id_raw = str(row.get('national_id', '')).strip() if pd.notna(row.get('national_id')) else ''
+            if national_id_raw.lower() == 'nan':
+                national_id_raw = ''
+            if national_id_raw.endswith('.0'):
+                national_id_raw = national_id_raw[:-2]
+                
+            parent_phone_raw = str(row.get('parent_phone', '')).strip() if pd.notna(row.get('parent_phone')) else ''
+            if parent_phone_raw.lower() == 'nan':
+                parent_phone_raw = ''
+            if parent_phone_raw.endswith('.0'):
+                parent_phone_raw = parent_phone_raw[:-2]
+                
+            email = str(row.get('email', '')).strip() if pd.notna(row.get('email')) else None
+            if email and email.lower() == 'nan':
+                email = None
+                
+            parent_email = str(row.get('parent_email', '')).strip() if pd.notna(row.get('parent_email')) else None
+            if parent_email and parent_email.lower() == 'nan':
+                parent_email = None
 
-    # Recompute the school's stored counts from live rows (Task #826) once
-    # after the import loop so the denormalized columns stay accurate.
+            # 1. Required fields validation
+            if not first_name:
+                row_errors.append({"row": row_num, "field": "الاسم الأول", "message": "الاسم الأول: حقل مطلوب ولا يمكن تركه فارغاً"})
+            if not last_name:
+                row_errors.append({"row": row_num, "field": "اسم العائلة", "message": "اسم العائلة: حقل مطلوب ولا يمكن تركه فارغاً"})
+            if not national_id_raw:
+                row_errors.append({"row": row_num, "field": "رقم الهوية", "message": "رقم الهوية: حقل مطلوب ولا يمكن تركه فارغاً"})
+            if not parent_phone_raw:
+                row_errors.append({"row": row_num, "field": "جوال ولي الأمر", "message": "جوال ولي الأمر: حقل مطلوب ولا يمكن تركه فارغاً"})
+
+            # 2. National ID format & duplication validation
+            clean_national_id = re.sub(r'\D', '', national_id_raw)
+            if national_id_raw:
+                if len(clean_national_id) != 10:
+                    row_errors.append({"row": row_num, "field": "رقم الهوية", "message": f"رقم الهوية ({national_id_raw}): يجب أن يتكون من 10 أرقام"})
+                else:
+                    if clean_national_id in seen_national_ids:
+                        prev_row = seen_national_ids[clean_national_id]
+                        row_errors.append({"row": row_num, "field": "رقم الهوية", "message": f"رقم الهوية ({clean_national_id}): مكرر داخل نفس الملف مع الصف {prev_row}"})
+                    else:
+                        seen_national_ids[clean_national_id] = row_num
+                        existing = await gd_find_one(db.session, "students", {
+                            "national_id": clean_national_id,
+                            "school_id": school_id,
+                            "is_active": True
+                        })
+                        if existing:
+                            row_errors.append({"row": row_num, "field": "رقم الهوية", "message": f"رقم الهوية ({clean_national_id}): الطالب مسجل مسبقاً في هذه المدرسة (الاسم: {existing.get('full_name', '')})"})
+
+            # 3. Parent phone format validation
+            if parent_phone_raw:
+                clean_phone = re.sub(r'[\s\-]', '', parent_phone_raw)
+                if len(clean_phone) < 9:
+                    row_errors.append({"row": row_num, "field": "جوال ولي الأمر", "message": f"جوال ولي الأمر ({parent_phone_raw}): رقم هاتف غير صالح"})
+
+            # 4. Email validation
+            if email:
+                if '@' not in email or '.' not in email:
+                    row_errors.append({"row": row_num, "field": "البريد الإلكتروني", "message": f"البريد الإلكتروني ({email}): صيغة بريد غير صالحة"})
+                elif email.lower() in seen_emails:
+                    row_errors.append({"row": row_num, "field": "البريد الإلكتروني", "message": f"البريد الإلكتروني ({email}): مكرر داخل نفس الملف مع الصف {seen_emails[email.lower()]}"})
+                else:
+                    seen_emails[email.lower()] = row_num
+
+            if parent_email and ('@' not in parent_email or '.' not in parent_email):
+                row_errors.append({"row": row_num, "field": "بريد ولي الأمر", "message": f"بريد ولي الأمر ({parent_email}): صيغة بريد غير صالحة"})
+
+            if row_errors:
+                errors.extend(row_errors)
+            else:
+                full_name = f"{first_name} {father_name} {last_name}".replace("  ", " ").strip() if father_name else f"{first_name} {last_name}".strip()
+                dob_raw = str(row.get('date_of_birth', '')).strip() if pd.notna(row.get('date_of_birth')) else None
+                if dob_raw and dob_raw.lower() == 'nan':
+                    dob_raw = None
+                if dob_raw and len(dob_raw) > 10:
+                    dob_raw = dob_raw[:10]
+
+                gender_raw = str(row.get('gender', 'ذكر')).strip()
+                gender_en = 'female' if gender_raw in ('أنثى', 'انثى', 'female') else 'male'
+
+                valid_records.append({
+                    "row_num": row_num,
+                    "first_name": first_name,
+                    "father_name": father_name,
+                    "last_name": last_name,
+                    "full_name": full_name,
+                    "national_id": clean_national_id,
+                    "date_of_birth": dob_raw,
+                    "gender": gender_en,
+                    "grade": str(row.get('grade', '')).strip() if pd.notna(row.get('grade')) and str(row.get('grade', '')).strip() != 'nan' else None,
+                    "class_name": str(row.get('class_name', '')).strip() if pd.notna(row.get('class_name')) and str(row.get('class_name', '')).strip() != 'nan' else None,
+                    "email": email,
+                    "phone": str(row.get('phone', '')).strip() if pd.notna(row.get('phone')) and str(row.get('phone', '')).strip() != 'nan' else None,
+                    "parent_name": str(row.get('parent_name', '')).strip() if pd.notna(row.get('parent_name')) and str(row.get('parent_name', '')).strip() != 'nan' else None,
+                    "parent_phone": parent_phone_raw,
+                    "parent_email": parent_email,
+                    "health_status": str(row.get('health_status', '')).strip() if pd.notna(row.get('health_status')) and str(row.get('health_status', '')).strip() != 'nan' else None,
+                    "notes": str(row.get('notes', '')).strip() if pd.notna(row.get('notes')) and str(row.get('notes', '')).strip() != 'nan' else None,
+                })
+
+        except Exception as e:
+            errors.append({"row": row_num, "field": "عام", "message": f"خطأ في معالجة الصف: {str(e)}"})
+
+    # ATOMIC CHECK: If any validation errors exist, do NOT insert any rows!
+    failed_rows_count = len(set(e['row'] for e in errors))
+    if errors:
+        return {"imported": 0, "failed": failed_rows_count}
+
+    # Pass 2: Commit all valid records
+    classes_list = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": True}, limit=1000)
+    classes_map = {}
+    for c in classes_list:
+        if c.get('name'):
+            classes_map[c['name'].strip()] = c['id']
+        if c.get('grade_level') and c.get('section'):
+            classes_map[f"{c['grade_level'].strip()} {c['section'].strip()}"] = c['id']
+            classes_map[f"{c['grade_level'].strip()} - {c['section'].strip()}"] = c['id']
+
+    from services.parent_linking import link_or_update_real_school_guardian
+    from dependencies import hash_password, generate_secure_password
+
+    for item in valid_records:
+        class_id = None
+        if item["class_name"]:
+            class_id = classes_map.get(item["class_name"])
+        if not class_id and item["grade"] and item["class_name"]:
+            class_id = classes_map.get(f"{item['grade']} {item['class_name']}")
+
+        health_info = {}
+        if item["health_status"]:
+            health_info["general_condition"] = item["health_status"]
+
+        student_doc = {
+            "id": str(uuid.uuid4()),
+            "school_id": school_id,
+            "full_name": item["full_name"],
+            "national_id": item["national_id"],
+            "date_of_birth": item["date_of_birth"],
+            "gender": item["gender"],
+            "grade": item["grade"],
+            "class_id": class_id,
+            "email": item["email"],
+            "phone": item["phone"],
+            "parent_id": None,
+            "parent_name": item["parent_name"],
+            "parent_phone": item["parent_phone"],
+            "parent_email": item["parent_email"],
+            "health_info": health_info,
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if item["parent_phone"]:
+            try:
+                guardian_fields = await link_or_update_real_school_guardian(
+                    db.session,
+                    student=student_doc,
+                    school_id=school_id,
+                    created_by=user.get("id"),
+                    parent_name=item["parent_name"],
+                    parent_phone=item["parent_phone"],
+                    parent_email=item["parent_email"],
+                    parent_relationship="guardian",
+                    hash_password=hash_password,
+                    generate_secure_password=generate_secure_password,
+                )
+                student_doc["parent_id"] = guardian_fields.get("parent_id")
+                student_doc["parent_name"] = guardian_fields.get("parent_name")
+                student_doc["parent_phone"] = guardian_fields.get("parent_phone")
+                student_doc["parent_email"] = guardian_fields.get("parent_email")
+            except Exception as ex:
+                logger.warning(f"link_or_update_real_school_guardian error for row {item['row_num']}: {ex}")
+
+        await gd_insert(db.session, "students", student_doc)
+        imported += 1
+
     from engines.entity_counts import reconcile_school_counts
     await reconcile_school_counts(db.session, school_id)
 
-    return {"imported": imported, "failed": failed}
+    return {"imported": imported, "failed": 0}
 
 
 async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):
-    """استيراد المعلمين"""
+    """استيراد المعلمين مع التحقق المسبق والمعاملات المتكاملة (All-or-Nothing Atomic Import)"""
     imported = 0
-    failed = 0
     
     # Column mapping
     column_map = {
         'الاسم الكامل (مطلوب)': 'full_name',
+        'الاسم الكامل': 'full_name',
+        'الاسم': 'full_name',
         'البريد الإلكتروني (مطلوب)': 'email',
+        'البريد الإلكتروني': 'email',
+        'البريد الالكتروني': 'email',
         'رقم الجوال (مطلوب)': 'phone',
+        'رقم الجوال': 'phone',
+        'الجوال': 'phone',
         'رقم الهوية': 'national_id',
         'الجنس (ذكر/أنثى)': 'gender',
+        'الجنس': 'gender',
         'التخصص': 'specialization',
         'المؤهل العلمي': 'qualification',
         'سنوات الخبرة': 'experience_years',
         'المواد (مفصولة بفاصلة)': 'subjects',
+        'المواد': 'subjects',
         'الصفوف (مفصولة بفاصلة)': 'grades',
+        'الصفوف': 'grades',
         'تاريخ التعيين (YYYY-MM-DD)': 'hire_date',
+        'تاريخ التعيين': 'hire_date',
         'ملاحظات': 'notes'
     }
     
-    df = df.rename(columns=column_map)
+    df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
+    
+    seen_emails = {}
+    seen_phones = {}
+    valid_records = []
     
     for idx, row in df.iterrows():
         row_num = idx + 2
+        row_errors = []
         
+        if row.dropna().empty:
+            continue
+            
         try:
-            full_name = str(row.get('full_name', '')).strip()
-            email = str(row.get('email', '')).strip().lower()
-            phone = str(row.get('phone', '')).strip()
+            full_name = str(row.get('full_name', '')).strip() if pd.notna(row.get('full_name')) else ''
+            if full_name.lower() == 'nan':
+                full_name = ''
+                
+            email = str(row.get('email', '')).strip().lower() if pd.notna(row.get('email')) else ''
+            if email.lower() == 'nan':
+                email = ''
+                
+            phone = str(row.get('phone', '')).strip() if pd.notna(row.get('phone')) else ''
+            if phone.lower() == 'nan':
+                phone = ''
+            if phone.endswith('.0'):
+                phone = phone[:-2]
             
             # Validate required fields
-            if not full_name or full_name == 'nan':
-                errors.append({"row": row_num, "field": "الاسم الكامل", "message": "حقل مطلوب"})
-                failed += 1
-                continue
+            if not full_name:
+                row_errors.append({"row": row_num, "field": "الاسم الكامل", "message": "الاسم الكامل: حقل مطلوب ولا يمكن تركه فارغاً"})
             
-            if not email or email == 'nan' or '@' not in email:
-                errors.append({"row": row_num, "field": "البريد الإلكتروني", "message": "بريد إلكتروني غير صالح"})
-                failed += 1
-                continue
+            if not email or '@' not in email or '.' not in email:
+                row_errors.append({"row": row_num, "field": "البريد الإلكتروني", "message": f"البريد الإلكتروني ({email or 'فارغ'}): بريد إلكتروني غير صالح"})
+            elif email in seen_emails:
+                row_errors.append({"row": row_num, "field": "البريد الإلكتروني", "message": f"البريد الإلكتروني ({email}): مكرر داخل نفس الملف مع الصف {seen_emails[email]}"})
+            else:
+                seen_emails[email] = row_num
+                existing_email = await gd_find_one(db.session, "teachers", {"email": email, "school_id": school_id})
+                if existing_email:
+                    row_errors.append({"row": row_num, "field": "البريد الإلكتروني", "message": f"البريد الإلكتروني ({email}): المعلم مسجل مسبقاً في هذه المدرسة"})
             
-            if not phone or phone == 'nan':
-                errors.append({"row": row_num, "field": "رقم الجوال", "message": "حقل مطلوب"})
-                failed += 1
-                continue
+            if not phone:
+                row_errors.append({"row": row_num, "field": "رقم الجوال", "message": "رقم الجوال: حقل مطلوب ولا يمكن تركه فارغاً"})
+            else:
+                clean_phone = re.sub(r'[\s\-]', '', phone)
+                if len(clean_phone) < 9:
+                    row_errors.append({"row": row_num, "field": "رقم الجوال", "message": f"رقم الجوال ({phone}): رقم هاتف غير صالح"})
+                elif clean_phone in seen_phones:
+                    row_errors.append({"row": row_num, "field": "رقم الجوال", "message": f"رقم الجوال ({phone}): مكرر داخل نفس الملف مع الصف {seen_phones[clean_phone]}"})
+                else:
+                    seen_phones[clean_phone] = row_num
             
-            # Check if teacher already exists
-            existing = await gd_find_one(db.session, "teachers", {
-                "$or": [
-                    {"email": email},
-                    {"phone": phone}
-                ]
-            })
-            
-            if existing:
-                warnings.append({"row": row_num, "message": f"المعلم موجود مسبقاً ({email})"})
-                failed += 1
-                continue
-            
-            # Parse subjects and grades
-            subjects_str = str(row.get('subjects', '')).strip()
-            grades_str = str(row.get('grades', '')).strip()
-            
-            subjects = [s.strip() for s in subjects_str.split(',') if s.strip() and s.strip() != 'nan']
-            grades = [g.strip() for g in grades_str.split(',') if g.strip() and g.strip() != 'nan']
-            
-            # Create teacher record
-            teacher_id = str(uuid.uuid4())
-            gender = str(row.get('gender', 'ذكر')).strip()
-            gender_en = 'male' if gender == 'ذكر' else 'female'
-            
-            teacher = {
-                "id": teacher_id,
-                "school_id": school_id,
-                "full_name": full_name,
-                "email": email,
-                "phone": phone,
-                "national_id": str(row.get('national_id', '')).strip() if pd.notna(row.get('national_id')) else None,
-                "gender": gender_en,
-                "specialization": str(row.get('specialization', '')).strip() if pd.notna(row.get('specialization')) else None,
-                "qualification": str(row.get('qualification', '')).strip() if pd.notna(row.get('qualification')) else None,
-                "experience_years": int(row.get('experience_years', 0)) if pd.notna(row.get('experience_years')) else 0,
-                "subjects": subjects,
-                "grades": grades,
-                "hire_date": str(row.get('hire_date', ''))[:10] if pd.notna(row.get('hire_date')) else None,
-                "notes": str(row.get('notes', '')).strip() if pd.notna(row.get('notes')) else None,
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "created_by": user.get("id"),
-                "import_source": "bulk_import"
-            }
-            
-            await gd_insert(db.session, "teachers", teacher)
-            imported += 1
+            if row_errors:
+                errors.extend(row_errors)
+            else:
+                subjects_str = str(row.get('subjects', '')).strip() if pd.notna(row.get('subjects')) else ''
+                grades_str = str(row.get('grades', '')).strip() if pd.notna(row.get('grades')) else ''
+                
+                subjects = [s.strip() for s in subjects_str.split(',') if s.strip() and s.strip().lower() != 'nan']
+                grades = [g.strip() for g in grades_str.split(',') if g.strip() and g.strip().lower() != 'nan']
+                
+                gender = str(row.get('gender', 'ذكر')).strip()
+                gender_en = 'female' if gender in ('أنثى', 'انثى', 'female') else 'male'
+                
+                exp_years = 0
+                if pd.notna(row.get('experience_years')):
+                    try:
+                        exp_years = int(float(str(row.get('experience_years')).strip()))
+                    except (ValueError, TypeError):
+                        exp_years = 0
+
+                valid_records.append({
+                    "row_num": row_num,
+                    "full_name": full_name,
+                    "email": email,
+                    "phone": phone,
+                    "national_id": str(row.get('national_id', '')).strip() if pd.notna(row.get('national_id')) and str(row.get('national_id', '')).strip() != 'nan' else None,
+                    "gender": gender_en,
+                    "specialization": str(row.get('specialization', '')).strip() if pd.notna(row.get('specialization')) and str(row.get('specialization', '')).strip() != 'nan' else None,
+                    "qualification": str(row.get('qualification', '')).strip() if pd.notna(row.get('qualification')) and str(row.get('qualification', '')).strip() != 'nan' else None,
+                    "experience_years": exp_years,
+                    "subjects": subjects,
+                    "grades": grades,
+                    "hire_date": str(row.get('hire_date', ''))[:10] if pd.notna(row.get('hire_date')) and str(row.get('hire_date', '')).strip() != 'nan' else None,
+                    "notes": str(row.get('notes', '')).strip() if pd.notna(row.get('notes')) and str(row.get('notes', '')).strip() != 'nan' else None,
+                })
             
         except Exception as e:
-            errors.append({"row": row_num, "message": str(e)})
-            failed += 1
+            errors.append({"row": row_num, "field": "عام", "message": f"خطأ في معالجة الصف: {str(e)}"})
 
-    # Recompute the school's stored counts from live rows (Task #826) once
-    # after the import loop so the denormalized columns stay accurate.
+    failed_rows_count = len(set(e['row'] for e in errors))
+    if errors:
+        return {"imported": 0, "failed": failed_rows_count}
+
+    for item in valid_records:
+        teacher_id = str(uuid.uuid4())
+        teacher = {
+            "id": teacher_id,
+            "school_id": school_id,
+            "full_name": item["full_name"],
+            "email": item["email"],
+            "phone": item["phone"],
+            "national_id": item["national_id"],
+            "gender": item["gender"],
+            "specialization": item["specialization"],
+            "qualification": item["qualification"],
+            "experience_years": item["experience_years"],
+            "subjects": item["subjects"],
+            "grades": item["grades"],
+            "hire_date": item["hire_date"],
+            "notes": item["notes"],
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": user.get("id"),
+            "import_source": "bulk_import"
+        }
+        await gd_insert(db.session, "teachers", teacher)
+        imported += 1
+
     from engines.entity_counts import reconcile_school_counts
     await reconcile_school_counts(db.session, school_id)
 
-    return {"imported": imported, "failed": failed}
+    return {"imported": imported, "failed": 0}
 
 
 async def _import_noor_classes(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):
+    """استيراد الفصول مع التحقق المسبق والمعاملات المتكاملة (All-or-Nothing Atomic Import)"""
     imported = 0
-    failed = 0
-
+    
     column_map = {
         'اسم الفصل (مطلوب)': 'name',
         'اسم الفصل': 'name',
@@ -585,75 +765,102 @@ async def _import_noor_classes(db, df: pd.DataFrame, school_id: str, user: dict,
     }
 
     df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
+    seen_classes = {}
+    valid_records = []
 
     for idx, row in df.iterrows():
         row_num = idx + 2
+        row_errors = []
+
+        if row.dropna().empty:
+            continue
 
         try:
-            name = str(row.get('name', '')).strip()
-            grade_level = str(row.get('grade_level', '')).strip()
+            name = str(row.get('name', '')).strip() if pd.notna(row.get('name')) else ''
+            if name.lower() == 'nan':
+                name = ''
+                
+            grade_level = str(row.get('grade_level', '')).strip() if pd.notna(row.get('grade_level')) else ''
+            if grade_level.lower() == 'nan':
+                grade_level = ''
 
-            if not name or name == 'nan':
-                errors.append({"row": row_num, "field": "اسم الفصل", "message": "حقل مطلوب"})
-                failed += 1
-                continue
+            if not name:
+                row_errors.append({"row": row_num, "field": "اسم الفصل", "message": "اسم الفصل: حقل مطلوب ولا يمكن تركه فارغاً"})
 
-            if not grade_level or grade_level == 'nan':
-                errors.append({"row": row_num, "field": "الصف", "message": "حقل مطلوب"})
-                failed += 1
-                continue
+            if not grade_level:
+                row_errors.append({"row": row_num, "field": "الصف", "message": "الصف: حقل مطلوب ولا يمكن تركه فارغاً"})
 
-            section = str(row.get('section', '')).strip() if pd.notna(row.get('section')) else ''
-            existing = await gd_find_one(db.session, "classes", {
-                "name": name,
-                "school_id": school_id,
-                "section": section
-            })
-
-            if existing:
-                warnings.append({"row": row_num, "message": f"الفصل موجود مسبقاً ({name} - {section})"})
-                failed += 1
-                continue
+            section = str(row.get('section', '')).strip() if pd.notna(row.get('section')) and str(row.get('section', '')).strip() != 'nan' else ''
+            
+            class_key = (name, section)
+            if class_key in seen_classes:
+                row_errors.append({"row": row_num, "field": "اسم الفصل", "message": f"الفصل ({name} - {section or 'بدون شعبة'}): مكرر داخل نفس الملف مع الصف {seen_classes[class_key]}"})
+            else:
+                seen_classes[class_key] = row_num
+                existing = await gd_find_one(db.session, "classes", {
+                    "name": name,
+                    "school_id": school_id,
+                    "section": section,
+                    "is_active": True
+                })
+                if existing:
+                    row_errors.append({"row": row_num, "field": "اسم الفصل", "message": f"الفصل ({name} - {section or 'بدون شعبة'}): موجود مسبقاً في هذه المدرسة"})
 
             capacity = 30
             try:
                 cap_val = row.get('capacity')
-                if pd.notna(cap_val):
+                if pd.notna(cap_val) and str(cap_val).strip() != 'nan':
                     capacity = int(float(str(cap_val).strip()))
             except (ValueError, TypeError):
                 pass
 
-            class_doc = {
-                "id": str(uuid.uuid4()),
-                "school_id": school_id,
-                "name": name,
-                "name_ar": name,
-                "grade_level": grade_level,
-                "grade": grade_level,
-                "section": section if section != 'nan' else '',
-                "capacity": capacity,
-                "stage": str(row.get('stage', '')).strip() if pd.notna(row.get('stage')) else '',
-                "notes": str(row.get('notes', '')).strip() if pd.notna(row.get('notes')) else '',
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "created_by": user.get("id"),
-                "import_source": "noor_import"
-            }
-
-            await gd_insert(db.session, "classes", class_doc)
-            imported += 1
+            if row_errors:
+                errors.extend(row_errors)
+            else:
+                valid_records.append({
+                    "row_num": row_num,
+                    "name": name,
+                    "grade_level": grade_level,
+                    "section": section,
+                    "capacity": capacity,
+                    "stage": str(row.get('stage', '')).strip() if pd.notna(row.get('stage')) and str(row.get('stage', '')).strip() != 'nan' else '',
+                    "notes": str(row.get('notes', '')).strip() if pd.notna(row.get('notes')) and str(row.get('notes', '')).strip() != 'nan' else '',
+                })
 
         except Exception as e:
-            errors.append({"row": row_num, "message": str(e)})
-            failed += 1
+            errors.append({"row": row_num, "field": "عام", "message": f"خطأ في معالجة الصف: {str(e)}"})
 
-    return {"imported": imported, "failed": failed}
+    failed_rows_count = len(set(e['row'] for e in errors))
+    if errors:
+        return {"imported": 0, "failed": failed_rows_count}
+
+    for item in valid_records:
+        class_doc = {
+            "id": str(uuid.uuid4()),
+            "school_id": school_id,
+            "name": item["name"],
+            "name_ar": item["name"],
+            "grade_level": item["grade_level"],
+            "grade": item["grade_level"],
+            "section": item["section"],
+            "capacity": item["capacity"],
+            "stage": item["stage"],
+            "notes": item["notes"],
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": user.get("id"),
+            "import_source": "noor_import"
+        }
+        await gd_insert(db.session, "classes", class_doc)
+        imported += 1
+
+    return {"imported": imported, "failed": 0}
 
 
 async def _import_noor_assignments(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):
+    """استيراد إسناد المعلمين مع التحقق المسبق والمعاملات المتكاملة (All-or-Nothing Atomic Import)"""
     imported = 0
-    failed = 0
-
+    
     column_map = {
         'اسم المعلم (مطلوب)': 'teacher_name',
         'اسم المعلم': 'teacher_name',
@@ -668,117 +875,133 @@ async def _import_noor_assignments(db, df: pd.DataFrame, school_id: str, user: d
     df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
 
     teachers_cache = {}
-    teachers_list = await gd_find(db.session, "teachers", {"school_id": school_id}, limit=2000)
+    teachers_list = await gd_find(db.session, "teachers", {"school_id": school_id, "is_active": True}, limit=2000)
     for t in teachers_list:
         teachers_cache[t.get('full_name', '').strip().lower()] = t
         if t.get('email'):
             teachers_cache[t['email'].strip().lower()] = t
 
     subjects_cache = {}
-    subjects_list = await gd_find(db.session, "subjects", {"school_id": school_id}, limit=2000)
+    subjects_list = await gd_find(db.session, "subjects", {"school_id": school_id, "is_active": True}, limit=2000)
     for s in subjects_list:
         subjects_cache[s.get('name_ar', '').strip().lower()] = s
         subjects_cache[s.get('name', '').strip().lower()] = s
 
+    classes_cache = {}
+    classes_list = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": True}, limit=2000)
+    for c in classes_list:
+        classes_cache[c.get('name', '').strip().lower()] = c
+
+    valid_records = []
+
     for idx, row in df.iterrows():
         row_num = idx + 2
+        row_errors = []
+
+        if row.dropna().empty:
+            continue
 
         try:
-            teacher_name = str(row.get('teacher_name', '')).strip()
-            subject_name = str(row.get('subject_name', '')).strip()
+            teacher_name = str(row.get('teacher_name', '')).strip() if pd.notna(row.get('teacher_name')) else ''
+            if teacher_name.lower() == 'nan':
+                teacher_name = ''
+                
+            subject_name = str(row.get('subject_name', '')).strip() if pd.notna(row.get('subject_name')) else ''
+            if subject_name.lower() == 'nan':
+                subject_name = ''
 
-            if not teacher_name or teacher_name == 'nan':
-                errors.append({"row": row_num, "field": "اسم المعلم", "message": "حقل مطلوب"})
-                failed += 1
-                continue
+            if not teacher_name:
+                row_errors.append({"row": row_num, "field": "اسم المعلم", "message": "اسم المعلم: حقل مطلوب ولا يمكن تركه فارغاً"})
 
-            if not subject_name or subject_name == 'nan':
-                errors.append({"row": row_num, "field": "اسم المادة", "message": "حقل مطلوب"})
-                failed += 1
-                continue
+            if not subject_name:
+                row_errors.append({"row": row_num, "field": "اسم المادة", "message": "اسم المادة: حقل مطلوب ولا يمكن تركه فارغاً"})
 
             teacher = teachers_cache.get(teacher_name.lower())
             if not teacher:
-                teacher_email = str(row.get('teacher_email', '')).strip().lower()
+                teacher_email = str(row.get('teacher_email', '')).strip().lower() if pd.notna(row.get('teacher_email')) else ''
                 if teacher_email and teacher_email != 'nan':
                     teacher = teachers_cache.get(teacher_email)
 
-            if not teacher:
-                errors.append({"row": row_num, "field": "اسم المعلم", "message": f"المعلم '{teacher_name}' غير موجود في النظام"})
-                failed += 1
-                continue
+            if teacher_name and not teacher:
+                row_errors.append({"row": row_num, "field": "اسم المعلم", "message": f"المعلم ({teacher_name}): غير مسجل في المدرسة. يرجى إضافة المعلم أولاً."})
 
-            subject = subjects_cache.get(subject_name.lower())
-            if not subject:
-                subject_id = str(uuid.uuid4())
-                subject = {
-                    "id": subject_id,
-                    "school_id": school_id,
-                    "name": subject_name,
-                    "name_ar": subject_name,
-                    "is_active": True,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "import_source": "noor_import"
-                }
-                await gd_insert(db.session, "subjects", subject)
-                subjects_cache[subject_name.lower()] = subject
+            class_name = str(row.get('class_name', '')).strip() if pd.notna(row.get('class_name')) and str(row.get('class_name', '')).strip() != 'nan' else None
 
-            class_name = str(row.get('class_name', '')).strip() if pd.notna(row.get('class_name')) else None
-            weekly_periods_raw = row.get('weekly_periods')
-            weekly_periods = int(weekly_periods_raw) if pd.notna(weekly_periods_raw) and str(weekly_periods_raw).strip().isdigit() else None
-            notes = str(row.get('notes', '')).strip() if pd.notna(row.get('notes')) else None
+            if row_errors:
+                errors.extend(row_errors)
+            else:
+                weekly_periods_raw = row.get('weekly_periods')
+                weekly_periods = int(weekly_periods_raw) if pd.notna(weekly_periods_raw) and str(weekly_periods_raw).strip().isdigit() else None
+                notes = str(row.get('notes', '')).strip() if pd.notna(row.get('notes')) and str(row.get('notes', '')).strip() != 'nan' else None
 
-            class_id = None
-            if class_name and class_name != 'nan':
-                class_doc = await gd_find_one(db.session, "classes", {"school_id": school_id, "name": class_name})
-                if class_doc:
-                    class_id = class_doc["id"]
-                else:
-                    warnings.append({"row": row_num, "message": f"الفصل '{class_name}' غير موجود، سيتم إنشاء الإسناد بدون ربط فصل"})
+                valid_records.append({
+                    "row_num": row_num,
+                    "teacher": teacher,
+                    "teacher_name": teacher_name,
+                    "subject_name": subject_name,
+                    "class_name": class_name,
+                    "weekly_periods": weekly_periods,
+                    "notes": notes,
+                })
 
-            dup_query = {
-                "teacher_id": teacher["id"],
-                "subject_id": subject["id"],
-                "school_id": school_id
+        except Exception as e:
+            errors.append({"row": row_num, "field": "عام", "message": f"خطأ في معالجة الصف: {str(e)}"})
+
+    failed_rows_count = len(set(e['row'] for e in errors))
+    if errors:
+        return {"imported": 0, "failed": failed_rows_count}
+
+    for item in valid_records:
+        subject = subjects_cache.get(item["subject_name"].lower())
+        if not subject:
+            subject_id = str(uuid.uuid4())
+            subject = {
+                "id": subject_id,
+                "school_id": school_id,
+                "name": item["subject_name"],
+                "name_ar": item["subject_name"],
+                "is_active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "import_source": "noor_import"
             }
-            if class_id:
-                dup_query["class_id"] = class_id
+            await gd_insert(db.session, "subjects", subject)
+            subjects_cache[item["subject_name"].lower()] = subject
 
-            existing = await gd_find_one(db.session, "teacher_assignments", dup_query)
+        class_id = None
+        if item["class_name"]:
+            class_doc = classes_cache.get(item["class_name"].lower())
+            if class_doc:
+                class_id = class_doc["id"]
 
-            if existing:
-                warnings.append({"row": row_num, "message": f"الإسناد موجود مسبقاً ({teacher_name} - {subject_name}{' - ' + class_name if class_name else ''})"})
-                failed += 1
-                continue
+        dup_query = {
+            "teacher_id": item["teacher"]["id"],
+            "subject_id": subject["id"],
+            "school_id": school_id
+        }
+        if class_id:
+            dup_query["class_id"] = class_id
 
+        existing = await gd_find_one(db.session, "teacher_assignments", dup_query)
+        if not existing:
             assignment_doc = {
                 "id": str(uuid.uuid4()),
                 "school_id": school_id,
-                "teacher_id": teacher["id"],
+                "teacher_id": item["teacher"]["id"],
                 "subject_id": subject["id"],
-                "teacher_name": teacher.get("full_name", teacher_name),
-                "subject_name": subject.get("name_ar", subject_name),
+                "class_id": class_id,
+                "teacher_name": item["teacher"].get("full_name", item["teacher_name"]),
+                "subject_name": subject.get("name_ar", item["subject_name"]),
+                "weekly_periods": item["weekly_periods"],
+                "notes": item["notes"],
                 "is_active": True,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "created_by": user.get("id"),
                 "import_source": "noor_import"
             }
-            if class_id:
-                assignment_doc["class_id"] = class_id
-                assignment_doc["class_name"] = class_name
-            if weekly_periods is not None:
-                assignment_doc["weekly_periods"] = weekly_periods
-            if notes:
-                assignment_doc["notes"] = notes
-
             await gd_insert(db.session, "teacher_assignments", assignment_doc)
-            imported += 1
+        imported += 1
 
-        except Exception as e:
-            errors.append({"row": row_num, "message": str(e)})
-            failed += 1
-
-    return {"imported": imported, "failed": failed}
+    return {"imported": imported, "failed": 0}
 
 
 async def _export_students(db, school_id: str, grade: str = None, class_name: str = None):
@@ -802,7 +1025,7 @@ async def _export_students(db, school_id: str, grade: str = None, class_name: st
             'اسم العائلة': s.get('last_name', ''),
             'الاسم الكامل': s.get('full_name', ''),
             'رقم الهوية': s.get('national_id', ''),
-            'تاريخ الميلاد': s.get('birth_date', ''),
+            'تاريخ الميلاد': s.get('date_of_birth') or s.get('birth_date', ''),
             'الجنس': 'ذكر' if s.get('gender') == 'male' else 'أنثى',
             'الصف': s.get('grade', ''),
             'الفصل': s.get('class_name', ''),

@@ -19,7 +19,7 @@ import {
   Sparkles, X, AlertTriangle, Wrench, ArrowRight, Clock,
   UserCircle, ChevronRight, ExternalLink, Zap, BarChart3,
   LayoutGrid, List, Heart, Shield, ArrowUpDown, ArrowUp, ArrowDown, Star,
-  RotateCcw
+  RotateCcw, CheckCircle2, AlertCircle, Info
 } from 'lucide-react';
 import { Switch } from '@/shared/components/ui/switch';
 import {
@@ -1509,8 +1509,14 @@ export default function UsersClassesManagement() {
       formData.append('file', selectedFile);
       const response = await api.post(`/bulk/import/${importType}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       setImportResult(response.data);
-      if (response.data.success) { toast.success(t('importedNRecords', { n: response.data.imported })); fetchAllData(); }
-      else nassaqWarning(t('importedOfTotal', { imported: response.data.imported, total: response.data.total_rows }));
+      if (response.data.success && response.data.imported > 0) {
+        toast.success(t('importedNRecords', { n: response.data.imported }) || `تم استيراد ${response.data.imported} سجل بنجاح`);
+        fetchAllData();
+      } else if (response.data.failed > 0) {
+        nassaqError(`فشل التحقق من ملف الاستيراد لوجود ${response.data.failed} صف يحتوي على أخطاء. يرجى مراجعة سجل الأخطاء أدناه.`);
+      } else {
+        nassaqWarning(t('importedOfTotal', { imported: response.data.imported, total: response.data.total_rows }));
+      }
     } catch (error) { nassaqError(getApiErrorMessage(error) || (t('importFailed'))); }
     finally { setImporting(false); }
   };
@@ -1958,19 +1964,98 @@ export default function UsersClassesManagement() {
                           </CardContent>
                         </Card>
                         {importResult && (
-                          <Card>
-                            <CardHeader><CardTitle>{t('importResult')}</CardTitle></CardHeader>
-                            <CardContent className="space-y-3">
+                          <Card className="border shadow-sm">
+                            <CardHeader className="pb-3">
+                              <CardTitle className="flex items-center justify-between text-base">
+                                <span className="flex items-center gap-2">
+                                  <FileSpreadsheet className="h-5 w-5 text-brand-turquoise" />
+                                  {t('importResult') || 'نتيجة الاستيراد'}
+                                </span>
+                                <Badge variant={importResult.success && importResult.failed === 0 ? "default" : "destructive"} className="text-xs">
+                                  {importResult.success && importResult.failed === 0 ? (t('done') || 'ناجح') : (t('failed') || 'يحتوي على أخطاء')}
+                                </Badge>
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              {/* Status banner */}
+                              {importResult.success && importResult.failed === 0 ? (
+                                <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs">
+                                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                  <span>تم استيراد كافة السجلات ({importResult.imported}) بنجاح دون أي أخطاء.</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl text-amber-800 dark:text-amber-300 text-xs">
+                                  <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                                  <div>
+                                    <p className="font-semibold">تم إلغاء عملية الاستيراد لوجود أخطاء في البيانات ({importResult.failed} صف يحتاج تصحيح).</p>
+                                    <p className="text-[11px] text-amber-700 dark:text-amber-400/90 mt-0.5">لم يتم حفظ أي بيانات لحماية سلامة النظام وقاعدة البيانات. يرجى تصحيح الأخطاء الموضحة أدناه وإعادة رفع الملف.</p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Metrics */}
                               <div className="grid grid-cols-3 gap-3 text-center">
-                                <div className="p-3 bg-muted/50 rounded-lg"><p className="text-xl font-bold">{importResult.total_rows || 0}</p><p className="text-xs text-muted-foreground">{t('total2')}</p></div>
-                                <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-lg"><p className="text-xl font-bold text-green-600">{importResult.imported || 0}</p><p className="text-xs text-muted-foreground">{t('done')}</p></div>
-                                <div className="p-3 bg-red-50 dark:bg-red-950/30 rounded-lg"><p className="text-xl font-bold text-red-600">{importResult.failed || 0}</p><p className="text-xs text-muted-foreground">{t('failed')}</p></div>
+                                <div className="p-3 bg-muted/50 rounded-xl border border-border/50">
+                                  <p className="text-xl font-bold">{importResult.total_rows || 0}</p>
+                                  <p className="text-xs text-muted-foreground">{t('total2') || 'إجمالي الصفوف'}</p>
+                                </div>
+                                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{importResult.imported || 0}</p>
+                                  <p className="text-xs text-emerald-700 dark:text-emerald-400">{t('done') || 'تم استيراده'}</p>
+                                </div>
+                                <div className="p-3 bg-rose-50 dark:bg-rose-950/20 rounded-xl border border-rose-100 dark:border-rose-900/30">
+                                  <p className="text-xl font-bold text-rose-600 dark:text-rose-400">{importResult.failed || 0}</p>
+                                  <p className="text-xs text-rose-700 dark:text-rose-400">{t('failed') || 'فشل'}</p>
+                                </div>
                               </div>
-                              {importResult.errors?.length > 0 && (
-                                <div className="max-h-[200px] overflow-y-auto space-y-1">
-                                  {importResult.errors.map((err, i) => (
-                                    <div key={i} className="text-xs p-2 bg-red-50 dark:bg-red-950/20 rounded text-red-600">Row {err.row}: {err.message || err.error}</div>
-                                  ))}
+
+                              {/* Error log list */}
+                              {(importResult.errors?.length > 0 || importResult.warnings?.length > 0) && (
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between text-xs font-semibold text-rose-700 dark:text-rose-400">
+                                    <span className="flex items-center gap-1.5">
+                                      <AlertTriangle className="h-4 w-4" />
+                                      سجل أخطاء التحقق ({importResult.errors?.length || 0})
+                                    </span>
+                                  </div>
+                                  <div className="max-h-[240px] overflow-y-auto space-y-2 pe-1" data-testid="import-error-list">
+                                    {importResult.errors?.map((err, i) => (
+                                      <div key={`err-${i}`} className="text-xs p-2.5 bg-rose-50/70 dark:bg-rose-950/25 border border-rose-200/60 dark:border-rose-900/30 rounded-lg text-rose-900 dark:text-rose-200 space-y-1" data-testid={`import-error-row-${err.row}`}>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          {err.row && (
+                                            <Badge variant="outline" className="text-[10px] bg-rose-100/70 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800">
+                                              الصف {err.row}
+                                            </Badge>
+                                          )}
+                                          {err.field && (
+                                            <Badge variant="secondary" className="text-[10px]">
+                                              {err.field}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        <p className="text-xs leading-relaxed font-medium">
+                                          {err.message || err.error}
+                                        </p>
+                                      </div>
+                                    ))}
+                                    {importResult.warnings?.map((warn, i) => (
+                                      <div key={`warn-${i}`} className="text-xs p-2.5 bg-amber-50/70 dark:bg-amber-950/25 border border-amber-200/60 dark:border-amber-900/30 rounded-lg text-amber-900 dark:text-amber-200 space-y-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          {warn.row && (
+                                            <Badge variant="outline" className="text-[10px] bg-amber-100/70 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800">
+                                              الصف {warn.row}
+                                            </Badge>
+                                          )}
+                                          <Badge variant="secondary" className="text-[10px]">
+                                            تنبيه
+                                          </Badge>
+                                        </div>
+                                        <p className="text-xs leading-relaxed font-medium">
+                                          {warn.message || warn.warning}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
                               )}
                             </CardContent>
