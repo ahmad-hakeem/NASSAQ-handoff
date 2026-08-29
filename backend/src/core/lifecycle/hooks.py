@@ -1157,20 +1157,12 @@ async def shutdown_tasks():
     # Cancel the revoked-token cleanup loop cleanly.
     try:
         global _revoked_token_cleanup_task
-        if _revoked_token_cleanup_task is not None and not _revoked_token_cleanup_task.done():
-            _revoked_token_cleanup_task.cancel()
-            try:
-                await _revoked_token_cleanup_task
-            except Exception:
-                pass
-            _revoked_token_cleanup_task = None
+        await _cancel_background_task(_revoked_token_cleanup_task)
+        _revoked_token_cleanup_task = None
     except Exception as e:
         logger.debug(f"Cleanup loop cancellation: {e}")
 
-    # Cancel the rate-limit counter sweep loop cleanly. CancelledError is
-    # caught explicitly inside _cancel_background_task — it is a
-    # BaseException, so a bare `except Exception` would let it abort the
-    # rest of shutdown.
+    # Cancel the rate-limit counter sweep loop cleanly.
     try:
         global _rate_limit_sweep_task
         await _cancel_background_task(_rate_limit_sweep_task)
@@ -1181,65 +1173,48 @@ async def shutdown_tasks():
     # Cancel the reactivation-reminder loop cleanly.
     try:
         global _reactivation_reminder_task
-        if _reactivation_reminder_task is not None and not _reactivation_reminder_task.done():
-            _reactivation_reminder_task.cancel()
-            try:
-                await _reactivation_reminder_task
-            except Exception:
-                pass
-            _reactivation_reminder_task = None
+        await _cancel_background_task(_reactivation_reminder_task)
+        _reactivation_reminder_task = None
     except Exception as e:
         logger.debug(f"Reminder loop cancellation: {e}")
+
+    # Cancel the auto-export loop cleanly.
+    try:
+        global _auto_export_task
+        await _cancel_background_task(_auto_export_task)
+        _auto_export_task = None
+    except Exception as e:
+        logger.debug(f"Auto-export loop cancellation: {e}")
 
     # Cancel the erasure purge loop cleanly.
     try:
         global _erasure_purge_task
-        if _erasure_purge_task is not None and not _erasure_purge_task.done():
-            _erasure_purge_task.cancel()
-            try:
-                await _erasure_purge_task
-            except Exception:
-                pass
-            _erasure_purge_task = None
+        await _cancel_background_task(_erasure_purge_task)
+        _erasure_purge_task = None
     except Exception as e:
         logger.debug(f"Erasure purge loop cancellation: {e}")
 
     # Cancel the end-of-day auto-close loop cleanly.
     try:
         global _auto_close_task
-        if _auto_close_task is not None and not _auto_close_task.done():
-            _auto_close_task.cancel()
-            try:
-                await _auto_close_task
-            except Exception:
-                pass
-            _auto_close_task = None
+        await _cancel_background_task(_auto_close_task)
+        _auto_close_task = None
     except Exception as e:
         logger.debug(f"Auto-close loop cancellation: {e}")
 
     # Cancel the scheduled communication dispatch loop cleanly.
     try:
         global _scheduled_dispatch_task
-        if _scheduled_dispatch_task is not None and not _scheduled_dispatch_task.done():
-            _scheduled_dispatch_task.cancel()
-            try:
-                await _scheduled_dispatch_task
-            except Exception:
-                pass
-            _scheduled_dispatch_task = None
+        await _cancel_background_task(_scheduled_dispatch_task)
+        _scheduled_dispatch_task = None
     except Exception as e:
         logger.debug(f"Scheduled dispatch loop cancellation: {e}")
 
     # Cancel the deferred startup-maintenance task if it's still running.
     try:
         global _deferred_maintenance_task
-        if _deferred_maintenance_task is not None and not _deferred_maintenance_task.done():
-            _deferred_maintenance_task.cancel()
-            try:
-                await _deferred_maintenance_task
-            except Exception:
-                pass
-            _deferred_maintenance_task = None
+        await _cancel_background_task(_deferred_maintenance_task)
+        _deferred_maintenance_task = None
     except Exception as e:
         logger.debug(f"Deferred maintenance cancellation: {e}")
 

@@ -79,9 +79,27 @@ def get_alembic_head_revision():
     treat a None head as "could not verify" rather than "at head".
     """
     try:
+        from pathlib import Path
         from alembic.config import Config as AlembicConfig
         from alembic.script import ScriptDirectory
-        ini_path = os.path.join(os.path.dirname(__file__), "alembic.ini")
+
+        current_file = Path(__file__).resolve()
+        candidate_paths = [
+            current_file.parents[3] / "alembic.ini",
+            current_file.parent / "alembic.ini",
+            Path.cwd() / "alembic.ini",
+            Path.cwd() / "backend" / "alembic.ini",
+        ]
+        ini_path = None
+        for candidate in candidate_paths:
+            if candidate.is_file():
+                ini_path = str(candidate)
+                break
+
+        if not ini_path:
+            logger.error(f"Could not find alembic.ini in candidates: {[str(c) for c in candidate_paths]}")
+            return None
+
         cfg = AlembicConfig(ini_path)
         script = ScriptDirectory.from_config(cfg)
         heads = script.get_heads()
