@@ -135,9 +135,10 @@ spec:
             - -c
             - |
               set -e
-              TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+              # Formats filename as: nassaq_prod_backup_2026-08-29_05-45PM_Saturday.sql.gz
+              TIMESTAMP=$(TZ="Asia/Riyadh" date +"%Y-%m-%d_%I-%M%p_%A")
               BACKUP_FILE="/tmp/nassaq_prod_backup_${TIMESTAMP}.sql.gz"
-              echo "Starting production database backup at ${TIMESTAMP}..."
+              echo "Starting production database backup at ${TIMESTAMP} (Riyadh Time)..."
               pg_dump -h ${PGHOST} -U ${PGUSER} -d ${PGDATABASE} | gzip > ${BACKUP_FILE}
               echo "Backup created successfully: ${BACKUP_FILE} ($(du -h ${BACKUP_FILE} | cut -f1))"
 
