@@ -54,7 +54,7 @@ export default function SchoolCardGrid({
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4.5 animate-in fade-in-30 duration-200">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6 animate-in fade-in-30 duration-200">
       {schools.map((school) => (
         <SchoolCardItem
           key={school.id}
