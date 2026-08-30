@@ -618,6 +618,7 @@ export { MasterMatrix, MasterMatrixSkeleton };
 export default function SchedulePageNew() {
   const { user, api } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const schoolId = user?.tenant_id;
   // تكليف التغطية متاح لقيادة المدرسة ومشرف المنصة فقط؛ الخادم يفرض الدور
   // أيضاً عبر require_standby_roster_role.
@@ -1601,18 +1602,42 @@ export default function SchedulePageNew() {
     try { localStorage.setItem('nassaq_master_grid_view_mode', viewMode); } catch {}
   }, [viewMode]);
 
-  const [selectedDay, setSelectedDay] = useState(null);
+  const [selectedDay, setSelectedDay] = useState(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      const dayParam = params.get('day')?.toLowerCase();
+      if (dayParam && DAYS.some((d) => d.key === dayParam)) return dayParam;
+      const saved = localStorage.getItem('nassaq_master_grid_selected_day');
+      if (saved && DAYS.some((d) => d.key === saved)) return saved;
+    } catch {}
+    return null;
+  });
+
+  useEffect(() => {
+    if (selectedDay) {
+      try {
+        localStorage.setItem('nassaq_master_grid_selected_day', selectedDay);
+      } catch {}
+    }
+  }, [selectedDay]);
 
   // Sync selectedDay with available days when grid loads / changes.
-  // Falls back to today, then to the first available day.
+  // Preserves existing valid selection or saved day, then falls back to today or the first available day.
   useEffect(() => {
     if (!days?.length) return;
     setSelectedDay((cur) => {
       if (cur && days.includes(cur)) return cur;
+      try {
+        const params = new URLSearchParams(location.search);
+        const dayParam = params.get('day')?.toLowerCase();
+        if (dayParam && days.includes(dayParam)) return dayParam;
+        const saved = localStorage.getItem('nassaq_master_grid_selected_day');
+        if (saved && days.includes(saved)) return saved;
+      } catch {}
       if (todayKey && days.includes(todayKey)) return todayKey;
       return days[0];
     });
-  }, [days, todayKey]);
+  }, [days, todayKey, location.search]);
 
   // Mirror current view/day into a ref so loadGrid's stable callback
   // can read it without re-creating on every render. The single window
@@ -1620,7 +1645,7 @@ export default function SchedulePageNew() {
   const paginationStateRef = useRef({
     pageIndex: 0,
     pageSize: MASTER_GRID_TEACHER_WINDOW,
-    day: null,
+    day: viewMode === 'daily' ? selectedDay : null,
   });
 
   // Task #142 — totals come from the backend pagination block.
