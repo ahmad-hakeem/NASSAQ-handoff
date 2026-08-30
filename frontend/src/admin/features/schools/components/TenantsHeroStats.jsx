@@ -1,14 +1,12 @@
 import React from 'react';
 import { Button } from '@/shared/components/ui/button';
 import {
-  Building2, Plus, Users, GraduationCap, RefreshCw,
-  CheckCircle2, Clock, Download, XCircle, UserCheck, Layers, Sparkles
+  Building2, Plus, GraduationCap, RefreshCw,
+  CheckCircle2, Clock, Download, XCircle, UserCheck, Layers
 } from 'lucide-react';
 
 export default function TenantsHeroStats({
   stats,
-  activeStatusFilter,
-  onStatusFilter,
   onRefresh,
   refreshing,
   onExport,
@@ -22,12 +20,8 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'جميع المؤسسات' : 'All Institutions',
       value: stats.total,
       icon: Building2,
-      onClick: () => onStatusFilter(null),
-      active: activeStatusFilter === null,
-      color: 'text-blue-400',
-      badgeBg: 'bg-blue-500/20 text-blue-300 border border-blue-400/30',
-      cardBg: 'bg-blue-950/40 border-blue-500/20 hover:border-blue-400/40 hover:bg-blue-950/60',
-      activeRing: 'border-[#46C1BE] ring-2 ring-[#46C1BE] bg-white/20 shadow-lg shadow-[#46C1BE]/20',
+      iconColor: 'text-[#1C3D74] dark:text-[#46C1BE]',
+      iconBg: 'bg-[#1C3D74]/10 dark:bg-[#46C1BE]/15',
     },
     {
       key: 'active',
@@ -35,12 +29,8 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'مفعلة وتعمل' : 'Operational',
       value: stats.active,
       icon: CheckCircle2,
-      onClick: () => onStatusFilter('active'),
-      active: activeStatusFilter === 'active',
-      color: 'text-emerald-400',
-      badgeBg: 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30',
-      cardBg: 'bg-emerald-950/40 border-emerald-500/20 hover:border-emerald-400/40 hover:bg-emerald-950/60',
-      activeRing: 'border-emerald-400 ring-2 ring-emerald-400 bg-white/20 shadow-lg shadow-emerald-500/20',
+      iconColor: 'text-emerald-600 dark:text-emerald-400',
+      iconBg: 'bg-emerald-50 dark:bg-emerald-950/50',
     },
     {
       key: 'suspended',
@@ -48,12 +38,8 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'تحتاج تدقيق' : 'Needs Review',
       value: stats.suspended,
       icon: XCircle,
-      onClick: () => onStatusFilter('suspended'),
-      active: activeStatusFilter === 'suspended',
-      color: 'text-rose-400',
-      badgeBg: 'bg-rose-500/20 text-rose-300 border border-rose-400/30',
-      cardBg: 'bg-rose-950/40 border-rose-500/20 hover:border-rose-400/40 hover:bg-rose-950/60',
-      activeRing: 'border-rose-400 ring-2 ring-rose-400 bg-white/20 shadow-lg shadow-rose-500/20',
+      iconColor: 'text-rose-600 dark:text-rose-400',
+      iconBg: 'bg-rose-50 dark:bg-rose-950/50',
     },
     {
       key: 'setup',
@@ -61,12 +47,8 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'قيد التهيئة' : 'In Setup',
       value: stats.drafts,
       icon: Clock,
-      onClick: () => onStatusFilter('setup'),
-      active: activeStatusFilter === 'setup',
-      color: 'text-amber-400',
-      badgeBg: 'bg-amber-500/20 text-amber-300 border border-amber-400/30',
-      cardBg: 'bg-amber-950/40 border-amber-500/20 hover:border-amber-400/40 hover:bg-amber-950/60',
-      activeRing: 'border-amber-400 ring-2 ring-amber-400 bg-white/20 shadow-lg shadow-amber-500/20',
+      iconColor: 'text-amber-600 dark:text-amber-400',
+      iconBg: 'bg-amber-50 dark:bg-amber-950/50',
     },
     {
       key: 'students',
@@ -74,9 +56,8 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'مقيدون بالمنظومة' : 'Enrolled',
       value: Number(stats.totalStudents || 0).toLocaleString(),
       icon: GraduationCap,
-      color: 'text-sky-400',
-      badgeBg: 'bg-sky-500/20 text-sky-300 border border-sky-400/30',
-      cardBg: 'bg-sky-950/40 border-sky-500/20 hover:border-sky-400/40 hover:bg-sky-950/60',
+      iconColor: 'text-sky-600 dark:text-sky-400',
+      iconBg: 'bg-sky-50 dark:bg-sky-950/50',
     },
     {
       key: 'teachers',
@@ -84,9 +65,8 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'كادر تعليمي' : 'Faculty Staff',
       value: Number(stats.totalTeachers || 0).toLocaleString(),
       icon: UserCheck,
-      color: 'text-teal-400',
-      badgeBg: 'bg-teal-500/20 text-teal-300 border border-teal-400/30',
-      cardBg: 'bg-teal-950/40 border-teal-500/20 hover:border-teal-400/40 hover:bg-teal-950/60',
+      iconColor: 'text-teal-600 dark:text-teal-400',
+      iconBg: 'bg-teal-50 dark:bg-teal-950/50',
     },
     {
       key: 'classes',
@@ -94,47 +74,35 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'شعبة مفعلة' : 'Active Sections',
       value: Number(stats.totalClasses || 0).toLocaleString(),
       icon: Layers,
-      color: 'text-purple-400',
-      badgeBg: 'bg-purple-500/20 text-purple-300 border border-purple-400/30',
-      cardBg: 'bg-purple-950/40 border-purple-500/20 hover:border-purple-400/40 hover:bg-purple-950/60',
+      iconColor: 'text-purple-600 dark:text-purple-400',
+      iconBg: 'bg-purple-50 dark:bg-purple-950/50',
     },
   ];
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#1C3D74] via-[#163363] to-[#0d2244] p-6 sm:p-8 text-white shadow-2xl border border-white/15 backdrop-blur-xl font-tajawal">
-      {/* Dynamic Ambient Background Highlights */}
-      <div className="absolute top-0 right-1/4 w-96 h-96 bg-[#46C1BE]/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 left-1/4 w-80 h-80 bg-[#615090]/25 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute inset-0 bg-[radial-gradient(#46C1BE_1px,transparent_1px)] [background-size:24px_24px] opacity-10 pointer-events-none" />
-
-      {/* Main Top Header Section */}
-      <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-
-        {/* Title & Badge Group */}
-        <div className="flex items-start gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-lg shadow-black/20 shrink-0 mt-1">
-            <Building2 className="h-7 w-7 text-[#46C1BE]" />
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-5 sm:p-6 font-tajawal">
+      {/* Top Header Row */}
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+        {/* Title Group */}
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1C3D74] to-[#152e57] flex items-center justify-center text-[#46C1BE] shadow-xs shrink-0">
+            <Building2 className="h-6 w-6" />
           </div>
 
-          <div className="space-y-1">
-            {/* Live Indicator Overline Badge */}
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 backdrop-blur-md text-[11px] font-bold text-white/90 shadow-inner">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#46C1BE] opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#46C1BE]" />
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-xl sm:text-2xl font-black font-cairo text-slate-900 dark:text-white">
+                {isRTL ? 'إدارة المدارس والمستأجرين' : 'Schools & Tenants Management'}
+              </h1>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>{isRTL ? 'محدث ومباشر' : 'Live'}</span>
               </span>
-              <span>{isRTL ? 'منظومة إدارة المستأجرين والمدارس' : 'Multi-Tenant Management Hub'}</span>
-              <span className="text-white/40">•</span>
-              <span className="text-[#46C1BE] font-mono font-bold">{isRTL ? 'محدث ومباشر' : 'Live & Synced'}</span>
             </div>
-
-            <h1 className="text-2xl sm:text-3xl font-black font-cairo tracking-tight text-white drop-shadow-xs">
-              {isRTL ? 'إدارة المدارس والمستأجرين' : 'Schools & Tenants Management'}
-            </h1>
-            <p className="text-white/80 text-xs sm:text-sm font-medium leading-relaxed max-w-2xl">
+            <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5">
               {isRTL
-                ? 'المركز الموحد للتحكم في المدارس الأكاديمية، متابعة الجاهزية التشغيلية، والدخول المباشر كمدير مدرسة'
-                : 'Unified console to manage school tenants, oversee operational readiness, and switch into school dashboards'}
+                ? 'المركز الموحد لإدارة ومتابعة المدارس الأكاديمية والجاهزية التشغيلية'
+                : 'Central console for school tenants, operational readiness, and management'}
             </p>
           </div>
         </div>
@@ -144,75 +112,64 @@ export default function TenantsHeroStats({
           <Button
             variant="outline"
             size="sm"
-            className="rounded-2xl border-white/20 bg-white/10 hover:bg-white/20 text-white font-bold text-xs h-11 px-4 backdrop-blur-md transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
             onClick={onRefresh}
             disabled={refreshing}
+            className="rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs h-10 px-3.5 gap-2 shadow-xs"
           >
-            <RefreshCw className={`h-4 w-4 ${isRTL ? 'ms-2' : 'me-2'} ${refreshing ? 'animate-spin text-[#46C1BE]' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin text-[#46C1BE]' : 'text-slate-500'}`} />
             <span>{isRTL ? 'تحديث' : 'Refresh'}</span>
           </Button>
 
           <Button
             variant="outline"
             size="sm"
-            className="rounded-2xl border-white/20 bg-white/10 hover:bg-white/20 text-white font-bold text-xs h-11 px-4 backdrop-blur-md transition-all shadow-sm hover:scale-[1.02] active:scale-[0.98]"
             onClick={onExport}
+            className="rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs h-10 px-3.5 gap-2 shadow-xs"
           >
-            <Download className={`h-4 w-4 ${isRTL ? 'ms-2' : 'me-2'} text-[#46C1BE]`} />
+            <Download className="h-4 w-4 text-slate-500" />
             <span>{isRTL ? 'تصدير CSV' : 'Export'}</span>
           </Button>
 
           <Button
             size="sm"
-            className="rounded-2xl bg-[#46C1BE] hover:bg-[#3bb0ad] text-slate-950 font-black text-xs h-11 px-5 shadow-lg shadow-[#46C1BE]/25 gap-2 transition-all transform hover:scale-[1.03] active:scale-[0.98] border border-white/25"
             onClick={onOpenCreateWizard}
             data-testid="add-school-main-btn"
+            className="rounded-xl bg-[#1C3D74] hover:bg-[#152e57] text-white font-bold text-xs h-10 px-4 gap-2 shadow-sm shadow-[#1C3D74]/20 transition-all hover:shadow-md"
           >
-            <Plus className="h-4.5 w-4.5 stroke-[3]" />
+            <Plus className="h-4 w-4 stroke-[2.5] text-[#46C1BE]" />
             <span>{isRTL ? 'إضافة مدرسة جديدة' : 'Add New School'}</span>
           </Button>
         </div>
       </div>
 
-      {/* KPI Stats Interactive Ribbon */}
-      <div className="relative z-10 mt-8 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 sm:gap-3.5">
+      {/* KPI Stats Ribbon */}
+      <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         {statChips.map((chip) => {
           const Icon = chip.icon;
-          const isClickable = !!chip.onClick;
+
           return (
-            <button
+            <div
               key={chip.key}
-              type="button"
-              onClick={chip.onClick}
-              disabled={!isClickable}
-              className={`group relative overflow-hidden rounded-2xl p-4 transition-all duration-300 border flex flex-col items-center justify-between min-h-[125px] ${
-                chip.active
-                  ? chip.activeRing + ' scale-[1.03]'
-                  : chip.cardBg
-              } ${isClickable ? 'cursor-pointer hover:-translate-y-1' : 'cursor-default'}`}
+              className="rounded-xl p-3.5 bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 flex flex-col justify-between min-h-[100px]"
             >
-              {/* Icon Container */}
-              <div className="flex items-center justify-center mb-1">
-                <div className={`p-2.5 rounded-xl backdrop-blur-md ${chip.badgeBg} transition-transform group-hover:scale-110 shadow-xs`}>
-                  <Icon className={`h-4.5 w-4.5 ${chip.color}`} />
+              <div className="flex items-center justify-between w-full mb-1">
+                <div className={`p-1.5 rounded-lg ${chip.iconBg}`}>
+                  <Icon className={`h-4 w-4 ${chip.iconColor}`} />
                 </div>
               </div>
 
-              {/* Number */}
-              <p className="text-2xl sm:text-3xl font-black font-cairo text-white tracking-tight leading-none my-1 drop-shadow-xs">
-                {chip.value}
-              </p>
-
-              {/* Labels */}
-              <div className="text-center w-full">
-                <p className="text-xs font-bold text-white/90 truncate">
+              <div>
+                <p className="text-xl font-black font-cairo text-slate-900 dark:text-white leading-none font-mono">
+                  {chip.value}
+                </p>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1 truncate">
                   {chip.label}
                 </p>
-                <p className="text-[10px] font-medium text-white/60 truncate mt-0.5">
+                <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 truncate mt-0.5">
                   {chip.subtitle}
                 </p>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

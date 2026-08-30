@@ -328,8 +328,6 @@ export default function TenantsManagement() {
           {/* 1. Hero Statistics & Actions */}
           <TenantsHeroStats
             stats={stats}
-            activeStatusFilter={activeStatusFilter}
-            onStatusFilter={handleStatusFilter}
             onRefresh={() => fetchSchools(true)}
             refreshing={refreshing}
             onExport={exportToCSV}
