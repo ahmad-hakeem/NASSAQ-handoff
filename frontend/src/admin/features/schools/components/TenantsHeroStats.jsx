@@ -114,7 +114,7 @@ export default function TenantsHeroStats({
             size="sm"
             onClick={onRefresh}
             disabled={refreshing}
-            className="rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs h-10 px-3.5 gap-2 shadow-xs"
+            className="rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-700 dark:hover:text-white text-slate-700 dark:text-slate-200 font-bold text-xs h-10 px-3.5 gap-2 shadow-xs"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin text-[#46C1BE]' : 'text-slate-500'}`} />
             <span>{isRTL ? 'تحديث' : 'Refresh'}</span>
@@ -124,7 +124,7 @@ export default function TenantsHeroStats({
             variant="outline"
             size="sm"
             onClick={onExport}
-            className="rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs h-10 px-3.5 gap-2 shadow-xs"
+            className="rounded-xl border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-700 dark:hover:text-white text-slate-700 dark:text-slate-200 font-bold text-xs h-10 px-3.5 gap-2 shadow-xs"
           >
             <Download className="h-4 w-4 text-slate-500" />
             <span>{isRTL ? 'تصدير CSV' : 'Export'}</span>

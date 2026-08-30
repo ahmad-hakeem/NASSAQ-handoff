@@ -33,7 +33,7 @@ export default function SchoolCardGrid({
           <Button
             onClick={onResetFilters}
             variant="outline"
-            className="rounded-xl h-9.5 px-4 font-bold text-xs border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 gap-1.5 shadow-2xs"
+            className="rounded-xl h-9.5 px-4 font-bold text-xs border-slate-300 dark:border-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white gap-1.5 shadow-2xs"
           >
             <RefreshCw className="h-3.5 w-3.5 text-slate-500" />
             <span>{isRTL ? 'إعادة ضبط الفلاتر' : 'Reset Filters'}</span>

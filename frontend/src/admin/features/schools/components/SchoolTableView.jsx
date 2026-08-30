@@ -328,7 +328,7 @@ export default function SchoolTableView({
               size="sm"
               onClick={() => onPageChange(Math.max(currentPage - 1, 1))}
               disabled={currentPage === 1}
-              className="rounded-xl h-9 px-3 font-bold text-xs border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+              className="rounded-xl h-9 px-3 font-bold text-xs border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
             >
               {isRTL ? <ChevronRight className="h-4 w-4 ms-1" /> : <ChevronLeft className="h-4 w-4 me-1" />}
               <span>{isRTL ? 'السابق' : 'Previous'}</span>
@@ -341,7 +341,7 @@ export default function SchoolTableView({
               size="sm"
               onClick={() => onPageChange(Math.min(currentPage + 1, totalPages))}
               disabled={currentPage === totalPages}
-              className="rounded-xl h-9 px-3 font-bold text-xs border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+              className="rounded-xl h-9 px-3 font-bold text-xs border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
             >
               <span>{isRTL ? 'التالي' : 'Next'}</span>
               {isRTL ? <ChevronLeft className="h-4 w-4 me-1" /> : <ChevronRight className="h-4 w-4 ms-1" />}

@@ -114,11 +114,11 @@ export default function TenantsFilterBar({
               onClick={onToggleFilters}
               className={`rounded-xl h-10 px-3.5 text-xs font-bold gap-1.5 transition-all shadow-2xs ${
                 showFilters || hasAdvancedFilters
-                  ? 'bg-[#1C3D74] text-white border-[#1C3D74] hover:bg-[#152e57]'
-                  : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100'
+                  ? 'bg-[#1C3D74] text-white border-[#1C3D74] hover:bg-[#152e57] hover:text-white'
+                  : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white'
               }`}
             >
-              <SlidersHorizontal className="h-3.5 w-3.5" />
+              <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" />
               <span>{isRTL ? 'فلاتر' : 'Filters'}</span>
               {activeFiltersCount > 0 && (
                 <span className="w-4.5 h-4.5 rounded-full bg-[#46C1BE] text-slate-950 text-[10px] font-black flex items-center justify-center">

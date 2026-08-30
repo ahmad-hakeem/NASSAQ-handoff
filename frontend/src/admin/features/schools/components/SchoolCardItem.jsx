@@ -1,11 +1,10 @@
 import React from 'react';
 import { Button } from '@/shared/components/ui/button';
-import { Badge } from '@/shared/components/ui/badge';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from '@/shared/components/ui/dropdown-menu';
 import {
-  Building2, MapPin, ExternalLink, Eye, Users, GraduationCap, Layers,
+  MapPin, ExternalLink, Eye, Users, GraduationCap, Layers,
   MoreHorizontal, Copy, Pause, Play
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -80,7 +79,7 @@ export default function SchoolCardItem({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  className="h-8 w-8 p-0 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
@@ -88,35 +87,35 @@ export default function SchoolCardItem({
               <DropdownMenuContent align={isRTL ? 'start' : 'end'} className="w-48 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl shadow-lg p-1 font-cairo z-50">
                 <DropdownMenuItem
                   onClick={() => onNavigateDetail(school.id)}
-                  className="rounded-lg font-bold text-xs py-2 cursor-pointer"
+                  className="rounded-lg font-bold text-xs py-2 cursor-pointer gap-2"
                 >
-                  <ExternalLink className={`h-3.5 w-3.5 ${isRTL ? 'ms-2' : 'me-2'} text-slate-500`} />
+                  <ExternalLink className="h-4 w-4 text-slate-500" />
                   <span>{isRTL ? 'الملف التفصيلي' : 'Profile'}</span>
                 </DropdownMenuItem>
                 {school.code && (
                   <DropdownMenuItem
                     onClick={copyCode}
-                    className="rounded-lg font-bold text-xs py-2 cursor-pointer"
+                    className="rounded-lg font-bold text-xs py-2 cursor-pointer gap-2"
                   >
-                    <Copy className={`h-3.5 w-3.5 ${isRTL ? 'ms-2' : 'me-2'} text-slate-500`} />
-                    <span>{isRTL ? 'نسخ كود المستأجر' : 'Copy Code'}</span>
-                  </DropdownMenuItem>
+                    <Copy className="h-4 w-4 text-slate-500" />
+                  <span>{isRTL ? 'نسخ كود المستأجر' : 'Copy Code'}</span>
+                </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
                 {school.status === 'active' && onOpenSuspendDialog ? (
                   <DropdownMenuItem
                     onClick={() => onOpenSuspendDialog(school)}
-                    className="rounded-lg font-bold text-xs py-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+                    className="rounded-lg font-bold text-xs py-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer gap-2"
                   >
-                    <Pause className={`h-3.5 w-3.5 ${isRTL ? 'ms-2' : 'me-2'}`} />
+                    <Pause className="h-4 w-4" />
                     <span>{isRTL ? 'إيقاف المدرسة' : 'Suspend'}</span>
                   </DropdownMenuItem>
                 ) : onOpenActivateDialog ? (
                   <DropdownMenuItem
                     onClick={() => onOpenActivateDialog(school)}
-                    className="rounded-lg font-bold text-xs py-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer"
+                    className="rounded-lg font-bold text-xs py-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 cursor-pointer gap-2"
                   >
-                    <Play className={`h-3.5 w-3.5 ${isRTL ? 'ms-2' : 'me-2'}`} />
+                    <Play className="h-4 w-4" />
                     <span>{isRTL ? 'تفعيل المدرسة' : 'Activate'}</span>
                   </DropdownMenuItem>
                 ) : null}
@@ -127,18 +126,18 @@ export default function SchoolCardItem({
 
         {/* Location & Tags Row */}
         <div className="flex items-center gap-1.5 flex-wrap mb-4">
-          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg">
             <MapPin className="h-3 w-3 text-slate-400" />
             <span>{school.city || (isRTL ? 'غير محدد' : '—')}</span>
             {school.region && <span className="text-slate-400">/ {school.region}</span>}
           </span>
 
-          <span className="inline-flex items-center text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+          <span className="inline-flex items-center text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg">
             {school.school_type === 'private' ? (isRTL ? 'أهلية' : 'Private') : (isRTL ? 'حكومية' : 'Public')}
           </span>
 
           {stageLabel && (
-            <span className="inline-flex items-center text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md truncate max-w-[130px]">
+            <span className="inline-flex items-center text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg truncate max-w-[130px]">
               {stageLabel}
             </span>
           )}
@@ -179,24 +178,22 @@ export default function SchoolCardItem({
       </div>
 
       {/* Action Footer Buttons */}
-      <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+      <div className="flex items-center gap-2.5 pt-3.5 border-t border-slate-100 dark:border-slate-800">
         <Button
           variant="outline"
-          size="sm"
           onClick={() => onNavigateDetail(school.id)}
-          className="flex-1 rounded-xl h-9.5 px-3 font-bold text-xs border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 gap-1.5 shadow-2xs"
+          className="flex-1 h-10 rounded-xl px-3 font-bold font-cairo text-xs border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white gap-2 shadow-2xs transition-colors"
         >
-          <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
+          <ExternalLink className="h-4 w-4 text-slate-400 shrink-0" />
           <span>{isRTL ? 'الملف التفصيلي' : 'Profile'}</span>
         </Button>
 
         <Button
-          size="sm"
           onClick={() => onEnterDashboard(school)}
           disabled={!canEnterDashboard(school)}
-          className="flex-1 rounded-xl h-9.5 px-3 bg-[#1C3D74] hover:bg-[#152e57] text-white font-bold text-xs gap-1.5 shadow-xs disabled:opacity-40"
+          className="flex-1 h-10 rounded-xl px-3 bg-[#1C3D74] hover:bg-[#152e57] text-white font-bold font-cairo text-xs gap-2 shadow-xs disabled:opacity-40 transition-colors"
         >
-          <Eye className="h-3.5 w-3.5 text-[#46C1BE]" />
+          <Eye className="h-4 w-4 text-[#46C1BE] shrink-0" />
           <span>{isRTL ? 'دخول كمدير' : 'Dashboard'}</span>
         </Button>
       </div>
