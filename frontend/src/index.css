@@ -223,17 +223,17 @@
         @apply bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl;
     }
     
-    /* Sidebar Navigation Items - Harmonized with Nassaq Brand Logo */
+    /* Sidebar Navigation Items - Clean Modern Light & Dark Theme */
     .sidebar-item {
-        @apply flex items-center gap-3.5 px-3.5 py-2.5 text-xs font-bold rounded-xl transition-all duration-200 select-none;
+        @apply flex items-center gap-3 px-3 py-2.5 text-[13px] font-bold rounded-xl transition-all duration-200 select-none;
     }
     
     .sidebar-item-active {
-        @apply bg-white/20 text-white font-extrabold shadow-lg backdrop-blur-md ring-1 ring-white/30 border-s-[3px] border-[#F5B942];
+        @apply bg-[#1C3D74]/[0.09] dark:bg-white/10 text-[#1C3D74] dark:text-[#46C1BE] font-black shadow-xs border-s-4 border-[#1C3D74] dark:border-[#46C1BE];
     }
     
     .sidebar-item-inactive {
-        @apply text-white/90 hover:bg-white/[0.12] hover:text-white hover:border-s-[3px] hover:border-white/30 transition-all duration-150;
+        @apply text-slate-700 dark:text-slate-200 hover:bg-slate-100/90 dark:hover:bg-slate-800/90 hover:text-slate-950 dark:hover:text-white transition-all duration-150;
     }
 
     .nassaq-pattern {

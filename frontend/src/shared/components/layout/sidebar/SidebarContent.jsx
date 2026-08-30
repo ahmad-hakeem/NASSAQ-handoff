@@ -18,7 +18,8 @@ import CommandPalette from '@/features/teachers/components/teacher/CommandPalett
 import { useTheme } from '@/shared/contexts/ThemeContext';
 import { NotificationBell } from '@/features/communication/components/notifications/NotificationBell';
 
-const LOGO_WHITE = '/nassaq-logo-white.png';
+const LOGO_LIGHT = '/nassaq-logo.png';
+const LOGO_DARK = '/nassaq-logo-white.png';
 
 const getRoleNameAr = (role) => {
   const names = {
@@ -69,7 +70,7 @@ export default function SidebarContent({
   onLogout,
   loggingOut,
 }) {
-  const { toggleLanguage } = useTheme();
+  const { toggleLanguage, isDark } = useTheme();
 
   const scrollRef = useRef(null);
 
@@ -104,9 +105,9 @@ export default function SidebarContent({
           {/* Logo */}
           <Link
             to="/"
-            className="flex items-center justify-center w-11 h-11 rounded-xl bg-white/15 hover:bg-white/25 transition-all shadow-md flex-shrink-0 border border-white/20"
+            className="flex items-center justify-center w-11 h-11 rounded-xl bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700/80 transition-all shadow-xs flex-shrink-0 border border-slate-200/80 dark:border-slate-700/80"
           >
-            <img src={LOGO_WHITE} alt="نَسَّق" className="h-7 w-7 rounded-md object-contain" />
+            <img src={isDark ? LOGO_DARK : LOGO_LIGHT} alt="نَسَّق" className="h-7 w-7 rounded-md object-contain" />
           </Link>
 
           {/* Expand toggle */}
@@ -114,7 +115,7 @@ export default function SidebarContent({
             variant="ghost"
             size="icon"
             onClick={onToggleCollapsed}
-            className="text-white/80 hover:text-white hover:bg-white/15 hidden lg:flex w-11 h-11 rounded-xl transition-all"
+            className="text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 hidden lg:flex w-11 h-11 rounded-xl transition-all"
             data-testid="sidebar-collapse-btn"
             title={t('expandSidebar') || 'توسيع الشريط الجانبي'}
           >
@@ -127,8 +128,8 @@ export default function SidebarContent({
               variant="ghost"
               size="icon"
               onClick={() => { onNavigate('/settings'); onCloseMobile(); }}
-              className={`text-white/80 hover:text-white hover:bg-white/15 w-11 h-11 rounded-xl transition-all ${
-                locationPathname === '/settings' ? 'bg-white/20 text-[#F5B942] border-s-2 border-[#F5B942]' : ''
+              className={`text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 w-11 h-11 rounded-xl transition-all ${
+                locationPathname === '/settings' ? 'bg-[#1C3D74]/10 text-[#1C3D74] dark:bg-white/10 dark:text-[#46C1BE]' : ''
               }`}
               data-testid="sidebar-settings-btn"
               title={t('systemSettings')}
@@ -143,7 +144,7 @@ export default function SidebarContent({
               variant="ghost"
               size="icon"
               onClick={onOpenRoleSwitcher}
-              className="text-white/80 hover:text-white hover:bg-white/15 w-11 h-11 rounded-xl transition-all"
+              className="text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 w-11 h-11 rounded-xl transition-all"
               data-testid="sidebar-role-switch-btn"
               title={t('switchRole')}
             >
@@ -156,7 +157,7 @@ export default function SidebarContent({
             variant="ghost"
             size="icon"
             onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
-            className="text-white/80 hover:text-white hover:bg-white/15 w-11 h-11 rounded-xl transition-all"
+            className="text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 w-11 h-11 rounded-xl transition-all"
             data-testid="sidebar-cmdk-btn"
             title={t('cmdkOpen')}
           >
@@ -165,11 +166,11 @@ export default function SidebarContent({
         </div>
       ) : (
         /* Expanded: Logo row + inline controls */
-        <div className="px-4 pt-4 pb-3 border-b border-white/[0.10]">
+        <div className="px-4 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800/80">
           <div className="flex items-center justify-between w-full">
             <Link to="/" className="flex items-center gap-3 group">
-              <div className="w-11 h-11 rounded-xl bg-white/15 group-hover:bg-white/25 transition-all backdrop-blur-md border border-white/20 shadow-md flex items-center justify-center shrink-0">
-                <img src={LOGO_WHITE} alt="نَسَّق" className="h-7 w-7 rounded-md object-contain" />
+              <div className="w-11 h-11 rounded-xl bg-slate-50 dark:bg-slate-800 group-hover:bg-slate-100 dark:group-hover:bg-slate-700/80 transition-all border border-slate-200/80 dark:border-slate-700/80 shadow-xs flex items-center justify-center shrink-0">
+                <img src={isDark ? LOGO_DARK : LOGO_LIGHT} alt="نَسَّق" className="h-7 w-7 rounded-md object-contain" />
               </div>
               <BetaBadge />
             </Link>
@@ -179,7 +180,7 @@ export default function SidebarContent({
                 variant="ghost"
                 size="icon"
                 onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
-                className="text-white/80 hover:text-white hover:bg-white/15 rounded-xl h-9 w-9 transition-all"
+                className="text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 rounded-xl h-9 w-9 transition-all"
                 data-testid="sidebar-cmdk-btn"
                 title={t('cmdkOpen')}
               >
@@ -190,7 +191,7 @@ export default function SidebarContent({
                   variant="ghost"
                   size="icon"
                   onClick={onOpenRoleSwitcher}
-                  className="text-white/80 hover:text-white hover:bg-white/15 rounded-xl h-9 w-9 transition-all"
+                  className="text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 rounded-xl h-9 w-9 transition-all"
                   data-testid="sidebar-role-switch-btn"
                   title={t('switchRole')}
                 >
@@ -202,8 +203,8 @@ export default function SidebarContent({
                   variant="ghost"
                   size="icon"
                   onClick={() => { onNavigate('/settings'); onCloseMobile(); }}
-                  className={`text-white/80 hover:text-white hover:bg-white/15 rounded-xl h-9 w-9 transition-all ${
-                    locationPathname === '/settings' ? 'bg-white/20 text-[#F5B942]' : ''
+                  className={`text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 rounded-xl h-9 w-9 transition-all ${
+                    locationPathname === '/settings' ? 'bg-[#1C3D74]/10 text-[#1C3D74] dark:bg-white/10 dark:text-[#46C1BE]' : ''
                   }`}
                   data-testid="sidebar-settings-btn"
                   title={t('systemSettings')}
@@ -215,7 +216,7 @@ export default function SidebarContent({
                 variant="ghost"
                 size="icon"
                 onClick={onToggleCollapsed}
-                className="text-white/80 hover:text-white hover:bg-white/15 hidden lg:flex rounded-xl h-9 w-9 transition-all"
+                className="text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 hidden lg:flex rounded-xl h-9 w-9 transition-all"
                 data-testid="sidebar-collapse-btn"
               >
                 {isRTL ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -232,7 +233,7 @@ export default function SidebarContent({
         dir={isRTL ? 'rtl' : 'ltr'}
       >
         <nav className="space-y-0.5" dir={isRTL ? 'rtl' : 'ltr'}>
-          {menuItems.map((item, index) => {
+          {menuItems.map((item) => {
             const hasSubItems = item.subItems && item.subItems.length > 0;
             const isGroupExpanded = expandedGroups[item.href];
             const isAnySubActive = hasSubItems && item.subItems.some((sub) => isActive(sub.href));
@@ -245,11 +246,11 @@ export default function SidebarContent({
                     onClick={() => onToggleGroup(item.href)}
                     data-testid={`sidebar-link-${item.href.replace(/\//g, '-')}`}
                     className={`
-                      w-full cursor-pointer group flex items-center gap-3 px-3 py-2.5 rounded-xl
-                      text-xs font-semibold transition-all duration-200
+                      w-full cursor-pointer group flex items-center gap-3 px-3.5 py-2.5 rounded-xl
+                      text-[13px] font-bold transition-all duration-200
                       ${isAnySubActive
-                        ? 'bg-white/20 text-white shadow-sm ring-1 ring-white/25 border-s-[3px] border-[#F5B942]'
-                        : 'text-white/90 hover:bg-white/10 hover:text-white'
+                        ? 'bg-[#1C3D74]/[0.09] dark:bg-white/10 text-[#1C3D74] dark:text-[#46C1BE] font-black border-s-4 border-[#1C3D74] dark:border-[#46C1BE] shadow-xs'
+                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100/90 dark:hover:bg-slate-800/90 hover:text-slate-950 dark:hover:text-white'
                       }
                     `}
                   >
@@ -257,34 +258,34 @@ export default function SidebarContent({
                     <span className={`
                       flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 transition-all
                       ${isAnySubActive
-                        ? 'bg-[#F5B942]/20 text-[#F5B942]'
-                        : 'bg-white/10 text-white/80 group-hover:bg-white/15 group-hover:text-white'
+                        ? 'bg-[#1C3D74]/15 dark:bg-[#46C1BE]/20 text-[#1C3D74] dark:text-[#46C1BE]'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 group-hover:bg-slate-200/80 dark:group-hover:bg-slate-700 group-hover:text-[#1C3D74] dark:group-hover:text-white'
                       }
                     `}>
-                      <item.icon className="h-4 w-4" />
+                      <item.icon className="h-4.5 w-4.5" />
                     </span>
-                    <span className="flex-1 text-start font-bold tracking-wide truncate">{item.label}</span>
-                    <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 transition-transform duration-200 ${
-                      isGroupExpanded ? 'rotate-180 text-[#F5B942]' : 'text-white/50 group-hover:text-white/80'
+                    <span className="flex-1 text-start tracking-wide truncate">{item.label}</span>
+                    <ChevronDown className={`h-4 w-4 flex-shrink-0 transition-transform duration-200 ${
+                      isGroupExpanded ? 'rotate-180 text-[#1C3D74] dark:text-[#46C1BE]' : 'text-slate-400 group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-300'
                     }`} />
                   </button>
 
                   {isGroupExpanded && (
-                    <div className={`mt-1 space-y-0.5 ${isRTL ? 'pr-4 border-r-2 border-[#F5B942]/30' : 'pl-4 border-l-2 border-[#F5B942]/30'} ms-2`}>
+                    <div className={`mt-1 space-y-0.5 ${isRTL ? 'pr-4 border-r-2 border-[#1C3D74]/20 dark:border-white/15' : 'pl-4 border-l-2 border-[#1C3D74]/20 dark:border-white/15'} ms-2`}>
                       {item.subItems.map((sub) => (
                         <Link
                           key={sub.href}
                           to={sub.href}
                           onClick={onCloseMobile}
                           className={`
-                            flex items-center gap-2 py-2 px-3 rounded-lg text-xs transition-all duration-150
+                            flex items-center gap-2.5 py-2 px-3 rounded-lg text-xs transition-all duration-150
                             ${isActive(sub.href)
-                              ? 'text-[#F5B942] bg-white/15 font-bold'
-                              : 'text-white/80 hover:text-white hover:bg-white/10 font-medium'
+                              ? 'text-[#1C3D74] dark:text-[#46C1BE] bg-[#1C3D74]/10 dark:bg-white/10 font-extrabold'
+                              : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100/80 dark:hover:bg-slate-800/80 font-bold'
                             }
                           `}
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive(sub.href) ? 'bg-[#F5B942]' : 'bg-white/40'}`} />
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive(sub.href) ? 'bg-[#1C3D74] dark:bg-[#46C1BE]' : 'bg-slate-300 dark:bg-slate-600'}`} />
                           {sub.label}
                         </Link>
                       ))}
@@ -306,11 +307,11 @@ export default function SidebarContent({
                   group flex items-center transition-all duration-200 rounded-xl
                   ${collapsed
                     ? 'justify-center p-2.5'
-                    : 'gap-3 px-3 py-2.5'
+                    : 'gap-3 px-3.5 py-2.5'
                   }
                   ${active
-                    ? 'bg-white/20 text-white shadow-sm ring-1 ring-white/25 border-s-[3px] border-[#F5B942]'
-                    : 'text-white/90 hover:bg-white/10 hover:text-white'
+                    ? 'bg-[#1C3D74]/[0.09] dark:bg-white/10 text-[#1C3D74] dark:text-[#46C1BE] font-black border-s-4 border-[#1C3D74] dark:border-[#46C1BE] shadow-xs'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100/90 dark:hover:bg-slate-800/90 hover:text-slate-950 dark:hover:text-white font-bold'
                   }
                 `}
               >
@@ -319,22 +320,22 @@ export default function SidebarContent({
                   flex items-center justify-center rounded-lg flex-shrink-0 transition-all
                   ${collapsed ? 'w-9 h-9' : 'w-8 h-8'}
                   ${active
-                    ? 'bg-[#F5B942]/20 text-[#F5B942]'
-                    : 'bg-white/10 text-white/80 group-hover:bg-white/15 group-hover:text-[#F5B942]'
+                    ? 'bg-[#1C3D74]/15 dark:bg-[#46C1BE]/20 text-[#1C3D74] dark:text-[#46C1BE]'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 group-hover:bg-slate-200/80 dark:group-hover:bg-slate-700 group-hover:text-[#1C3D74] dark:group-hover:text-white'
                   }
                 `}>
-                  <item.icon className={collapsed ? 'h-4.5 w-4.5' : 'h-4 w-4'} />
+                  <item.icon className={collapsed ? 'h-5 w-5' : 'h-4.5 w-4.5'} />
                 </span>
 
                 {!collapsed && (
-                  <span className="flex-1 truncate text-xs font-semibold tracking-wide">
+                  <span className="flex-1 truncate text-[13px] tracking-wide">
                     {item.label}
                   </span>
                 )}
 
                 {/* Active dot indicator for non-collapsed */}
                 {!collapsed && active && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#F5B942] flex-shrink-0 shadow-sm shadow-[#F5B942]/50" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#1C3D74] dark:bg-[#46C1BE] flex-shrink-0 shadow-xs" />
                 )}
               </Link>
             );
@@ -344,41 +345,41 @@ export default function SidebarContent({
 
       {/* ── User Footer & Profile Card ── */}
       {!collapsed && user && (
-        <div className="p-3 border-t border-white/[0.10]">
+        <div className="p-3 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/70">
           {isSwitchedRole && (
-            <div className="mb-2.5 p-2 rounded-xl bg-[#F5B942]/15 border border-[#F5B942]/30">
-              <div className="flex items-center gap-2 text-[#F5B942] text-xs font-bold">
+            <div className="mb-2.5 p-2 rounded-xl bg-[#1C3D74]/10 dark:bg-[#46C1BE]/15 border border-[#1C3D74]/20 dark:border-[#46C1BE]/30">
+              <div className="flex items-center gap-2 text-[#1C3D74] dark:text-[#46C1BE] text-xs font-bold">
                 <ArrowLeftRight className="h-3.5 w-3.5" />
                 <span>{t('switchedRole')}</span>
               </div>
-              <p className="text-[10px] text-white/80 mt-0.5">
+              <p className="text-[10px] text-slate-700 dark:text-slate-300 mt-0.5 font-medium">
                 {isRTL ? `الدور الأصلي: ${getRoleNameAr(originalRole)}` : `Original: ${originalRole?.replace(/_/g, ' ')}`}
               </p>
             </div>
           )}
           {isImpersonating && schoolContext && !isSwitchedRole && (
-            <div className="mb-2.5 p-2 rounded-xl bg-amber-500/20 border border-amber-500/40">
-              <div className="flex items-center gap-2 text-amber-300 text-xs font-bold">
+            <div className="mb-2.5 p-2 rounded-xl bg-amber-500/10 border border-amber-500/30">
+              <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 text-xs font-bold">
                 <Shield className="h-3.5 w-3.5" />
                 <span>{t('previewMode')}</span>
               </div>
-              <p className="text-[10px] text-amber-100 truncate mt-0.5 font-medium">
+              <p className="text-[10px] text-amber-950 dark:text-amber-100 truncate mt-0.5 font-semibold">
                 {schoolContext.school_name}
               </p>
             </div>
           )}
 
           {/* Identity + Actions Card */}
-          <div className="flex items-center gap-2 p-2 rounded-2xl bg-white/[0.08] border border-white/15 hover:border-white/25 transition-all">
+          <div className="flex items-center gap-2 p-2 rounded-2xl bg-white dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700 shadow-xs hover:border-slate-300 dark:hover:border-slate-600 transition-all">
             <button
               type="button"
               onClick={() => { onNavigate('/account/settings'); onCloseMobile(); }}
-              className="flex items-center gap-2.5 flex-1 min-w-0 text-start rounded-xl p-0.5 hover:bg-white/10 focus:outline-none transition-all"
+              className="flex items-center gap-2.5 flex-1 min-w-0 text-start rounded-xl p-0.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 focus:outline-none transition-all"
               title={t('accountSettings')}
               aria-label={t('accountSettings')}
               data-testid="sidebar-footer-account"
             >
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#F5B942] to-[#615090] ring-2 ring-white/25 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-md">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#1C3D74] to-[#46C1BE] ring-2 ring-slate-100 dark:ring-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm">
                 {user.avatar_url ? (
                   <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
                 ) : (
@@ -386,8 +387,8 @@ export default function SidebarContent({
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-white truncate leading-tight">{user.full_name}</p>
-                <p className="text-[10px] font-semibold text-[#F5B942] truncate leading-tight mt-0.5">
+                <p className="text-xs font-black text-slate-900 dark:text-white truncate leading-tight">{user.full_name}</p>
+                <p className="text-[11px] font-bold text-[#1C3D74] dark:text-[#46C1BE] truncate leading-tight mt-0.5">
                   {getRoleLabel(effectiveRole, isRTL)}
                 </p>
               </div>
@@ -395,13 +396,13 @@ export default function SidebarContent({
 
             <div className="flex items-center flex-shrink-0 gap-0.5">
               <NotificationBell
-                triggerClassName="h-8 w-8 text-white/80 hover:text-white hover:bg-white/15 rounded-xl transition-all"
+                triggerClassName="h-8 w-8 text-slate-600 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-700 rounded-xl transition-all"
               />
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={toggleLanguage}
-                className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/15 rounded-xl transition-all"
+                className="h-8 w-8 text-slate-600 hover:text-slate-950 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-700 rounded-xl transition-all"
                 data-testid="sidebar-language-toggle"
                 title={isRTL ? 'English' : 'العربية'}
                 aria-label={isRTL ? 'Switch to English' : 'التبديل إلى العربية'}
@@ -413,7 +414,7 @@ export default function SidebarContent({
                 size="icon"
                 onClick={onLogout}
                 disabled={loggingOut}
-                className="h-8 w-8 text-rose-300/90 hover:text-white hover:bg-rose-500/70 rounded-xl transition-all"
+                className="h-8 w-8 text-rose-600 hover:text-rose-800 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40 rounded-xl transition-all"
                 data-testid="logout-btn"
                 title={t('logout')}
                 aria-label={t('logout')}
@@ -431,19 +432,19 @@ export default function SidebarContent({
 
       {/* ── Collapsed Footer ── */}
       {collapsed && user && (
-        <div className="py-3 px-2 border-t border-white/[0.10] flex flex-col items-center gap-1.5">
+        <div className="py-3 px-2 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-900/60 flex flex-col items-center gap-1.5">
           {isSwitchedRole && (
-            <div className="w-2 h-2 rounded-full bg-[#F5B942] animate-pulse mb-1" title={t('switchedRole')} />
+            <div className="w-2 h-2 rounded-full bg-[#1C3D74] dark:bg-[#46C1BE] animate-pulse mb-1" title={t('switchedRole')} />
           )}
           <button
             type="button"
             onClick={() => { onNavigate('/account/settings'); onCloseMobile(); }}
-            className="w-11 h-11 flex items-center justify-center rounded-2xl hover:bg-white/15 focus:outline-none transition-all"
+            className="w-11 h-11 flex items-center justify-center rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none transition-all"
             title={t('accountSettings')}
             aria-label={t('accountSettings')}
             data-testid="sidebar-footer-account-collapsed"
           >
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#F5B942] to-[#615090] flex items-center justify-center overflow-hidden shadow-md ring-2 ring-white/25">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#1C3D74] to-[#46C1BE] flex items-center justify-center overflow-hidden shadow-sm ring-2 ring-slate-100 dark:ring-slate-700">
               {user.avatar_url ? (
                 <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
               ) : (
@@ -452,13 +453,13 @@ export default function SidebarContent({
             </div>
           </button>
           <NotificationBell
-            triggerClassName="w-11 h-11 text-white/80 hover:text-white hover:bg-white/15 rounded-xl transition-all"
+            triggerClassName="w-11 h-11 text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 rounded-xl transition-all"
           />
           <Button
             variant="ghost"
             size="icon"
             onClick={toggleLanguage}
-            className="w-11 h-11 text-white/80 hover:text-white hover:bg-white/15 rounded-xl transition-all"
+            className="w-11 h-11 text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 rounded-xl transition-all"
             data-testid="sidebar-language-toggle-collapsed"
             title={isRTL ? 'English' : 'العربية'}
             aria-label={isRTL ? 'Switch to English' : 'التبديل إلى العربية'}
@@ -470,7 +471,7 @@ export default function SidebarContent({
             size="icon"
             onClick={onLogout}
             disabled={loggingOut}
-            className="w-11 h-11 text-rose-300/90 hover:text-white hover:bg-rose-500/70 rounded-xl transition-all"
+            className="w-11 h-11 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-all"
             title={t('logout')}
             aria-label={t('logout')}
             data-testid="logout-btn-collapsed"
@@ -478,7 +479,7 @@ export default function SidebarContent({
             {loggingOut ? (
               <RefreshCw className="h-5 w-5 animate-spin" />
             ) : (
-              <LogOut className="h-5 w-5" />
+              <LogOut className="h-4 w-4" />
             )}
           </Button>
         </div>

@@ -427,15 +427,16 @@ export const Sidebar = ({ children }) => {
         data-testid="sidebar"
         dir={isRTL ? 'rtl' : 'ltr'}
         className={`
-          fixed inset-y-0 z-[100] bg-gradient-to-b from-[#2A5298] via-[#1C3D74] to-[#163060] overflow-hidden
-          border-e border-white/10 shadow-2xl
+          fixed inset-y-0 z-[100] bg-white dark:bg-[#0F172A] overflow-hidden
+          border-e border-slate-200 dark:border-slate-800
+          shadow-[0_0_25px_rgba(0,0,0,0.06),0_1px_3px_rgba(0,0,0,0.04)]
+          dark:shadow-[0_0_25px_rgba(0,0,0,0.35)]
           transition-all duration-300 ease-in-out font-cairo
           ${isRTL ? 'right-0' : 'left-0'}
           ${collapsed ? 'w-20' : 'w-72'}
           ${mobileOpen ? 'translate-x-0' : isRTL ? 'translate-x-full lg:translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
       >
-        <div className="absolute inset-0 nassaq-pattern opacity-[0.03] pointer-events-none" style={{ backgroundImage: "url('/nassaq-pattern.png')" }} />
         <SidebarContent
           isRTL={isRTL}
           t={t}
