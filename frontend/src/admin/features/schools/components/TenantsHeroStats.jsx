@@ -21,7 +21,7 @@ export default function TenantsHeroStats({
       value: stats.total,
       icon: Building2,
       iconColor: 'text-[#1C3D74] dark:text-[#46C1BE]',
-      iconBg: 'bg-[#1C3D74]/10 dark:bg-[#46C1BE]/15',
+      iconBg: 'bg-blue-100/90 dark:bg-blue-950/70 border border-blue-200/80 dark:border-blue-800',
     },
     {
       key: 'active',
@@ -29,8 +29,8 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'مفعلة وتعمل' : 'Operational',
       value: stats.active,
       icon: CheckCircle2,
-      iconColor: 'text-emerald-600 dark:text-emerald-400',
-      iconBg: 'bg-emerald-50 dark:bg-emerald-950/50',
+      iconColor: 'text-emerald-700 dark:text-emerald-400',
+      iconBg: 'bg-emerald-100/90 dark:bg-emerald-950/70 border border-emerald-200/80 dark:border-emerald-800',
     },
     {
       key: 'suspended',
@@ -38,8 +38,8 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'تحتاج تدقيق' : 'Needs Review',
       value: stats.suspended,
       icon: XCircle,
-      iconColor: 'text-rose-600 dark:text-rose-400',
-      iconBg: 'bg-rose-50 dark:bg-rose-950/50',
+      iconColor: 'text-rose-700 dark:text-rose-400',
+      iconBg: 'bg-rose-100/90 dark:bg-rose-950/70 border border-rose-200/80 dark:border-rose-800',
     },
     {
       key: 'setup',
@@ -47,8 +47,8 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'قيد التهيئة' : 'In Setup',
       value: stats.drafts,
       icon: Clock,
-      iconColor: 'text-amber-600 dark:text-amber-400',
-      iconBg: 'bg-amber-50 dark:bg-amber-950/50',
+      iconColor: 'text-amber-700 dark:text-amber-400',
+      iconBg: 'bg-amber-100/90 dark:bg-amber-950/70 border border-amber-200/80 dark:border-amber-800',
     },
     {
       key: 'students',
@@ -56,8 +56,8 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'مقيدون بالمنظومة' : 'Enrolled',
       value: Number(stats.totalStudents || 0).toLocaleString(),
       icon: GraduationCap,
-      iconColor: 'text-sky-600 dark:text-sky-400',
-      iconBg: 'bg-sky-50 dark:bg-sky-950/50',
+      iconColor: 'text-sky-700 dark:text-sky-400',
+      iconBg: 'bg-sky-100/90 dark:bg-sky-950/70 border border-sky-200/80 dark:border-sky-800',
     },
     {
       key: 'teachers',
@@ -65,8 +65,8 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'كادر تعليمي' : 'Faculty Staff',
       value: Number(stats.totalTeachers || 0).toLocaleString(),
       icon: UserCheck,
-      iconColor: 'text-teal-600 dark:text-teal-400',
-      iconBg: 'bg-teal-50 dark:bg-teal-950/50',
+      iconColor: 'text-teal-700 dark:text-teal-400',
+      iconBg: 'bg-teal-100/90 dark:bg-teal-950/70 border border-teal-200/80 dark:border-teal-800',
     },
     {
       key: 'classes',
@@ -74,8 +74,8 @@ export default function TenantsHeroStats({
       subtitle: isRTL ? 'شعبة مفعلة' : 'Active Sections',
       value: Number(stats.totalClasses || 0).toLocaleString(),
       icon: Layers,
-      iconColor: 'text-purple-600 dark:text-purple-400',
-      iconBg: 'bg-purple-50 dark:bg-purple-950/50',
+      iconColor: 'text-purple-700 dark:text-purple-400',
+      iconBg: 'bg-purple-100/90 dark:bg-purple-950/70 border border-purple-200/80 dark:border-purple-800',
     },
   ];
 
@@ -143,29 +143,31 @@ export default function TenantsHeroStats({
       </div>
 
       {/* KPI Stats Ribbon */}
-      <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 sm:gap-3.5">
         {statChips.map((chip) => {
           const Icon = chip.icon;
 
           return (
             <div
               key={chip.key}
-              className="rounded-xl p-3.5 bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 flex flex-col justify-between min-h-[100px]"
+              className="rounded-2xl p-4 bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/70 flex flex-col justify-between min-h-[120px] hover:border-slate-300 dark:hover:border-slate-600 transition-all shadow-2xs"
             >
+              {/* Top Row: Clear Larger Icon */}
               <div className="flex items-center justify-between w-full mb-1">
-                <div className={`p-1.5 rounded-lg ${chip.iconBg}`}>
-                  <Icon className={`h-4 w-4 ${chip.iconColor}`} />
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${chip.iconBg} shadow-2xs`}>
+                  <Icon className={`h-5 w-5 ${chip.iconColor} stroke-[2.2]`} />
                 </div>
               </div>
 
-              <div>
-                <p className="text-xl font-black font-cairo text-slate-900 dark:text-white leading-none font-mono">
+              {/* Number and Labels with High Contrast & Readability */}
+              <div className="mt-1">
+                <p className="text-2xl sm:text-3xl font-black font-cairo text-slate-900 dark:text-white leading-none font-mono tracking-tight">
                   {chip.value}
                 </p>
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1 truncate">
+                <p className="text-xs sm:text-sm font-bold font-cairo text-slate-800 dark:text-slate-200 mt-1.5 truncate">
                   {chip.label}
                 </p>
-                <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 truncate mt-0.5">
+                <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate mt-0.5">
                   {chip.subtitle}
                 </p>
               </div>
