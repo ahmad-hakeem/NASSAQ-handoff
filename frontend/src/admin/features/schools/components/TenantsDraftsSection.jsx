@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
-import { Clock, MapPin, FileEdit, Trash2, Loader2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { Clock, MapPin, FileEdit, Trash2, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function TenantsDraftsSection({
   draftSchools,
@@ -15,36 +15,35 @@ export default function TenantsDraftsSection({
   if (!draftSchools || draftSchools.length === 0) return null;
 
   return (
-    <div className="relative overflow-hidden p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 border border-amber-500/30 shadow-lg backdrop-blur-xl animate-in fade-in-30 duration-300">
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center border border-amber-500/30 shadow-inner">
+    <div className="relative overflow-hidden rounded-3xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-300/80 dark:border-amber-800/60 p-5 sm:p-6 shadow-sm backdrop-blur-md font-tajawal transition-all">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 flex items-center justify-center shadow-inner shrink-0">
             <Clock className="h-5 w-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-extrabold text-sm sm:text-base font-cairo text-amber-950 dark:text-amber-100">
-                {isRTL
-                  ? `مسودات المدارس قيد التهيئة`
-                  : `School Setup Drafts`}
+                {isRTL ? 'مسودات المدارس قيد التهيئة' : 'School Setup Drafts'}
               </h3>
-              <span className="px-2 py-0.5 rounded-full text-xs font-black bg-amber-500/25 text-amber-900 dark:text-amber-200 border border-amber-500/30">
-                {draftSchools.length}
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-500/20 text-amber-900 dark:text-amber-200 border border-amber-500/30 font-mono">
+                {draftSchools.length} {isRTL ? (draftSchools.length === 1 ? 'مسودة' : 'مسودات') : (draftSchools.length === 1 ? 'draft' : 'drafts')}
               </span>
             </div>
             <p className="text-xs text-amber-900/80 dark:text-amber-300/80 font-medium mt-0.5">
               {isRTL
-                ? 'مدارس تم حفظ بياناتها كمسودة أولية ويمكن متابعة خطوات إعدادها في أي وقت'
-                : 'Schools saved as drafts that can be finalized at any time'}
+                ? 'مدارس تم حفظ بياناتها كمسودة أولية ويمكنك استكمال خطوات إعدادها في أي وقت'
+                : 'Schools saved as drafts that can be completed and finalized at any time'}
             </p>
           </div>
         </div>
 
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
           onClick={onToggleShowDrafts}
-          className="h-9 text-xs font-bold text-amber-950 dark:text-amber-200 hover:bg-amber-500/20 rounded-2xl px-3.5 border border-amber-500/20"
+          className="rounded-2xl h-9 px-3.5 text-xs font-bold text-amber-950 dark:text-amber-200 border-amber-300 dark:border-amber-800 bg-white/60 dark:bg-slate-900/60 hover:bg-amber-100/60 dark:hover:bg-amber-950/40 shadow-xs"
         >
           {showDrafts ? (
             <>
@@ -60,19 +59,26 @@ export default function TenantsDraftsSection({
         </Button>
       </div>
 
+      {/* Draft Cards */}
       {showDrafts && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in-30 slide-in-from-top-2 duration-300">
+        <div className={`mt-2 ${
+          draftSchools.length === 1
+            ? 'max-w-xl'
+            : draftSchools.length === 2
+            ? 'grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl'
+            : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
+        }`}>
           {draftSchools.map((draft) => (
             <div
               key={draft.id}
-              className="group p-4.5 rounded-2xl bg-white/90 dark:bg-slate-900/90 border border-amber-300/70 dark:border-amber-900/60 shadow-sm hover:shadow-xl hover:border-amber-400 dark:hover:border-amber-700 transition-all flex flex-col justify-between"
+              className="group p-4.5 rounded-2xl bg-white dark:bg-slate-900 border border-amber-200/90 dark:border-amber-800/80 shadow-xs hover:shadow-md hover:border-amber-400 dark:hover:border-amber-700 transition-all flex flex-col justify-between"
             >
               <div>
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <h4 className="text-sm font-black text-slate-900 dark:text-white line-clamp-1 font-cairo" title={draft.name}>
-                    {draft.name}
+                    {draft.name || (isRTL ? 'مسودة مدرسة بدون اسم' : 'Untitled Draft')}
                   </h4>
-                  <Badge className="text-[10px] bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 shrink-0 font-bold">
+                  <Badge className="text-[10px] bg-amber-100/90 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 shrink-0 font-bold">
                     {isRTL ? 'مسودة' : 'Draft'}
                   </Badge>
                 </div>
