@@ -44,9 +44,12 @@ export default function TenantsManagement() {
   const [showDrafts, setShowDrafts] = useState(true);
   const [deletingDraftId, setDeletingDraftId] = useState(null);
 
+  // Sorting
+  const [sortBy, setSortBy] = useState('name_asc');
+
   // Pagination for table view
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Advanced Filters
   const [filters, setFilters] = useState({
@@ -153,8 +156,24 @@ export default function TenantsManagement() {
         s.email?.toLowerCase().includes(q)
       );
     }
+
+    // Sort
+    if (sortBy === 'name_asc') {
+      result.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'));
+    } else if (sortBy === 'name_desc') {
+      result.sort((a, b) => (b.name || '').localeCompare(a.name || '', 'ar'));
+    } else if (sortBy === 'students_desc') {
+      result.sort((a, b) => (b.student_count || 0) - (a.student_count || 0));
+    } else if (sortBy === 'teachers_desc') {
+      result.sort((a, b) => (b.teacher_count || 0) - (a.teacher_count || 0));
+    } else if (sortBy === 'classes_desc') {
+      result.sort((a, b) => (b.class_count || 0) - (a.class_count || 0));
+    } else if (sortBy === 'newest') {
+      result.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    }
+
     return result;
-  }, [schools, searchQuery, filters, activeStatusFilter]);
+  }, [schools, searchQuery, filters, activeStatusFilter, sortBy]);
 
   const totalPages = Math.ceil(filteredSchools.length / itemsPerPage) || 1;
   const paginatedSchools = useMemo(() => {
@@ -179,6 +198,7 @@ export default function TenantsManagement() {
     setFilters({ status: 'all', city: 'all', schoolType: 'all', stage: 'all' });
     setSearchQuery('');
     setActiveStatusFilter(null);
+    setSortBy('name_asc');
     setCurrentPage(1);
   };
 
@@ -200,7 +220,7 @@ export default function TenantsManagement() {
       setSchools(prev => prev.map(s =>
         s.id === showSuspendDialog.id ? { ...s, status: 'suspended' } : s
       ));
-      toast.success(isRTL ? `تم إيقاف ${showSuspendDialog.name}` : `${showSuspendDialog.name} suspended`);
+      toast.success(isRTL ? `تم إيقاف مدرسة "${showSuspendDialog.name}" بنجاح` : `"${showSuspendDialog.name}" suspended successfully`);
       setShowSuspendDialog(null);
       setActionReason('');
     } catch (err) {
@@ -221,7 +241,7 @@ export default function TenantsManagement() {
       setSchools(prev => prev.map(s =>
         s.id === showActivateDialog.id ? { ...s, status: 'active' } : s
       ));
-      toast.success(isRTL ? `تم تفعيل ${showActivateDialog.name}` : `${showActivateDialog.name} activated`);
+      toast.success(isRTL ? `تم تفعيل مدرسة "${showActivateDialog.name}" بنجاح` : `"${showActivateDialog.name}" activated successfully`);
       setShowActivateDialog(null);
       setActionReason('');
     } catch (err) {
@@ -253,7 +273,7 @@ export default function TenantsManagement() {
 
   const exportToCSV = () => {
     try {
-      const headers = ['اسم المدرسة', 'كود المدرسة', 'المدينة', 'المنطقة', 'الحالة', 'نوع المدرسة', 'المرحلة', 'عدد الطلاب', 'عدد المعلمين'];
+      const headers = ['اسم المدرسة', 'كود المدرسة', 'المدينة', 'المنطقة', 'الحالة', 'نوع المدرسة', 'المرحلة', 'عدد الطلاب', 'عدد المعلمين', 'عدد الفصول'];
       const rows = filteredSchools.map(s => [
         `"${s.name || ''}"`,
         `"${s.code || ''}"`,
@@ -264,6 +284,7 @@ export default function TenantsManagement() {
         `"${s.stage || ''}"`,
         s.student_count || 0,
         s.teacher_count || 0,
+        s.class_count || 0,
       ]);
 
       const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -287,9 +308,11 @@ export default function TenantsManagement() {
       <Sidebar>
         <div className="min-h-screen flex items-center justify-center bg-slate-50/70 dark:bg-slate-950">
           <div className="text-center space-y-4">
-            <Loader2 className="h-12 w-12 animate-spin text-[#46C1BE] mx-auto" />
-            <p className="text-lg font-cairo font-bold text-slate-700 dark:text-slate-300">
-              {t('loadingSchools') || (isRTL ? 'جاري تحميل بيانات المدارس...' : 'Loading schools...')}
+            <div className="w-16 h-16 rounded-3xl bg-[#1C3D74]/10 dark:bg-[#46C1BE]/10 flex items-center justify-center mx-auto border border-[#46C1BE]/30 shadow-lg">
+              <Loader2 className="h-8 w-8 animate-spin text-[#46C1BE]" />
+            </div>
+            <p className="text-base font-cairo font-bold text-slate-700 dark:text-slate-300">
+              {t('loadingSchools') || (isRTL ? 'جاري تحميل منظومة المدارس...' : 'Loading schools ecosystem...')}
             </p>
           </div>
         </div>
@@ -299,7 +322,7 @@ export default function TenantsManagement() {
 
   return (
     <Sidebar>
-      <div className="min-h-screen bg-slate-50/70 dark:bg-slate-950 font-tajawal" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="min-h-screen bg-gradient-to-b from-slate-50/80 via-slate-50/50 to-slate-100/40 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 font-tajawal" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
 
           {/* 1. Hero Statistics & Actions */}
@@ -314,7 +337,7 @@ export default function TenantsManagement() {
             isRTL={isRTL}
           />
 
-          {/* 2. Control Bar (Search, Filters, View Modes) */}
+          {/* 2. Control Bar (Search, Filters, Sort, View Modes) */}
           <TenantsFilterBar
             searchQuery={searchQuery}
             onSearchChange={(q) => {
@@ -332,8 +355,14 @@ export default function TenantsManagement() {
             }}
             onResetFilters={resetFilters}
             activeStatusFilter={activeStatusFilter}
-            onClearActiveStatusFilter={() => setActiveStatusFilter(null)}
+            onStatusFilterChange={handleStatusFilter}
             cities={cities}
+            sortBy={sortBy}
+            onSortChange={(val) => {
+              setSortBy(val);
+              setCurrentPage(1);
+            }}
+            totalResultsCount={filteredSchools.length}
             isRTL={isRTL}
           />
 
@@ -359,6 +388,10 @@ export default function TenantsManagement() {
               totalPages={totalPages}
               itemsPerPage={itemsPerPage}
               onPageChange={setCurrentPage}
+              onItemsPerPageChange={(val) => {
+                setItemsPerPage(val);
+                setCurrentPage(1);
+              }}
               onNavigateDetail={(id) => navigate(`/platform/schools/${id}`)}
               onEnterDashboard={handleEnterSchoolDashboard}
               canEnterDashboard={canOpenPrincipalDashboard}
@@ -371,6 +404,7 @@ export default function TenantsManagement() {
                 setActionReason('');
               }}
               onResetFilters={resetFilters}
+              onOpenCreateWizard={() => setShowCreateWizard(true)}
               isRTL={isRTL}
             />
           ) : (
@@ -379,7 +413,16 @@ export default function TenantsManagement() {
               onNavigateDetail={(id) => navigate(`/platform/schools/${id}`)}
               onEnterDashboard={handleEnterSchoolDashboard}
               canEnterDashboard={canOpenPrincipalDashboard}
+              onOpenSuspendDialog={(school) => {
+                setShowSuspendDialog(school);
+                setActionReason('');
+              }}
+              onOpenActivateDialog={(school) => {
+                setShowActivateDialog(school);
+                setActionReason('');
+              }}
               onResetFilters={resetFilters}
+              onOpenCreateWizard={() => setShowCreateWizard(true)}
               isRTL={isRTL}
             />
           )}
