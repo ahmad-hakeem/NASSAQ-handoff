@@ -1621,6 +1621,27 @@ export default function SchedulePageNew() {
     }
   }, [selectedDay]);
 
+  // Sync selected day to URL in daily mode so refreshing or sharing URL preserves the day
+  useEffect(() => {
+    if (tab !== 'master') return;
+    const params = new URLSearchParams(location.search);
+    let changed = false;
+    if (viewMode === 'daily') {
+      if (selectedDay && params.get('day') !== selectedDay) {
+        params.set('day', selectedDay);
+        changed = true;
+      }
+    } else {
+      if (params.has('day')) {
+        params.delete('day');
+        changed = true;
+      }
+    }
+    if (changed) {
+      navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+    }
+  }, [tab, viewMode, selectedDay, location.pathname, location.search, navigate]);
+
   // Sync selectedDay with available days when grid loads / changes.
   // Preserves existing valid selection or saved day, then falls back to today or the first available day.
   useEffect(() => {
