@@ -132,7 +132,6 @@ const ProductHubPage = lazy(() => import("@/features/product-hub/pages/ProductHu
 const ProductHubSubmitPage = lazy(() => import("@/features/product-hub/pages/ProductHubSubmitPage").then(m => ({ default: m.ProductHubSubmitPage })));
 const ProductHubIssuePage = lazy(() => import("@/features/product-hub/pages/ProductHubIssuePage").then(m => ({ default: m.ProductHubIssuePage })));
 
-const PlatformSchoolsPage = lazy(() => import("@/admin/features/schools/pages/PlatformSchoolsPage").then(m => ({ default: m.PlatformSchoolsPage })));
 const PlatformSchoolDetailPage = lazy(() => import("@/admin/features/schools/pages/PlatformSchoolDetailPage"));
 const PlatformUsersPage = lazy(() => import("@/features/platform/pages/PlatformUsersPage").then(m => ({ default: m.PlatformUsersPage })));
 const PlatformNotificationsPage = lazy(() => import("@/features/communication/pages/PlatformNotificationsPage").then(m => ({ default: m.PlatformNotificationsPage })));
@@ -326,7 +325,7 @@ export default function AppRoutes() {
           <ProtectedRoute allowedRoles={['platform_admin', 'platform_sub_admin']}><TenantsManagement /></ProtectedRoute>
         } />
         <Route path="/admin/schools-table" element={
-          <ProtectedRoute allowedRoles={['platform_admin', 'platform_sub_admin']}><PlatformSchoolsPage /></ProtectedRoute>
+          <Navigate to="/admin/schools" replace />
         } />
         <Route path="/platform/schools/:schoolId" element={
           <ProtectedRoute allowedRoles={['platform_admin']}><PlatformSchoolDetailPage /></ProtectedRoute>

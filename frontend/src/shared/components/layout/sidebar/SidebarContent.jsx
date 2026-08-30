@@ -93,21 +93,20 @@ export default function SidebarContent({
     };
   }, [handleScroll]);
 
-
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full font-cairo select-none">
       <CommandPalette effectiveRole={effectiveRole} menuItems={menuItems} />
 
-      {/* ── Top area ── */}
+      {/* ── Top Area (Logo & Controls) ── */}
       {collapsed ? (
         /* Collapsed: clean vertical stack, everything centered */
-        <div className="flex flex-col items-center gap-1 py-3 px-2">
+        <div className="flex flex-col items-center gap-2 py-5 px-2">
           {/* Logo */}
           <Link
             to="/"
-            className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-white/10 transition-colors flex-shrink-0"
+            className="flex items-center justify-center w-12 h-12 rounded-2xl bg-white/15 hover:bg-white/25 transition-all shadow-md flex-shrink-0 border border-white/20"
           >
-            <img src={LOGO_WHITE} alt="نَسَّق" className="h-8 w-8 rounded-lg object-contain" />
+            <img src={LOGO_WHITE} alt="نَسَّق" className="h-7 w-7 rounded-lg object-contain" />
           </Link>
 
           {/* Expand toggle */}
@@ -115,7 +114,7 @@ export default function SidebarContent({
             variant="ghost"
             size="icon"
             onClick={onToggleCollapsed}
-            className="text-white/70 hover:text-white hover:bg-white/10 hidden lg:flex w-11 h-11"
+            className="text-white/80 hover:text-white hover:bg-white/15 hidden lg:flex w-11 h-11 rounded-xl transition-all"
             data-testid="sidebar-collapse-btn"
             title={t('expandSidebar') || 'توسيع الشريط الجانبي'}
           >
@@ -128,8 +127,8 @@ export default function SidebarContent({
               variant="ghost"
               size="icon"
               onClick={() => { onNavigate('/settings'); onCloseMobile(); }}
-              className={`text-white/70 hover:text-white hover:bg-white/10 w-11 h-11 ${
-                locationPathname === '/settings' ? 'bg-white/15 text-white' : ''
+              className={`text-white/80 hover:text-white hover:bg-white/15 w-11 h-11 rounded-xl transition-all ${
+                locationPathname === '/settings' ? 'bg-white/20 text-[#5DD8D5] border-s-2 border-[#5DD8D5]' : ''
               }`}
               data-testid="sidebar-settings-btn"
               title={t('systemSettings')}
@@ -144,7 +143,7 @@ export default function SidebarContent({
               variant="ghost"
               size="icon"
               onClick={onOpenRoleSwitcher}
-              className="text-white/70 hover:text-white hover:bg-white/10 w-11 h-11"
+              className="text-white/80 hover:text-white hover:bg-white/15 w-11 h-11 rounded-xl transition-all"
               data-testid="sidebar-role-switch-btn"
               title={t('switchRole')}
             >
@@ -152,12 +151,12 @@ export default function SidebarContent({
             </Button>
           )}
 
-          {/* Command palette — all roles (unified search entry point) */}
+          {/* Command palette — all roles */}
           <Button
             variant="ghost"
             size="icon"
             onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
-            className="text-white/70 hover:text-white hover:bg-white/10 w-11 h-11"
+            className="text-white/80 hover:text-white hover:bg-white/15 w-11 h-11 rounded-xl transition-all"
             data-testid="sidebar-cmdk-btn"
             title={t('cmdkOpen')}
           >
@@ -165,11 +164,13 @@ export default function SidebarContent({
           </Button>
         </div>
       ) : (
-        /* Expanded: logo row + inline controls */
-        <div className="p-4">
+        /* Expanded: Logo row + inline controls */
+        <div className="px-4 pt-4 pb-3 border-b border-white/[0.10]">
           <div className="flex items-center justify-between w-full">
-            <Link to="/" className="flex items-center gap-2">
-              <img src={LOGO_WHITE} alt="نَسَّق" className="h-10 w-auto rounded-xl" />
+            <Link to="/" className="flex items-center gap-3 group">
+              <div className="p-2 rounded-2xl bg-white/15 group-hover:bg-white/25 transition-all backdrop-blur-md border border-white/20 shadow-md">
+                <img src={LOGO_WHITE} alt="نَسَّق" className="h-8 w-auto rounded-lg" />
+              </div>
               <BetaBadge />
             </Link>
 
@@ -178,22 +179,22 @@ export default function SidebarContent({
                 variant="ghost"
                 size="icon"
                 onClick={() => window.dispatchEvent(new CustomEvent('nassaq:open-command-palette'))}
-                className="text-white/70 hover:text-white hover:bg-white/10"
+                className="text-white/80 hover:text-white hover:bg-white/15 rounded-xl h-9 w-9 transition-all"
                 data-testid="sidebar-cmdk-btn"
                 title={t('cmdkOpen')}
               >
-                <Search className="h-5 w-5" />
+                <Search className="h-4 w-4" />
               </Button>
               {availableRoles.length > 1 && (
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={onOpenRoleSwitcher}
-                  className="text-white/70 hover:text-white hover:bg-white/10"
+                  className="text-white/80 hover:text-white hover:bg-white/15 rounded-xl h-9 w-9 transition-all"
                   data-testid="sidebar-role-switch-btn"
                   title={t('switchRole')}
                 >
-                  <ArrowLeftRight className="h-5 w-5" />
+                  <ArrowLeftRight className="h-4 w-4" />
                 </Button>
               )}
               {user?.role === 'platform_admin' && (
@@ -201,68 +202,89 @@ export default function SidebarContent({
                   variant="ghost"
                   size="icon"
                   onClick={() => { onNavigate('/settings'); onCloseMobile(); }}
-                  className={`text-white/70 hover:text-white hover:bg-white/10 ${
-                    locationPathname === '/settings' ? 'bg-white/15 text-white' : ''
+                  className={`text-white/80 hover:text-white hover:bg-white/15 rounded-xl h-9 w-9 transition-all ${
+                    locationPathname === '/settings' ? 'bg-white/20 text-[#5DD8D5]' : ''
                   }`}
                   data-testid="sidebar-settings-btn"
                   title={t('systemSettings')}
                 >
-                  <Settings className="h-5 w-5" />
+                  <Settings className="h-4 w-4" />
                 </Button>
               )}
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={onToggleCollapsed}
-                className="text-white/70 hover:text-white hover:bg-white/10 hidden lg:flex"
+                className="text-white/80 hover:text-white hover:bg-white/15 hidden lg:flex rounded-xl h-9 w-9 transition-all"
                 data-testid="sidebar-collapse-btn"
               >
-                {isRTL ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+                {isRTL ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Menu Items */}
+      {/* ── Navigation Menu Items ── */}
       <div
         ref={scrollRef}
-        className={`flex-1 overflow-y-auto px-2 sidebar-scrollbar${collapsed ? ' collapsed' : ''}`}
+        className={`flex-1 overflow-y-auto py-3 sidebar-scrollbar${collapsed ? ' collapsed px-2' : ' px-3'}`}
         dir={isRTL ? 'rtl' : 'ltr'}
       >
-        <nav className={`space-y-1 py-2${collapsed ? '' : ' px-1'}`} dir={isRTL ? 'rtl' : 'ltr'}>
-          {menuItems.map((item) => {
+        <nav className="space-y-0.5" dir={isRTL ? 'rtl' : 'ltr'}>
+          {menuItems.map((item, index) => {
             const hasSubItems = item.subItems && item.subItems.length > 0;
             const isGroupExpanded = expandedGroups[item.href];
             const isAnySubActive = hasSubItems && item.subItems.some((sub) => isActive(sub.href));
+            const active = isActive(item.href);
 
             if (hasSubItems && !collapsed) {
               return (
-                <div key={item.href}>
+                <div key={item.href} className="space-y-0.5">
                   <button
                     onClick={() => onToggleGroup(item.href)}
                     data-testid={`sidebar-link-${item.href.replace(/\//g, '-')}`}
-                    className={`sidebar-item w-full ${
-                      isAnySubActive ? 'sidebar-item-active' : 'sidebar-item-inactive'
-                    }`}
+                    className={`
+                      w-full cursor-pointer group flex items-center gap-3 px-3 py-2.5 rounded-xl
+                      text-xs font-semibold transition-all duration-200
+                      ${isAnySubActive
+                        ? 'bg-white/20 text-white shadow-sm ring-1 ring-white/25 border-s-[3px] border-[#5DD8D5]'
+                        : 'text-white/90 hover:bg-white/10 hover:text-white'
+                      }
+                    `}
                   >
-                    <item.icon className="h-5 w-5 flex-shrink-0" />
-                    <span className="flex-1 text-start">{item.label}</span>
-                    <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isGroupExpanded ? 'rotate-180' : ''}`} />
+                    {/* Icon container */}
+                    <span className={`
+                      flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 transition-all
+                      ${isAnySubActive
+                        ? 'bg-[#5DD8D5]/20 text-[#5DD8D5]'
+                        : 'bg-white/10 text-white/80 group-hover:bg-white/15 group-hover:text-white'
+                      }
+                    `}>
+                      <item.icon className="h-4 w-4" />
+                    </span>
+                    <span className="flex-1 text-start font-bold tracking-wide truncate">{item.label}</span>
+                    <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 transition-transform duration-200 ${
+                      isGroupExpanded ? 'rotate-180 text-[#5DD8D5]' : 'text-white/50 group-hover:text-white/80'
+                    }`} />
                   </button>
+
                   {isGroupExpanded && (
-                    <div className="mt-0.5 space-y-0.5">
+                    <div className={`mt-1 space-y-0.5 ${isRTL ? 'pr-4 border-r-2 border-[#5DD8D5]/30' : 'pl-4 border-l-2 border-[#5DD8D5]/30'} ms-2`}>
                       {item.subItems.map((sub) => (
                         <Link
                           key={sub.href}
                           to={sub.href}
                           onClick={onCloseMobile}
-                          className={`block py-2 rounded-xl text-sm transition-colors duration-150 ${isRTL ? 'pr-12 pl-4 text-right' : 'pl-12 pr-4 text-left'} ${
-                            isActive(sub.href)
-                              ? 'text-brand-turquoise bg-white/10 font-medium'
-                              : 'text-white/60 hover:text-white hover:bg-white/5'
-                          }`}
+                          className={`
+                            flex items-center gap-2 py-2 px-3 rounded-lg text-xs transition-all duration-150
+                            ${isActive(sub.href)
+                              ? 'text-[#5DD8D5] bg-white/15 font-bold'
+                              : 'text-white/80 hover:text-white hover:bg-white/10 font-medium'
+                            }
+                          `}
                         >
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive(sub.href) ? 'bg-[#5DD8D5]' : 'bg-white/40'}`} />
                           {sub.label}
                         </Link>
                       ))}
@@ -279,79 +301,107 @@ export default function SidebarContent({
                 onClick={onCloseMobile}
                 data-testid={`sidebar-link-${item.href.replace(/\//g, '-')}`}
                 data-tour={item.dataTour}
-                className={`sidebar-item relative ${collapsed ? 'justify-center px-0 py-3' : ''} ${
-                  isActive(item.href) ? 'sidebar-item-active' : 'sidebar-item-inactive'
-                }`}
                 title={collapsed ? item.label : undefined}
+                className={`
+                  group flex items-center transition-all duration-200 rounded-xl
+                  ${collapsed
+                    ? 'justify-center p-2.5'
+                    : 'gap-3 px-3 py-2.5'
+                  }
+                  ${active
+                    ? 'bg-white/20 text-white shadow-sm ring-1 ring-white/25 border-s-[3px] border-[#5DD8D5]'
+                    : 'text-white/90 hover:bg-white/10 hover:text-white'
+                  }
+                `}
               >
-                <item.icon className="h-5 w-5 flex-shrink-0" />
-                {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                {/* Icon container */}
+                <span className={`
+                  flex items-center justify-center rounded-lg flex-shrink-0 transition-all
+                  ${collapsed ? 'w-9 h-9' : 'w-8 h-8'}
+                  ${active
+                    ? 'bg-[#5DD8D5]/20 text-[#5DD8D5]'
+                    : 'bg-white/10 text-white/80 group-hover:bg-white/15 group-hover:text-[#5DD8D5]'
+                  }
+                `}>
+                  <item.icon className={collapsed ? 'h-4.5 w-4.5' : 'h-4 w-4'} />
+                </span>
+
+                {!collapsed && (
+                  <span className="flex-1 truncate text-xs font-semibold tracking-wide">
+                    {item.label}
+                  </span>
+                )}
+
+                {/* Active dot indicator for non-collapsed */}
+                {!collapsed && active && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#5DD8D5] flex-shrink-0 shadow-sm shadow-[#5DD8D5]/50" />
+                )}
               </Link>
             );
           })}
         </nav>
       </div>
 
-      {/* User Info & Logout */}
+      {/* ── User Footer & Profile Card ── */}
       {!collapsed && user && (
-        <div className="p-4 border-t border-white/10">
+        <div className="p-3 border-t border-white/[0.10]">
           {isSwitchedRole && (
-            <div className="mb-3 p-2 rounded-lg bg-brand-turquoise/20 border border-brand-turquoise/30">
-              <div className="flex items-center gap-2 text-brand-turquoise text-xs">
-                <ArrowLeftRight className="h-3 w-3" />
-                <span className="font-medium">{t('switchedRole')}</span>
+            <div className="mb-2.5 p-2 rounded-xl bg-[#5DD8D5]/15 border border-[#5DD8D5]/30">
+              <div className="flex items-center gap-2 text-[#5DD8D5] text-xs font-bold">
+                <ArrowLeftRight className="h-3.5 w-3.5" />
+                <span>{t('switchedRole')}</span>
               </div>
-              <p className="text-[10px] text-white/70 mt-1">
+              <p className="text-[10px] text-white/80 mt-0.5">
                 {isRTL ? `الدور الأصلي: ${getRoleNameAr(originalRole)}` : `Original: ${originalRole?.replace(/_/g, ' ')}`}
               </p>
             </div>
           )}
           {isImpersonating && schoolContext && !isSwitchedRole && (
-            <div className="mb-3 p-2 rounded-lg bg-amber-500/20 border border-amber-500/30">
-              <div className="flex items-center gap-2 text-amber-200 text-xs">
-                <Shield className="h-3 w-3" />
-                <span className="font-medium">{t('previewMode')}</span>
+            <div className="mb-2.5 p-2 rounded-xl bg-amber-500/20 border border-amber-500/40">
+              <div className="flex items-center gap-2 text-amber-300 text-xs font-bold">
+                <Shield className="h-3.5 w-3.5" />
+                <span>{t('previewMode')}</span>
               </div>
-              <p className="text-[10px] text-amber-100/80 truncate mt-1">
+              <p className="text-[10px] text-amber-100 truncate mt-0.5 font-medium">
                 {schoolContext.school_name}
               </p>
             </div>
           )}
 
-          {/* Identity + actions — single row */}
-          <div className="flex items-center gap-1 -mx-1">
+          {/* Identity + Actions Card */}
+          <div className="flex items-center gap-2 p-2 rounded-2xl bg-white/[0.08] border border-white/15 hover:border-white/25 transition-all">
             <button
               type="button"
               onClick={() => { onNavigate('/account/settings'); onCloseMobile(); }}
-              className="flex items-center gap-2.5 flex-1 min-w-0 text-start rounded-xl p-1 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-brand-turquoise/60 transition-colors"
+              className="flex items-center gap-2.5 flex-1 min-w-0 text-start rounded-xl p-0.5 hover:bg-white/10 focus:outline-none transition-all"
               title={t('accountSettings')}
               aria-label={t('accountSettings')}
               data-testid="sidebar-footer-account"
             >
-              <div className="w-9 h-9 rounded-xl bg-brand-turquoise flex items-center justify-center overflow-hidden flex-shrink-0">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#5DD8D5] to-[#615090] ring-2 ring-white/25 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-md">
                 {user.avatar_url ? (
                   <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
                 ) : (
-                  <span className="text-white font-semibold text-sm">{user.full_name?.charAt(0)}</span>
+                  <span className="text-white font-black text-sm">{user.full_name?.charAt(0)}</span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate leading-tight">{user.full_name}</p>
-                <p className="text-xs text-white/50 truncate leading-tight">
+                <p className="text-xs font-bold text-white truncate leading-tight">{user.full_name}</p>
+                <p className="text-[10px] font-semibold text-[#5DD8D5] truncate leading-tight mt-0.5">
                   {getRoleLabel(effectiveRole, isRTL)}
                 </p>
               </div>
             </button>
 
-            <div className="flex items-center flex-shrink-0">
+            <div className="flex items-center flex-shrink-0 gap-0.5">
               <NotificationBell
-                triggerClassName="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                triggerClassName="h-8 w-8 text-white/80 hover:text-white hover:bg-white/15 rounded-xl transition-all"
               />
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={toggleLanguage}
-                className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-colors"
+                className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/15 rounded-xl transition-all"
                 data-testid="sidebar-language-toggle"
                 title={isRTL ? 'English' : 'العربية'}
                 aria-label={isRTL ? 'Switch to English' : 'التبديل إلى العربية'}
@@ -363,7 +413,7 @@ export default function SidebarContent({
                 size="icon"
                 onClick={onLogout}
                 disabled={loggingOut}
-                className="h-8 w-8 text-red-300/70 hover:text-red-200 hover:bg-red-500/20 rounded-xl transition-colors"
+                className="h-8 w-8 text-rose-300/90 hover:text-white hover:bg-rose-500/70 rounded-xl transition-all"
                 data-testid="logout-btn"
                 title={t('logout')}
                 aria-label={t('logout')}
@@ -379,35 +429,36 @@ export default function SidebarContent({
         </div>
       )}
 
+      {/* ── Collapsed Footer ── */}
       {collapsed && user && (
-        <div className="py-3 px-2 border-t border-white/10 flex flex-col items-center gap-1">
+        <div className="py-3 px-2 border-t border-white/[0.10] flex flex-col items-center gap-1.5">
           {isSwitchedRole && (
-            <div className="w-2 h-2 rounded-full bg-brand-turquoise animate-pulse mb-1" title={t('switchedRole')} />
+            <div className="w-2 h-2 rounded-full bg-[#5DD8D5] animate-pulse mb-1" title={t('switchedRole')} />
           )}
           <button
             type="button"
             onClick={() => { onNavigate('/account/settings'); onCloseMobile(); }}
-            className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-brand-turquoise/60 transition-colors"
+            className="w-11 h-11 flex items-center justify-center rounded-2xl hover:bg-white/15 focus:outline-none transition-all"
             title={t('accountSettings')}
             aria-label={t('accountSettings')}
             data-testid="sidebar-footer-account-collapsed"
           >
-            <div className="w-8 h-8 rounded-lg bg-brand-turquoise flex items-center justify-center overflow-hidden">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#5DD8D5] to-[#615090] flex items-center justify-center overflow-hidden shadow-md ring-2 ring-white/25">
               {user.avatar_url ? (
                 <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
               ) : (
-                <span className="text-white text-xs font-semibold">{user.full_name?.charAt(0)}</span>
+                <span className="text-white text-xs font-black">{user.full_name?.charAt(0)}</span>
               )}
             </div>
           </button>
           <NotificationBell
-            triggerClassName="w-11 h-11 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+            triggerClassName="w-11 h-11 text-white/80 hover:text-white hover:bg-white/15 rounded-xl transition-all"
           />
           <Button
             variant="ghost"
             size="icon"
             onClick={toggleLanguage}
-            className="w-11 h-11 text-white/70 hover:text-white hover:bg-white/10 rounded-xl"
+            className="w-11 h-11 text-white/80 hover:text-white hover:bg-white/15 rounded-xl transition-all"
             data-testid="sidebar-language-toggle-collapsed"
             title={isRTL ? 'English' : 'العربية'}
             aria-label={isRTL ? 'Switch to English' : 'التبديل إلى العربية'}
@@ -419,7 +470,7 @@ export default function SidebarContent({
             size="icon"
             onClick={onLogout}
             disabled={loggingOut}
-            className="w-11 h-11 text-red-300/70 hover:text-red-200 hover:bg-red-500/20 rounded-xl"
+            className="w-11 h-11 text-rose-300/90 hover:text-white hover:bg-rose-500/70 rounded-xl transition-all"
             title={t('logout')}
             aria-label={t('logout')}
             data-testid="logout-btn-collapsed"

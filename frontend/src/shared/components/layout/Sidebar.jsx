@@ -294,7 +294,7 @@ export const Sidebar = ({ children }) => {
       // schools, and users read pages. All other platform items below stay
       // platform_admin-only (their backend endpoints 403 for the deputy).
       { icon: LayoutDashboard, label: t('controlDashboard'), href: '/admin', roles: ['platform_admin', 'platform_sub_admin'] },
-      { icon: Building2, label: t('schoolsManagement'), href: '/admin/schools-table', roles: ['platform_admin', 'platform_sub_admin'] },
+      { icon: Building2, label: t('schoolsManagement'), href: '/admin/schools', roles: ['platform_admin', 'platform_sub_admin'] },
       { icon: Users, label: t('usersManagement'), href: '/admin/users', roles: ['platform_admin', 'platform_sub_admin'] },
       { icon: Activity, label: t('systemMonitoring'), href: '/admin/monitoring', roles: ['platform_admin'] },
       // AI Insights intentionally omitted for platform_admin: /principal/ai-insights
@@ -427,8 +427,9 @@ export const Sidebar = ({ children }) => {
         data-testid="sidebar"
         dir={isRTL ? 'rtl' : 'ltr'}
         className={`
-          fixed inset-y-0 z-[100] bg-brand-navy overflow-hidden
-          transition-all duration-300 ease-in-out
+          fixed inset-y-0 z-[100] bg-gradient-to-b from-[#2A5298] via-[#1C3D74] to-[#163060] overflow-hidden
+          border-e border-white/10 shadow-2xl
+          transition-all duration-300 ease-in-out font-cairo
           ${isRTL ? 'right-0' : 'left-0'}
           ${collapsed ? 'w-20' : 'w-72'}
           ${mobileOpen ? 'translate-x-0' : isRTL ? 'translate-x-full lg:translate-x-0' : '-translate-x-full lg:translate-x-0'}
