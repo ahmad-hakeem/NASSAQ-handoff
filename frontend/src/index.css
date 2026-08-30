@@ -229,7 +229,7 @@
     }
     
     .sidebar-item-active {
-        @apply bg-white/20 text-white font-extrabold shadow-lg backdrop-blur-md ring-1 ring-white/30 border-s-[3px] border-[#5DD8D5];
+        @apply bg-white/20 text-white font-extrabold shadow-lg backdrop-blur-md ring-1 ring-white/30 border-s-[3px] border-[#F5B942];
     }
     
     .sidebar-item-inactive {

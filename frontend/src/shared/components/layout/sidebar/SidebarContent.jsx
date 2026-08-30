@@ -104,9 +104,9 @@ export default function SidebarContent({
           {/* Logo */}
           <Link
             to="/"
-            className="flex items-center justify-center w-12 h-12 rounded-2xl bg-white/15 hover:bg-white/25 transition-all shadow-md flex-shrink-0 border border-white/20"
+            className="flex items-center justify-center w-11 h-11 rounded-xl bg-white/15 hover:bg-white/25 transition-all shadow-md flex-shrink-0 border border-white/20"
           >
-            <img src={LOGO_WHITE} alt="نَسَّق" className="h-7 w-7 rounded-lg object-contain" />
+            <img src={LOGO_WHITE} alt="نَسَّق" className="h-7 w-7 rounded-md object-contain" />
           </Link>
 
           {/* Expand toggle */}
@@ -128,7 +128,7 @@ export default function SidebarContent({
               size="icon"
               onClick={() => { onNavigate('/settings'); onCloseMobile(); }}
               className={`text-white/80 hover:text-white hover:bg-white/15 w-11 h-11 rounded-xl transition-all ${
-                locationPathname === '/settings' ? 'bg-white/20 text-[#5DD8D5] border-s-2 border-[#5DD8D5]' : ''
+                locationPathname === '/settings' ? 'bg-white/20 text-[#F5B942] border-s-2 border-[#F5B942]' : ''
               }`}
               data-testid="sidebar-settings-btn"
               title={t('systemSettings')}
@@ -168,8 +168,8 @@ export default function SidebarContent({
         <div className="px-4 pt-4 pb-3 border-b border-white/[0.10]">
           <div className="flex items-center justify-between w-full">
             <Link to="/" className="flex items-center gap-3 group">
-              <div className="p-2 rounded-2xl bg-white/15 group-hover:bg-white/25 transition-all backdrop-blur-md border border-white/20 shadow-md">
-                <img src={LOGO_WHITE} alt="نَسَّق" className="h-8 w-auto rounded-lg" />
+              <div className="w-11 h-11 rounded-xl bg-white/15 group-hover:bg-white/25 transition-all backdrop-blur-md border border-white/20 shadow-md flex items-center justify-center shrink-0">
+                <img src={LOGO_WHITE} alt="نَسَّق" className="h-7 w-7 rounded-md object-contain" />
               </div>
               <BetaBadge />
             </Link>
@@ -203,7 +203,7 @@ export default function SidebarContent({
                   size="icon"
                   onClick={() => { onNavigate('/settings'); onCloseMobile(); }}
                   className={`text-white/80 hover:text-white hover:bg-white/15 rounded-xl h-9 w-9 transition-all ${
-                    locationPathname === '/settings' ? 'bg-white/20 text-[#5DD8D5]' : ''
+                    locationPathname === '/settings' ? 'bg-white/20 text-[#F5B942]' : ''
                   }`}
                   data-testid="sidebar-settings-btn"
                   title={t('systemSettings')}
@@ -248,7 +248,7 @@ export default function SidebarContent({
                       w-full cursor-pointer group flex items-center gap-3 px-3 py-2.5 rounded-xl
                       text-xs font-semibold transition-all duration-200
                       ${isAnySubActive
-                        ? 'bg-white/20 text-white shadow-sm ring-1 ring-white/25 border-s-[3px] border-[#5DD8D5]'
+                        ? 'bg-white/20 text-white shadow-sm ring-1 ring-white/25 border-s-[3px] border-[#F5B942]'
                         : 'text-white/90 hover:bg-white/10 hover:text-white'
                       }
                     `}
@@ -257,7 +257,7 @@ export default function SidebarContent({
                     <span className={`
                       flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 transition-all
                       ${isAnySubActive
-                        ? 'bg-[#5DD8D5]/20 text-[#5DD8D5]'
+                        ? 'bg-[#F5B942]/20 text-[#F5B942]'
                         : 'bg-white/10 text-white/80 group-hover:bg-white/15 group-hover:text-white'
                       }
                     `}>
@@ -265,12 +265,12 @@ export default function SidebarContent({
                     </span>
                     <span className="flex-1 text-start font-bold tracking-wide truncate">{item.label}</span>
                     <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 transition-transform duration-200 ${
-                      isGroupExpanded ? 'rotate-180 text-[#5DD8D5]' : 'text-white/50 group-hover:text-white/80'
+                      isGroupExpanded ? 'rotate-180 text-[#F5B942]' : 'text-white/50 group-hover:text-white/80'
                     }`} />
                   </button>
 
                   {isGroupExpanded && (
-                    <div className={`mt-1 space-y-0.5 ${isRTL ? 'pr-4 border-r-2 border-[#5DD8D5]/30' : 'pl-4 border-l-2 border-[#5DD8D5]/30'} ms-2`}>
+                    <div className={`mt-1 space-y-0.5 ${isRTL ? 'pr-4 border-r-2 border-[#F5B942]/30' : 'pl-4 border-l-2 border-[#F5B942]/30'} ms-2`}>
                       {item.subItems.map((sub) => (
                         <Link
                           key={sub.href}
@@ -279,12 +279,12 @@ export default function SidebarContent({
                           className={`
                             flex items-center gap-2 py-2 px-3 rounded-lg text-xs transition-all duration-150
                             ${isActive(sub.href)
-                              ? 'text-[#5DD8D5] bg-white/15 font-bold'
+                              ? 'text-[#F5B942] bg-white/15 font-bold'
                               : 'text-white/80 hover:text-white hover:bg-white/10 font-medium'
                             }
                           `}
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive(sub.href) ? 'bg-[#5DD8D5]' : 'bg-white/40'}`} />
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive(sub.href) ? 'bg-[#F5B942]' : 'bg-white/40'}`} />
                           {sub.label}
                         </Link>
                       ))}
@@ -309,7 +309,7 @@ export default function SidebarContent({
                     : 'gap-3 px-3 py-2.5'
                   }
                   ${active
-                    ? 'bg-white/20 text-white shadow-sm ring-1 ring-white/25 border-s-[3px] border-[#5DD8D5]'
+                    ? 'bg-white/20 text-white shadow-sm ring-1 ring-white/25 border-s-[3px] border-[#F5B942]'
                     : 'text-white/90 hover:bg-white/10 hover:text-white'
                   }
                 `}
@@ -319,8 +319,8 @@ export default function SidebarContent({
                   flex items-center justify-center rounded-lg flex-shrink-0 transition-all
                   ${collapsed ? 'w-9 h-9' : 'w-8 h-8'}
                   ${active
-                    ? 'bg-[#5DD8D5]/20 text-[#5DD8D5]'
-                    : 'bg-white/10 text-white/80 group-hover:bg-white/15 group-hover:text-[#5DD8D5]'
+                    ? 'bg-[#F5B942]/20 text-[#F5B942]'
+                    : 'bg-white/10 text-white/80 group-hover:bg-white/15 group-hover:text-[#F5B942]'
                   }
                 `}>
                   <item.icon className={collapsed ? 'h-4.5 w-4.5' : 'h-4 w-4'} />
@@ -334,7 +334,7 @@ export default function SidebarContent({
 
                 {/* Active dot indicator for non-collapsed */}
                 {!collapsed && active && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#5DD8D5] flex-shrink-0 shadow-sm shadow-[#5DD8D5]/50" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#F5B942] flex-shrink-0 shadow-sm shadow-[#F5B942]/50" />
                 )}
               </Link>
             );
@@ -346,8 +346,8 @@ export default function SidebarContent({
       {!collapsed && user && (
         <div className="p-3 border-t border-white/[0.10]">
           {isSwitchedRole && (
-            <div className="mb-2.5 p-2 rounded-xl bg-[#5DD8D5]/15 border border-[#5DD8D5]/30">
-              <div className="flex items-center gap-2 text-[#5DD8D5] text-xs font-bold">
+            <div className="mb-2.5 p-2 rounded-xl bg-[#F5B942]/15 border border-[#F5B942]/30">
+              <div className="flex items-center gap-2 text-[#F5B942] text-xs font-bold">
                 <ArrowLeftRight className="h-3.5 w-3.5" />
                 <span>{t('switchedRole')}</span>
               </div>
@@ -378,7 +378,7 @@ export default function SidebarContent({
               aria-label={t('accountSettings')}
               data-testid="sidebar-footer-account"
             >
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#5DD8D5] to-[#615090] ring-2 ring-white/25 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-md">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#F5B942] to-[#615090] ring-2 ring-white/25 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-md">
                 {user.avatar_url ? (
                   <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
                 ) : (
@@ -387,7 +387,7 @@ export default function SidebarContent({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold text-white truncate leading-tight">{user.full_name}</p>
-                <p className="text-[10px] font-semibold text-[#5DD8D5] truncate leading-tight mt-0.5">
+                <p className="text-[10px] font-semibold text-[#F5B942] truncate leading-tight mt-0.5">
                   {getRoleLabel(effectiveRole, isRTL)}
                 </p>
               </div>
@@ -433,7 +433,7 @@ export default function SidebarContent({
       {collapsed && user && (
         <div className="py-3 px-2 border-t border-white/[0.10] flex flex-col items-center gap-1.5">
           {isSwitchedRole && (
-            <div className="w-2 h-2 rounded-full bg-[#5DD8D5] animate-pulse mb-1" title={t('switchedRole')} />
+            <div className="w-2 h-2 rounded-full bg-[#F5B942] animate-pulse mb-1" title={t('switchedRole')} />
           )}
           <button
             type="button"
@@ -443,7 +443,7 @@ export default function SidebarContent({
             aria-label={t('accountSettings')}
             data-testid="sidebar-footer-account-collapsed"
           >
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#5DD8D5] to-[#615090] flex items-center justify-center overflow-hidden shadow-md ring-2 ring-white/25">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#F5B942] to-[#615090] flex items-center justify-center overflow-hidden shadow-md ring-2 ring-white/25">
               {user.avatar_url ? (
                 <img src={user.avatar_url} alt={user.full_name} className="w-full h-full object-cover" />
               ) : (

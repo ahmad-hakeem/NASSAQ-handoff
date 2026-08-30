@@ -680,7 +680,7 @@ export default function TenantsManagement() {
                       <TableRow key={school.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                         <TableCell className="py-3">
                           <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-2xl bg-gradient-to-br ${getLogoGradient(school.id)} flex items-center justify-center text-white font-bold text-sm shadow-xs shrink-0`}>
+                            <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${getLogoGradient(school.id)} flex items-center justify-center text-white font-bold text-sm shadow-xs shrink-0`}>
                               {school.name?.charAt(0)}
                             </div>
                             <div>
@@ -814,7 +814,7 @@ export default function TenantsManagement() {
                     <div className={`bg-gradient-to-r ${getLogoGradient(school.id)} p-5 text-white relative`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white font-extrabold text-xl shadow-inner shrink-0">
+                          <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white font-extrabold text-xl shadow-inner shrink-0">
                             {school.name?.charAt(0)}
                           </div>
                           <div>
