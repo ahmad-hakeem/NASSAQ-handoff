@@ -8,7 +8,7 @@ import {
   MoreHorizontal, Copy, Pause, Play
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { SCHOOL_STATUS, EDUCATIONAL_STAGES } from '../constants/schoolConstants';
+import { SCHOOL_STATUS, EDUCATIONAL_STAGES, getSchoolInitials } from '../constants/schoolConstants';
 
 export default function SchoolCardItem({
   school,
@@ -39,8 +39,8 @@ export default function SchoolCardItem({
         {/* Top Header: Avatar, Name, Status, and Menu */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#1C3D74] to-[#152e57] text-[#46C1BE] font-black font-cairo text-base flex items-center justify-center shrink-0 shadow-xs border border-white/10">
-              {school.name?.trim().charAt(0) || 'م'}
+            <div className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 text-[#1C3D74] dark:text-[#46C1BE] font-black font-cairo text-sm flex items-center justify-center shrink-0 shadow-2xs tracking-wider">
+              {getSchoolInitials(school.name, school.name_en)}
             </div>
 
             <div className="min-w-0">

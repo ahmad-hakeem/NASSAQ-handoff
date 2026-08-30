@@ -51,6 +51,16 @@ export const LOGO_GRADIENTS = [
   'from-[#047857] via-[#059669] to-[#065F46]',
 ];
 
+export const getSchoolInitials = (name, name_en) => {
+  if (!name && !name_en) return 'م د';
+  const text = (name || name_en).trim();
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return `${words[0].charAt(0)} ${words[1].charAt(0)}`;
+  }
+  return text.slice(0, 2);
+};
+
 export const getLogoGradient = (id) => {
   const hash = (id || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return LOGO_GRADIENTS[hash % LOGO_GRADIENTS.length];

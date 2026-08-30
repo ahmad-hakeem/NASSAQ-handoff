@@ -16,7 +16,7 @@ import {
   Layers, SearchX, Plus, Mail
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { SCHOOL_STATUS, EDUCATIONAL_STAGES } from '../constants/schoolConstants';
+import { SCHOOL_STATUS, EDUCATIONAL_STAGES, getSchoolInitials } from '../constants/schoolConstants';
 
 export default function SchoolTableView({
   schools,
@@ -128,8 +128,8 @@ export default function SchoolTableView({
                   {/* School Avatar & Info */}
                   <TableCell className="py-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1C3D74] to-[#152e57] flex items-center justify-center text-[#46C1BE] font-black font-cairo text-sm shadow-2xs shrink-0 border border-slate-200/60 dark:border-slate-700">
-                        {school.name?.trim().charAt(0) || 'م'}
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 flex items-center justify-center text-[#1C3D74] dark:text-[#46C1BE] font-black font-cairo text-xs shadow-2xs shrink-0 tracking-wider">
+                        {getSchoolInitials(school.name, school.name_en)}
                       </div>
                       <div className="min-w-0">
                         <p className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate max-w-[220px]" title={school.name}>
@@ -224,11 +224,11 @@ export default function SchoolTableView({
                   </TableCell>
 
                   {/* Actions */}
-                  <TableCell className="text-center py-2">
-                    <div className="flex items-center justify-center gap-1.5">
+                  <TableCell className="text-center py-2.5">
+                    <div className="flex items-center justify-center gap-2">
                       <Button
                         size="sm"
-                        className="h-8.5 px-3 rounded-lg bg-[#1C3D74] hover:bg-[#152e57] text-white font-bold font-cairo text-xs disabled:opacity-40 gap-1.5 shadow-2xs transition-colors"
+                        className="h-9 px-3.5 rounded-xl bg-[#1C3D74] hover:bg-[#152e57] text-white font-bold font-cairo text-xs disabled:opacity-40 gap-1.5 shadow-2xs transition-colors"
                         onClick={() => onEnterDashboard(school)}
                         disabled={!canEnterDashboard(school)}
                       >
@@ -239,9 +239,9 @@ export default function SchoolTableView({
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="h-8.5 w-8.5 p-0 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                            className="h-9 w-9 p-0 rounded-xl border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 shadow-2xs"
                           >
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
