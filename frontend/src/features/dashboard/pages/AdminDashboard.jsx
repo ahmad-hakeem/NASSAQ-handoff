@@ -19,7 +19,7 @@ import {
 import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie
 } from 'recharts';
-import CreateSchoolWizard from '@/features/teachers/components/wizards/CreateSchoolWizard';
+import CreateSchoolWizard from '@/admin/features/schools/components/CreateSchoolWizard';
 import QuickAIOperationsPanel from '@/features/hakim/components/ai/QuickAIOperationsPanel';
 
 const HAKIM_AVATAR = '/hakim-poses/analyzing-data.png';

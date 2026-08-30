@@ -132,8 +132,8 @@ const ProductHubPage = lazy(() => import("@/features/product-hub/pages/ProductHu
 const ProductHubSubmitPage = lazy(() => import("@/features/product-hub/pages/ProductHubSubmitPage").then(m => ({ default: m.ProductHubSubmitPage })));
 const ProductHubIssuePage = lazy(() => import("@/features/product-hub/pages/ProductHubIssuePage").then(m => ({ default: m.ProductHubIssuePage })));
 
-const PlatformSchoolsPage = lazy(() => import("@/features/platform/pages/PlatformSchoolsPage").then(m => ({ default: m.PlatformSchoolsPage })));
-const PlatformSchoolDetailPage = lazy(() => import("@/features/platform/pages/PlatformSchoolDetailPage"));
+const PlatformSchoolsPage = lazy(() => import("@/admin/features/schools/pages/PlatformSchoolsPage").then(m => ({ default: m.PlatformSchoolsPage })));
+const PlatformSchoolDetailPage = lazy(() => import("@/admin/features/schools/pages/PlatformSchoolDetailPage"));
 const PlatformUsersPage = lazy(() => import("@/features/platform/pages/PlatformUsersPage").then(m => ({ default: m.PlatformUsersPage })));
 const PlatformNotificationsPage = lazy(() => import("@/features/communication/pages/PlatformNotificationsPage").then(m => ({ default: m.PlatformNotificationsPage })));
 const PlatformSettingsPage = lazy(() => import("@/features/platform/pages/PlatformSettingsPage").then(m => ({ default: m.PlatformSettingsPage })));
@@ -147,7 +147,7 @@ const IntegrationsPage = lazy(() => import("@/features/platform/pages/Integratio
 const SecurityCenterPage = lazy(() => import("@/features/platform/pages/SecurityCenterPage"));
 const CommunicationNotificationsPage = lazy(() => import("@/features/communication/pages/CommunicationNotificationsPage").then(m => ({ default: m.CommunicationNotificationsPage })));
 const CommunicationCenterPage = lazy(() => import("@/features/communication/pages/CommunicationCenterPage").then(m => ({ default: m.CommunicationCenterPage })));
-const TenantsManagement = lazy(() => import("@/features/platform/pages/TenantsManagement"));
+const TenantsManagement = lazy(() => import("@/admin/features/schools/pages/TenantsManagement"));
 const TeacherClassAssignmentPage = lazy(() => import("@/features/teachers/pages/TeacherClassAssignmentPage"));
 const IndependentTeacherOnboardingWizard = lazy(() => import("@/features/teachers/pages/IndependentTeacherOnboardingWizard"));
 

@@ -46,7 +46,7 @@ jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   }),
 }));
 
-jest.mock('@/features/teachers/components/wizards/CreateSchoolWizard', () => ({ __esModule: true, default: () => <div /> }));
+jest.mock('@/admin/features/schools/components/CreateSchoolWizard', () => ({ __esModule: true, default: () => <div /> }));
 
 // QuickAIOperationsPanel is the component under test — stub a lightweight version
 // that records whether it tried to fetch stats independently.

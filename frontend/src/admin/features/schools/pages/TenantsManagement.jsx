@@ -27,7 +27,7 @@ import {
   XCircle, UserCheck, FileEdit, ChevronUp, ChevronDown, ExternalLink, Calendar, Activity,
 } from 'lucide-react';
 import { Textarea } from '@/shared/components/ui/textarea';
-const CreateSchoolWizard = lazy(() => import('@/features/teachers/components/wizards/CreateSchoolWizard'));
+const CreateSchoolWizard = lazy(() => import('@/admin/features/schools/components/CreateSchoolWizard'));
 import { Sidebar } from '@/shared/components/layout/Sidebar';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
 
