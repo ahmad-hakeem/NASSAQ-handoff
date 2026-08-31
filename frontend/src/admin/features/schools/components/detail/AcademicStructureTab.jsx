@@ -37,7 +37,7 @@ export default function AcademicStructureTab({
   }, [classes, classSearch]);
 
   return (
-    <div className="space-y-6 font-tajawal">
+    <div dir={isRTL ? 'rtl' : 'ltr'} className="space-y-6 font-tajawal">
       {/* 1. Classes and Sections Grid Card */}
       <Card className="rounded-2xl border-slate-200/90 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden">
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800/80 pb-3.5">
@@ -62,7 +62,7 @@ export default function AcademicStructureTab({
                 value={classSearch}
                 onChange={(e) => setClassSearch(e.target.value)}
                 placeholder={isRTL ? 'بحث عن فصل...' : 'Search class...'}
-                className="ps-9 pe-7 h-8.5 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-200/90 dark:border-slate-800 focus:ring-2 focus:ring-[#615090]/20 focus:border-[#615090]"
+                className="ps-9 pe-7 h-9 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-200/90 dark:border-slate-800 focus:ring-2 focus:ring-[#615090]/20 focus:border-[#615090]"
               />
               {classSearch && (
                 <button
@@ -137,7 +137,7 @@ export default function AcademicStructureTab({
                 value={studentSearch}
                 onChange={(e) => setStudentSearch(e.target.value)}
                 placeholder={isRTL ? 'بحث عن طالب...' : 'Search student...'}
-                className="ps-9 pe-7 h-8.5 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-200/90 dark:border-slate-800 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                className="ps-9 pe-7 h-9 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-200/90 dark:border-slate-800 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
               />
               {studentSearch && (
                 <button

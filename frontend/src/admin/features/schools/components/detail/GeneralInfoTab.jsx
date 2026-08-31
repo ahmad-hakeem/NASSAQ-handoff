@@ -68,10 +68,10 @@ export default function GeneralInfoTab({
   const statusCfg = SCHOOL_STATUS[school?.status] || SCHOOL_STATUS.active;
 
   return (
-    <div className="space-y-6">
+    <div dir={isRTL ? 'rtl' : 'ltr'} className="space-y-6">
       {/* Suspension Alert if applicable */}
       {school?.suspension_reason && (
-        <div className="p-4.5 bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/80 rounded-2xl space-y-1.5 shadow-2xs animate-in fade-in-50 duration-300">
+        <div className="p-4 bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/80 rounded-2xl space-y-1.5 shadow-2xs animate-in fade-in-50 duration-300">
           <div className="flex items-center gap-2.5 text-rose-700 dark:text-rose-300 font-bold text-xs sm:text-sm">
             <div className="w-7 h-7 rounded-lg bg-rose-100 dark:bg-rose-900/60 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
               <AlertTriangle className="h-4 w-4" />

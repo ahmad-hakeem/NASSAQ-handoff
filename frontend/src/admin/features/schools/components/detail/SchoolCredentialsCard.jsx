@@ -16,7 +16,7 @@ export default function SchoolCredentialsCard({
   t,
 }) {
   return (
-    <Card className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden font-tajawal">
+    <Card dir={isRTL ? 'rtl' : 'ltr'} className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden font-tajawal">
       <CardHeader className="pb-4 border-b border-slate-100 dark:border-slate-800/80">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <CardTitle className="font-cairo text-sm sm:text-base font-extrabold flex items-center gap-2.5 text-slate-900 dark:text-white">

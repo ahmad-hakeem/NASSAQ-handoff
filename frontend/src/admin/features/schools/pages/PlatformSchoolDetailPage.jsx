@@ -235,11 +235,11 @@ export default function PlatformSchoolDetailPage() {
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-2">
-                <Button onClick={() => fetchDetail()} className="w-full sm:w-auto rounded-xl font-bold bg-[#1C3D74] hover:bg-[#152e57] text-white text-xs h-9.5 px-4 gap-2">
+                <Button onClick={() => fetchDetail()} className="w-full sm:w-auto rounded-xl font-bold bg-[#1C3D74] hover:bg-[#152e57] text-white text-xs h-10 px-4 gap-2">
                   <RefreshCw className="h-3.5 w-3.5" />
                   <span>{t('retry') || (isRTL ? 'إعادة المحاولة' : 'Retry')}</span>
                 </Button>
-                <Button variant="outline" onClick={() => navigate('/admin/schools')} className="w-full sm:w-auto rounded-xl font-bold border-slate-200 dark:border-slate-700 text-xs h-9.5">
+                <Button variant="outline" onClick={() => navigate('/admin/schools')} className="w-full sm:w-auto rounded-xl font-bold border-slate-200 dark:border-slate-700 text-xs h-10">
                   <span>{t('schoolsManagement') || (isRTL ? 'العودة للمدارس' : 'Back to Schools')}</span>
                 </Button>
               </div>
@@ -262,7 +262,7 @@ export default function PlatformSchoolDetailPage() {
 
   return (
     <Sidebar>
-      <div className="min-h-screen bg-slate-50/70 dark:bg-slate-950 font-tajawal text-slate-900 dark:text-slate-100" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="min-h-screen bg-slate-50/70 dark:bg-slate-950 font-tajawal text-slate-900 dark:text-slate-100" dir={isRTL ? 'rtl' : 'ltr'} style={{ direction: isRTL ? 'rtl' : 'ltr' }}>
         <div className="max-w-7xl mx-auto p-5 sm:p-7 lg:p-9 space-y-7">
 
           {/* Breadcrumb Navigation */}

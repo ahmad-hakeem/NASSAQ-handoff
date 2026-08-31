@@ -22,7 +22,7 @@ export default function BillingSubscriptionTab({
   ];
 
   return (
-    <div className="space-y-6 font-tajawal">
+    <div dir={isRTL ? 'rtl' : 'ltr'} className="space-y-6 font-tajawal">
       {/* Top 2 Cards: Plan Tier + Student Capacity Gauge */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 

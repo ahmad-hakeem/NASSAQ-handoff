@@ -61,14 +61,14 @@ export default function SchoolCredentialsDialog({
               {isRTL ? 'البريد الإلكتروني الرسمي' : 'Official Email Address'} <span className="text-rose-500">*</span>
             </Label>
             <div className="relative">
-              <Mail className={`absolute ${isRTL ? 'right-3.5' : 'left-3.5'} top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400`} />
+              <Mail className="absolute start-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
                 type="email"
                 dir="ltr"
                 placeholder="principal@school.edu.sa"
                 value={credForm.email}
                 onChange={(e) => setCredForm(f => ({ ...f, email: e.target.value }))}
-                className={`${isRTL ? 'pr-10' : 'pl-10'} h-11 rounded-xl font-mono text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-[#46C1BE]/20 focus:border-[#46C1BE]`}
+                className="ps-10 h-11 rounded-xl font-mono text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-[#46C1BE]/20 focus:border-[#46C1BE]"
               />
             </div>
           </div>
@@ -79,12 +79,12 @@ export default function SchoolCredentialsDialog({
               {t('fullName') || (isRTL ? 'اسم مدير المدرسة' : 'Principal Full Name')}
             </Label>
             <div className="relative">
-              <User className={`absolute ${isRTL ? 'right-3.5' : 'left-3.5'} top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400`} />
+              <User className="absolute start-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
                 placeholder={t('principalFullName') || (isRTL ? 'مثال: أ. عبدالله محمد الفهد' : 'e.g. John Doe')}
                 value={credForm.name}
                 onChange={(e) => setCredForm(f => ({ ...f, name: e.target.value }))}
-                className={`${isRTL ? 'pr-10' : 'pl-10'} h-11 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-[#46C1BE]/20 focus:border-[#46C1BE]`}
+                className="ps-10 h-11 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-[#46C1BE]/20 focus:border-[#46C1BE]"
               />
             </div>
           </div>
@@ -108,19 +108,19 @@ export default function SchoolCredentialsDialog({
               </button>
             </div>
             <div className="relative">
-              <Lock className={`absolute ${isRTL ? 'right-3.5' : 'left-3.5'} top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400`} />
+              <Lock className="absolute start-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
                 type={showPassword ? 'text' : 'password'}
                 dir="ltr"
-                placeholder={isRTL ? '••••••••••••' : '••••••••••••'}
+                placeholder="••••••••••••"
                 value={credForm.password}
                 onChange={(e) => setCredForm(f => ({ ...f, password: e.target.value }))}
-                className={`${isRTL ? 'pr-10 pl-10' : 'pl-10 pr-10'} h-11 rounded-xl font-mono text-xs tracking-wider bg-slate-50/80 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-[#46C1BE]/20 focus:border-[#46C1BE]`}
+                className="ps-10 pe-10 h-11 rounded-xl font-mono text-xs tracking-wider bg-slate-50/80 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-[#46C1BE]/20 focus:border-[#46C1BE]"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(s => !s)}
-                className={`absolute ${isRTL ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1`}
+                className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -134,14 +134,14 @@ export default function SchoolCredentialsDialog({
                 {t('confirmPassword') || (isRTL ? 'تأكيد كلمة المرور' : 'Confirm Password')} <span className="text-rose-500">*</span>
               </Label>
               <div className="relative">
-                <Lock className={`absolute ${isRTL ? 'right-3.5' : 'left-3.5'} top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400`} />
+                <Lock className="absolute start-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                   type={showPassword ? 'text' : 'password'}
                   dir="ltr"
                   placeholder={t('reenterPassword') || (isRTL ? 'أعد إدخال كلمة المرور' : 'Re-enter password')}
                   value={credForm.confirmPassword}
                   onChange={(e) => setCredForm(f => ({ ...f, confirmPassword: e.target.value }))}
-                  className={`${isRTL ? 'pr-10' : 'pl-10'} h-11 rounded-xl font-mono text-xs tracking-wider bg-slate-50/80 dark:bg-slate-950 ${
+                  className={`ps-10 h-11 rounded-xl font-mono text-xs tracking-wider bg-slate-50/80 dark:bg-slate-950 ${
                     isPasswordMismatch
                       ? 'border-rose-400 focus:ring-rose-300 text-rose-600'
                       : 'border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white'

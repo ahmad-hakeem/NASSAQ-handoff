@@ -41,7 +41,7 @@ export default function SchoolUsersTab({ users = [], isRTL, t }) {
   };
 
   return (
-    <Card className="rounded-2xl border-slate-200/90 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden font-tajawal">
+    <Card dir={isRTL ? 'rtl' : 'ltr'} className="rounded-2xl border-slate-200/90 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden font-tajawal">
       <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800/80 pb-3.5">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-[#1C3D74] dark:text-[#46C1BE] flex items-center justify-center shrink-0 border border-blue-100 dark:border-blue-900/60">
@@ -66,7 +66,7 @@ export default function SchoolUsersTab({ users = [], isRTL, t }) {
               value={userSearch}
               onChange={(e) => setUserSearch(e.target.value)}
               placeholder={isRTL ? 'بحث بالاسم أو البريد...' : 'Search by name or email...'}
-              className="ps-9 pe-7 h-8.5 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-200/90 dark:border-slate-800 focus:ring-2 focus:ring-[#46C1BE]/20 focus:border-[#46C1BE]"
+              className="ps-9 pe-7 h-9 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-200/90 dark:border-slate-800 focus:ring-2 focus:ring-[#46C1BE]/20 focus:border-[#46C1BE]"
             />
             {userSearch && (
               <button
@@ -150,7 +150,7 @@ export default function SchoolUsersTab({ users = [], isRTL, t }) {
                     <tr key={user.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="p-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-7.5 h-7.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-[#1C3D74] dark:text-[#46C1BE] border border-blue-100 dark:border-blue-900/60 flex items-center justify-center font-bold text-xs shrink-0 select-none">
+                          <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-[#1C3D74] dark:text-[#46C1BE] border border-blue-100 dark:border-blue-900/60 flex items-center justify-center font-bold text-xs shrink-0 select-none">
                             {user.full_name?.trim()?.charAt(0) || '?'}
                           </div>
                           <div className="min-w-0">

@@ -53,13 +53,13 @@ export default function SchoolDetailHeader({
   ];
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-5 sm:p-6 font-tajawal transition-all">
+    <div dir={isRTL ? 'rtl' : 'ltr'} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-5 sm:p-6 font-tajawal transition-all">
       {/* Top Main Row: School Profile & Actions */}
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5">
         {/* School Avatar + Information */}
         <div className="flex items-start sm:items-center gap-4 min-w-0">
           {/* Logo / Monogram Avatar */}
-          <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-gradient-to-br from-[#1C3D74] to-[#152e57] text-white flex items-center justify-center flex-shrink-0 shadow-sm border border-slate-100 dark:border-slate-700 select-none">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-[#1C3D74] to-[#152e57] text-white flex items-center justify-center flex-shrink-0 shadow-sm border border-slate-100 dark:border-slate-700 select-none">
             <span className="text-2xl sm:text-3xl font-black font-cairo">
               {school?.name?.trim()?.charAt(0) || <Building2 className="h-7 w-7 text-white" />}
             </span>
@@ -133,7 +133,7 @@ export default function SchoolDetailHeader({
 
           {isSuspended ? (
             <Button
-              className="rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-xs sm:text-sm h-10 px-4.5 gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              className="rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-xs sm:text-sm h-10 px-5 gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
               onClick={onOpenActivateDialog}
             >
               <Play className="h-4 w-4 fill-current text-emerald-600 dark:text-emerald-400" />
@@ -141,7 +141,7 @@ export default function SchoolDetailHeader({
             </Button>
           ) : (
             <Button
-              className="rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-bold text-xs sm:text-sm h-10 px-4.5 gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
+              className="rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-bold text-xs sm:text-sm h-10 px-5 gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
               onClick={onOpenSuspendDialog}
             >
               <Pause className="h-4 w-4 fill-current text-rose-600 dark:text-rose-400" />
