@@ -1,11 +1,15 @@
 """
-NASSAQ - School Models
-All school/tenant-related Pydantic models
+NASSAQ - School Models & DTOs
+All school/tenant-related Pydantic models for CRUD, info updates, status, and credentials.
 """
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
 from typing import List, Optional
 from src.common.dto.enums import SchoolStatus
 from src.common.utils.school_type import normalize_school_type
+
+
+def _normalize_school_type_field(cls, v):  # noqa: N805
+    return normalize_school_type(v)
 
 
 class SchoolBase(BaseModel):
@@ -23,10 +27,6 @@ class SchoolBase(BaseModel):
     student_capacity: int = 0
     current_students: int = 0
     current_teachers: int = 0
-
-
-def _normalize_school_type_field(cls, v):  # noqa: N805
-    return normalize_school_type(v)
 
 
 class SchoolCreate(BaseModel):
@@ -98,3 +98,35 @@ class SchoolUpdate(BaseModel):
     _normalize_school_type = field_validator("school_type", mode="before")(
         _normalize_school_type_field
     )
+
+
+class SchoolInfoUpdate(BaseModel):
+    name: Optional[str] = None
+    name_ar: Optional[str] = None
+    name_en: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    city: Optional[str] = None
+    region: Optional[str] = None
+    address: Optional[str] = None
+    type: Optional[str] = None
+    stage: Optional[str] = None
+    principal_name: Optional[str] = None
+    principal_phone: Optional[str] = None
+    principal_mobile: Optional[str] = None
+    educational_pathway: Optional[str] = None
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalize_type(cls, v):
+        return normalize_school_type(v)
+
+
+class SchoolStatusChangeRequest(BaseModel):
+    reason: str = Field(..., min_length=3, description="سبب التغيير")
+
+
+class SchoolCredentialsRequest(BaseModel):
+    email: str = Field(..., min_length=5, description="البريد الإلكتروني لمدير المدرسة")
+    name: Optional[str] = None
+    password: Optional[str] = Field(None, min_length=8, description="كلمة المرور الجديدة (اختياري - يُولَّد تلقائياً إن لم تُحدَّد)")

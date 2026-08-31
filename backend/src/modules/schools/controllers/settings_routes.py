@@ -1,830 +1,188 @@
 """
 System Settings Routes - مسارات إعدادات النظام
-APIs for system settings, maintenance mode, terms & conditions, etc.
+APIs for system settings, maintenance mode, terms & conditions, privacy, contact, security, and sessions.
+Controller delegating logic to SystemSettingsService.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, ConfigDict, ValidationError
 from typing import Optional, List
-from datetime import datetime, timezone
-import uuid
-import jwt as _jwt
-from dependencies import JWT_SECRET, JWT_ALGORITHM as _JWT_ALGORITHM
+
+from dependencies import (
+    db, get_current_user, require_roles, UserRole,
+    require_recent_mfa,
+)
+from src.modules.schools.dto.settings_dto import (
+    GeneralSettings, MaintenanceSettings, TermsVersion,
+    PrivacyVersion, ContactInfo, SecuritySettings,
+)
+from src.modules.schools.services.system_settings_service import (
+    SystemSettingsService,
+    jti_from_creds as _jti_from_creds,
+    revoke_session_refresh_chain as _revoke_session_refresh_chain,
+)
 
 _session_security = HTTPBearer(auto_error=False)
 
 
-def _jti_from_creds(creds: Optional[HTTPAuthorizationCredentials]) -> Optional[str]:
-    if not creds:
-        return None
-    try:
-        payload = _jwt.decode(creds.credentials, JWT_SECRET, algorithms=[_JWT_ALGORITHM])
-        return payload.get("jti")
-    except Exception:
-        return None
+def setup_settings_routes(db_instance, get_current_user_dep, require_roles_dep, UserRole_dep, require_recent_mfa_dep=None):
+    """Setup settings routes with database and auth dependencies for legacy app/routes.py integration."""
+    if require_recent_mfa_dep is None:
+        def require_recent_mfa_dep(max_age_seconds: int = 300):  # noqa: ARG001
+            return get_current_user_dep
 
-import os
-from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
+    r = APIRouter(prefix="/settings", tags=["System Settings"])
 
-
-# Models
-class GeneralSettings(BaseModel):
-    """الإعدادات العامة"""
-    platform_name: str = "نَسَّق"
-    platform_name_en: str = "NASSAQ"
-    browser_title: str = "نَسَّق | NASSAQ"
-    default_language: str = "ar"  # ar or en
-    date_system: str = "both"  # hijri, gregorian, both
-    timezone: str = "Asia/Riyadh"
-
-
-class MaintenanceSettings(BaseModel):
-    """إعدادات الصيانة"""
-    maintenance_mode: bool = False
-    registration_open: bool = True
-    maintenance_message_ar: str = "نحيطكم علمًا أن النظام يخضع حاليًا لأعمال صيانة وتحسينات تقنية."
-    maintenance_message_en: str = "The system is currently undergoing maintenance."
-    registration_closed_message_ar: str = "نود إبلاغكم بأن التسجيل في المنصة مغلق حاليًا."
-    registration_closed_message_en: str = "Registration is currently closed."
-
-
-class TermsVersion(BaseModel):
-    """إصدار الشروط والأحكام"""
-    id: str
-    version_number: int
-    content_ar: str
-    content_en: str = ""
-    created_at: str
-    created_by: str
-    created_by_name: str
-    is_published: bool = False
-    published_at: Optional[str] = None
-
-
-class PrivacyVersion(BaseModel):
-    """إصدار سياسة الخصوصية"""
-    id: str
-    version_number: int
-    content_ar: str
-    content_en: str = ""
-    created_at: str
-    created_by: str
-    created_by_name: str
-    is_published: bool = False
-    published_at: Optional[str] = None
-
-
-class ContactInfo(BaseModel):
-    """بيانات التواصل"""
-    email: str = ""
-    phone: str = ""
-    working_hours_ar: str = ""
-    working_hours_en: str = ""
-    address_ar: str = ""
-    address_en: str = ""
-    social_twitter: str = ""
-    social_linkedin: str = ""
-    social_instagram: str = ""
-    social_facebook: str = ""
-    social_youtube: str = ""
-
-
-class SecuritySettings(BaseModel):
-    """إعدادات الأمان
-
-    Task #172 P0: ``extra='forbid'`` rejects any client-supplied field that
-    isn't actually persisted on this endpoint (notably the legacy
-    ``twoFactorEnabled`` toggle on the Platform Settings page that used to be
-    silently dropped). The wrapper route below converts the resulting
-    ValidationError into a safe Arabic HTTP 422 the frontend can show via
-    NassaqAlertDialog.
-    """
-    model_config = ConfigDict(extra="forbid")
-
-    session_duration_minutes: int = 60
-    max_concurrent_sessions: int = 3
-    min_password_length: int = 8
-    require_uppercase: int = 1
-    require_lowercase: int = 1
-    require_numbers: int = 1
-    require_special_chars: int = 1
-
-
-def setup_settings_routes(db, get_current_user, require_roles, UserRole, require_recent_mfa=None):
-    # Task #169 Step 7: see security_routes.setup_security_routes for the
-    # rationale behind the fallback.
-    if require_recent_mfa is None:
-        def require_recent_mfa(max_age_seconds: int = 300):  # noqa: ARG001
-            return get_current_user
-    """Setup settings routes with database and auth dependencies"""
-    
-    router = APIRouter(prefix="/settings", tags=["System Settings"])
-    
     # ============= GENERAL SETTINGS =============
-    
-    @router.get("/general", response_model=GeneralSettings)
+
+    @r.get("/general", response_model=GeneralSettings)
     async def get_general_settings(
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN]))
     ):
-        """جلب الإعدادات العامة"""
-        try:
-            settings = await gd_find_one(db.session, "system_settings", {"type": "general"})
-            if settings:
-                return GeneralSettings(**settings.get("data", {}))
-            return GeneralSettings()
-        except Exception as e:
-            logger.error(f"Error fetching general settings: {e}")
-            return GeneralSettings()
-    
-    @router.put("/general")
+        return await SystemSettingsService.get_general_settings(db_instance.session)
+
+    @r.put("/general")
     async def update_general_settings(
         settings: GeneralSettings,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN]))
     ):
-        """تحديث الإعدادات العامة مع تتبع التغييرات"""
-        now = datetime.now(timezone.utc).isoformat()
-        new_data = settings.dict()
+        return await SystemSettingsService.update_general_settings(db_instance.session, settings, current_user)
 
-        existing = await gd_find_one(db.session, "system_settings", {"type": "general"})
-        old_data = existing.get("data", {}) if existing else {}
-
-        field_labels = {
-            "platform_name": "اسم المنصة (عربي)",
-            "platform_name_en": "اسم المنصة (إنجليزي)",
-            "browser_title": "عنوان المتصفح",
-            "default_language": "اللغة الافتراضية",
-            "date_system": "نظام التاريخ",
-            "timezone": "المنطقة الزمنية",
-        }
-
-        changes = []
-        for key, new_val in new_data.items():
-            old_val = old_data.get(key, "")
-            if str(old_val) != str(new_val):
-                changes.append({
-                    "field": key,
-                    "field_label": field_labels.get(key, key),
-                    "old_value": str(old_val),
-                    "new_value": str(new_val),
-                })
-
-        await gd_upsert(db.session, "system_settings", {"type": "general"}, {"type": "general", "data": new_data, "updated_at": now, "updated_by": current_user.get("id")})
-
-        if changes:
-            await gd_insert(db.session, "audit_logs", {
-                "id": str(uuid.uuid4()),
-                "action": "settings_updated",
-                "target_type": "general_settings",
-                "performed_by": current_user.get("id"),
-                "performed_by_name": current_user.get("full_name", current_user.get("name", "")),
-                "performed_by_email": current_user.get("email", ""),
-                "timestamp": now,
-                "changes": changes,
-            })
-
-        return {"success": True, "message": "تم حفظ الإعدادات بنجاح", "changes": changes}
-    
     # ============= MAINTENANCE SETTINGS =============
-    
-    @router.get("/maintenance", response_model=MaintenanceSettings)
+
+    @r.get("/maintenance", response_model=MaintenanceSettings)
     async def get_maintenance_settings(
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN]))
     ):
-        """جلب إعدادات الصيانة"""
-        try:
-            settings = await gd_find_one(db.session, "system_settings", {"type": "maintenance"})
-            if settings:
-                return MaintenanceSettings(**settings.get("data", {}))
-            return MaintenanceSettings()
-        except Exception as e:
-            return MaintenanceSettings()
-    
-    @router.put("/maintenance")
+        return await SystemSettingsService.get_maintenance_settings(db_instance.session)
+
+    @r.put("/maintenance")
     async def update_maintenance_settings(
         settings: MaintenanceSettings,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
-        # Task #169 Step 7: maintenance toggle can lock all users out → fresh MFA.
-        _stepup: dict = Depends(require_recent_mfa()),
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN])),
+        _stepup: dict = Depends(require_recent_mfa_dep()),
     ):
-        """تحديث إعدادات الصيانة"""
-        try:
-            await gd_upsert(db.session, "system_settings", {"type": "maintenance"},
-                {
-                    "type": "maintenance",
-                    "data": settings.dict(),
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                    "updated_by": current_user.get("id")
-                }
-            )
-            
-            # Log the action
-            action = "maintenance_enabled" if settings.maintenance_mode else "maintenance_disabled"
-            await gd_insert(db.session, "audit_logs", {
-                "id": str(uuid.uuid4()),
-                "action": action,
-                "performed_by": current_user.get("id"),
-                "performed_by_name": current_user.get("name"),
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
-            
-            return {"success": True, "message": "تم حفظ الإعدادات بنجاح"}
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"Maintenance settings error: {e}")
-            raise HTTPException(status_code=500, detail="حدث خطأ أثناء حفظ الإعدادات")
-    
+        return await SystemSettingsService.update_maintenance_settings(db_instance.session, settings, current_user)
+
     # ============= TERMS & CONDITIONS =============
-    
-    @router.get("/terms/versions")
+
+    @r.get("/terms/versions")
     async def get_terms_versions(
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN]))
     ):
-        """جلب جميع إصدارات الشروط والأحكام"""
-        try:
-            versions = await gd_find(db.session, "terms_versions", {}, order_by="version_number", desc_order=True, limit=100)
-            return [
-                TermsVersion(
-                    id=str(v.get("id", v.get("_id"))),
-                    version_number=v.get("version_number", 0),
-                    content_ar=v.get("content_ar", ""),
-                    content_en=v.get("content_en", ""),
-                    created_at=v.get("created_at", ""),
-                    created_by=v.get("created_by", ""),
-                    created_by_name=v.get("created_by_name", ""),
-                    is_published=v.get("is_published", False),
-                    published_at=v.get("published_at")
-                )
-                for v in versions
-            ]
-        except Exception as e:
-            return []
-    
-    @router.post("/terms")
+        return await SystemSettingsService.get_terms_versions(db_instance.session)
+
+    @r.post("/terms")
     async def create_terms_version(
         content_ar: str,
         content_en: str = "",
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN]))
     ):
-        """إنشاء إصدار جديد من الشروط والأحكام"""
-        try:
-            # Get next version number
-            last_version = await gd_find_one(db.session, "terms_versions", sort=[("version_number", -1)])
-            next_version = (last_version.get("version_number", 0) if last_version else 0) + 1
-            
-            version = {
-                "id": str(uuid.uuid4()),
-                "version_number": next_version,
-                "content_ar": content_ar,
-                "content_en": content_en,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "created_by": current_user.get("id"),
-                "created_by_name": current_user.get("name"),
-                "is_published": False
-            }
-            
-            await gd_insert(db.session, "terms_versions", version)
-            
-            await gd_insert(db.session, "audit_logs", {
-                "id": str(uuid.uuid4()),
-                "action": "terms_updated",
-                "performed_by": current_user.get("id"),
-                "performed_by_name": current_user.get("name"),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "details": {"version_number": next_version}
-            })
-            
-            return {"success": True, "version_number": next_version}
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"Operation error: {e}")
-            raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
-    
-    @router.post("/terms/{version_id}/publish")
+        return await SystemSettingsService.create_terms_version(db_instance.session, content_ar, content_en, current_user)
+
+    @r.post("/terms/{version_id}/publish")
     async def publish_terms_version(
         version_id: str,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN]))
     ):
-        """نشر إصدار من الشروط والأحكام"""
-        try:
-            # Unpublish all other versions
-            await gd_update_many(db.session, "terms_versions", {}, {"is_published": False})
-            
-            # Publish this version
-            await gd_update_one(db.session, "terms_versions", {"id": version_id}, {
-                        "is_published": True,
-                        "published_at": datetime.now(timezone.utc).isoformat()
-                    })
-            
-            return {"success": True, "message": "تم نشر الإصدار بنجاح"}
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"Operation error: {e}")
-            raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
-    
+        return await SystemSettingsService.publish_terms_version(db_instance.session, version_id)
+
     # ============= PRIVACY POLICY =============
-    
-    @router.get("/privacy/versions")
+
+    @r.get("/privacy/versions")
     async def get_privacy_versions(
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN]))
     ):
-        """جلب جميع إصدارات سياسة الخصوصية"""
-        try:
-            versions = await gd_find(db.session, "privacy_versions", {}, order_by="version_number", desc_order=True, limit=100)
-            return [
-                PrivacyVersion(
-                    id=str(v.get("id", v.get("_id"))),
-                    version_number=v.get("version_number", 0),
-                    content_ar=v.get("content_ar", ""),
-                    content_en=v.get("content_en", ""),
-                    created_at=v.get("created_at", ""),
-                    created_by=v.get("created_by", ""),
-                    created_by_name=v.get("created_by_name", ""),
-                    is_published=v.get("is_published", False),
-                    published_at=v.get("published_at")
-                )
-                for v in versions
-            ]
-        except Exception as e:
-            return []
-    
-    @router.post("/privacy")
+        return await SystemSettingsService.get_privacy_versions(db_instance.session)
+
+    @r.post("/privacy")
     async def create_privacy_version(
         content_ar: str,
         content_en: str = "",
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN]))
     ):
-        """إنشاء إصدار جديد من سياسة الخصوصية"""
-        try:
-            last_version = await gd_find_one(db.session, "privacy_versions", sort=[("version_number", -1)])
-            next_version = (last_version.get("version_number", 0) if last_version else 0) + 1
-            
-            version = {
-                "id": str(uuid.uuid4()),
-                "version_number": next_version,
-                "content_ar": content_ar,
-                "content_en": content_en,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "created_by": current_user.get("id"),
-                "created_by_name": current_user.get("name"),
-                "is_published": False
-            }
-            
-            await gd_insert(db.session, "privacy_versions", version)
-            
-            return {"success": True, "version_number": next_version}
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"Operation error: {e}")
-            raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
-    
-    @router.post("/privacy/{version_id}/publish")
+        return await SystemSettingsService.create_privacy_version(db_instance.session, content_ar, content_en, current_user)
+
+    @r.post("/privacy/{version_id}/publish")
     async def publish_privacy_version(
         version_id: str,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN]))
     ):
-        """نشر إصدار من سياسة الخصوصية"""
-        try:
-            await gd_update_many(db.session, "privacy_versions", {}, {"is_published": False})
-            await gd_update_one(db.session, "privacy_versions", {"id": version_id}, {"is_published": True, "published_at": datetime.now(timezone.utc).isoformat()})
-            return {"success": True, "message": "تم نشر الإصدار بنجاح"}
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"Operation error: {e}")
-            raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
-    
-    # ============= PUBLISHED LEGAL CONTENT (any authenticated user) =============
+        return await SystemSettingsService.publish_privacy_version(db_instance.session, version_id)
 
-    @router.get("/terms/published")
+    # ============= PUBLISHED LEGAL CONTENT =============
+
+    @r.get("/terms/published")
     async def get_published_terms(
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(get_current_user_dep)
     ):
-        """الإصدار المنشور من الشروط والأحكام — متاح لأي مستخدم مسجّل."""
-        try:
-            v = await gd_find_one(
-                db.session,
-                "terms_versions",
-                {"is_published": True},
-                sort=[("version_number", -1)],
-            )
-            if not v:
-                return {
-                    "version_number": 0,
-                    "content_ar": "",
-                    "content_en": "",
-                    "published_at": None,
-                }
-            return {
-                "version_number": v.get("version_number", 0),
-                "content_ar": v.get("content_ar", ""),
-                "content_en": v.get("content_en", ""),
-                "published_at": v.get("published_at"),
-            }
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"get_published_terms error: {e}")
-            return {"version_number": 0, "content_ar": "", "content_en": "", "published_at": None}
+        return await SystemSettingsService.get_published_terms(db_instance.session)
 
-    @router.get("/privacy/published")
+    @r.get("/privacy/published")
     async def get_published_privacy(
-        current_user: dict = Depends(get_current_user)
+        current_user: dict = Depends(get_current_user_dep)
     ):
-        """الإصدار المنشور من سياسة الخصوصية — متاح لأي مستخدم مسجّل."""
-        try:
-            v = await gd_find_one(
-                db.session,
-                "privacy_versions",
-                {"is_published": True},
-                sort=[("version_number", -1)],
-            )
-            if not v:
-                return {
-                    "version_number": 0,
-                    "content_ar": "",
-                    "content_en": "",
-                    "published_at": None,
-                }
-            return {
-                "version_number": v.get("version_number", 0),
-                "content_ar": v.get("content_ar", ""),
-                "content_en": v.get("content_en", ""),
-                "published_at": v.get("published_at"),
-            }
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"get_published_privacy error: {e}")
-            return {"version_number": 0, "content_ar": "", "content_en": "", "published_at": None}
+        return await SystemSettingsService.get_published_privacy(db_instance.session)
 
     # ============= CONTACT INFO =============
-    
-    @router.get("/contact", response_model=ContactInfo)
+
+    @r.get("/contact", response_model=ContactInfo)
     async def get_contact_info(
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN]))
     ):
-        """جلب بيانات التواصل"""
-        try:
-            settings = await gd_find_one(db.session, "system_settings", {"type": "contact"})
-            if settings:
-                return ContactInfo(**settings.get("data", {}))
-            return ContactInfo()
-        except Exception as e:
-            return ContactInfo()
-    
-    @router.put("/contact")
+        return await SystemSettingsService.get_contact_info(db_instance.session)
+
+    @r.put("/contact")
     async def update_contact_info(
         info: ContactInfo,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN]))
     ):
-        """تحديث بيانات التواصل مع تتبع التغييرات"""
-        now = datetime.now(timezone.utc).isoformat()
-        new_data = info.dict()
+        return await SystemSettingsService.update_contact_info(db_instance.session, info, current_user)
 
-        existing = await gd_find_one(db.session, "system_settings", {"type": "contact"})
-        old_data = existing.get("data", {}) if existing else {}
-
-        field_labels = {
-            "email": "البريد الإلكتروني",
-            "phone": "رقم الهاتف",
-            "working_hours_ar": "ساعات العمل",
-            "address_ar": "العنوان",
-            "social_twitter": "تويتر",
-            "social_linkedin": "لينكدإن",
-            "social_instagram": "إنستجرام",
-            "social_facebook": "فيسبوك",
-            "social_youtube": "يوتيوب",
-        }
-
-        changes = []
-        for key, new_val in new_data.items():
-            old_val = old_data.get(key, "")
-            if str(old_val) != str(new_val):
-                changes.append({
-                    "field": key,
-                    "field_label": field_labels.get(key, key),
-                    "old_value": str(old_val),
-                    "new_value": str(new_val),
-                })
-
-        await gd_upsert(db.session, "system_settings", {"type": "contact"}, {"type": "contact", "data": new_data, "updated_at": now})
-
-        if changes:
-            await gd_insert(db.session, "audit_logs", {
-                "id": str(uuid.uuid4()),
-                "action": "settings_updated",
-                "target_type": "contact_settings",
-                "performed_by": current_user.get("id"),
-                "performed_by_name": current_user.get("full_name", current_user.get("name", "")),
-                "performed_by_email": current_user.get("email", ""),
-                "timestamp": now,
-                "changes": changes,
-            })
-
-        return {"success": True, "message": "تم حفظ بيانات التواصل", "changes": changes}
-    
     # ============= SECURITY SETTINGS =============
-    
-    @router.get("/security", response_model=SecuritySettings)
+
+    @r.get("/security", response_model=SecuritySettings)
     async def get_security_settings(
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN]))
     ):
-        """جلب إعدادات الأمان"""
-        try:
-            settings = await gd_find_one(db.session, "system_settings", {"type": "security"})
-            if settings:
-                return SecuritySettings(**settings.get("data", {}))
-            return SecuritySettings()
-        except Exception as e:
-            return SecuritySettings()
-    
-    @router.put("/security")
+        return await SystemSettingsService.get_security_settings(db_instance.session)
+
+    @r.put("/security")
     async def update_security_settings(
         request: Request,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
-        # Task #169 Step 7: editing platform-wide security policy → fresh MFA.
-        _stepup: dict = Depends(require_recent_mfa()),
+        current_user: dict = Depends(require_roles_dep([UserRole_dep.PLATFORM_ADMIN])),
+        _stepup: dict = Depends(require_recent_mfa_dep()),
     ):
-        """تحديث إعدادات الأمان مع تتبع التغييرات
-
-        Task #172 P0: validate manually so a payload with unexpected fields
-        (e.g. the now-removed ``twoFactorEnabled`` toggle) returns a safe
-        Arabic 422 instead of FastAPI's default verbose error array.
-        """
-        try:
-            raw = await request.json()
-        except Exception:
-            raise HTTPException(status_code=400, detail="نص الطلب غير صالح")
-        if not isinstance(raw, dict):
-            raise HTTPException(status_code=422, detail="تنسيق إعدادات الأمان غير صحيح")
-        try:
-            settings = SecuritySettings(**raw)
-        except ValidationError as ve:
-            extras = sorted({
-                str(err.get("loc", [""])[-1])
-                for err in ve.errors()
-                if err.get("type") == "extra_forbidden"
-            })
-            if extras:
-                joined = "، ".join(extras)
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"حقول غير مدعومة في إعدادات الأمان: {joined}",
-                )
-            raise HTTPException(
-                status_code=422,
-                detail="إعدادات الأمان المُرسلة غير صحيحة",
-            )
-
-        now = datetime.now(timezone.utc).isoformat()
-        new_data = settings.dict()
-
-        existing = await gd_find_one(db.session, "system_settings", {"type": "security"})
-        old_data = existing.get("data", {}) if existing else {}
-
-        field_labels = {
-            "session_duration_minutes": "مدة الجلسة (بالدقائق)",
-            "max_concurrent_sessions": "الحد الأقصى للجلسات",
-            "min_password_length": "الحد الأدنى لطول كلمة المرور",
-            "require_uppercase": "حرف كبير مطلوب",
-            "require_lowercase": "حرف صغير مطلوب",
-            "require_numbers": "رقم مطلوب",
-            "require_special_chars": "رمز خاص مطلوب",
-        }
-
-        changes = []
-        for key, new_val in new_data.items():
-            old_val = old_data.get(key, "")
-            if str(old_val) != str(new_val):
-                changes.append({
-                    "field": key,
-                    "field_label": field_labels.get(key, key),
-                    "old_value": str(old_val),
-                    "new_value": str(new_val),
-                })
-
-        await gd_upsert(db.session, "system_settings", {"type": "security"}, {"type": "security", "data": new_data, "updated_at": now})
-
-        if changes:
-            await gd_insert(db.session, "audit_logs", {
-                "id": str(uuid.uuid4()),
-                "action": "settings_updated",
-                "target_type": "security_settings",
-                "performed_by": current_user.get("id"),
-                "performed_by_name": current_user.get("full_name", current_user.get("name", "")),
-                "performed_by_email": current_user.get("email", ""),
-                "timestamp": now,
-                "changes": changes,
-            })
-
-        return {"success": True, "message": "تم حفظ إعدادات الأمان", "changes": changes}
-    
-    # ============= USER ACCOUNT SETTINGS =============
-    # Task #174: Retired. Personal profile + avatar writes are now handled
-    # exclusively by `PUT /users/me/profile` and `POST /users/me/avatar` in
-    # `routes/user_routes_mod.py`. The previous `/settings/account*` and
-    # `/settings/titles` handlers (and the `UserAccountSettings` model) were
-    # removed to keep a single canonical handler/audit-log shape for personal
-    # account mutations.
+        return await SystemSettingsService.update_security_settings(db_instance.session, request, current_user)
 
     # ============= ACTIVE SESSIONS =============
 
-    async def _revoke_session_refresh_chain(s: dict, now, user_id: str) -> None:
-        """Task #374 — block the refresh path for a session row.
-
-        Inserts the session's ``refresh_jti`` into ``revoked_tokens`` (so the
-        per-jti check in ``/auth/refresh`` rejects it) AND inserts the session's
-        ``refresh_family_id`` into ``revoked_token_families`` (so any sibling
-        token already spawned from the same lineage is killed too — this is
-        the same primitive ``auth_routes_mod.py`` uses on reuse detection).
-
-        Best-effort: legacy session rows minted before the Task #374 migration
-        carry NULL refresh_jti / refresh_family_id and degrade to access-JTI-
-        only revocation, same as before.
-        """
-        from sqlalchemy import text as _sa_text
-        r_jti = s.get("refresh_jti")
-        r_fid = s.get("refresh_family_id")
-        if r_jti:
-            try:
-                # Task #374 follow-up — MUST use the refresh token's own
-                # expiry, NOT user_sessions.expires_at (that's the access
-                # token's ~15 min exp). The background cleanup loop in
-                # backend/app/lifecycle.py purges revoked_tokens rows
-                # whose expires_at < now, so using access expiry would
-                # delete the revocation record long before the refresh
-                # token (up to 30d for remember-me) actually expires —
-                # letting the ended device silently revive on its next
-                # /auth/refresh. Fall back to a conservative
-                # now + REFRESH_TOKEN_EXPIRE_DAYS for legacy session rows
-                # that pre-date the refresh_expires_at column.
-                from dependencies import REFRESH_TOKEN_EXPIRE_DAYS as _RTE_DAYS
-                from datetime import timedelta as _td
-                exp = s.get("refresh_expires_at") or (now + _td(days=_RTE_DAYS))
-                await gd_insert(db.session, "revoked_tokens", {
-                    "jti": r_jti,
-                    "expires_at": exp.isoformat() if hasattr(exp, "isoformat") else str(exp),
-                    "revoked_at": now.isoformat(),
-                })
-            except Exception as _e:
-                # Duplicate (already-revoked) is fine; anything else we
-                # log at debug so the user-visible revoke still succeeds.
-                import logging as _log
-                _log.getLogger("nassaq").debug(
-                    f"_revoke_session_refresh_chain: refresh jti insert: {_e}"
-                )
-        if r_fid:
-            try:
-                await db.session.execute(
-                    _sa_text(
-                        "INSERT INTO revoked_token_families "
-                        "(family_id, revoked_at, reason, user_id) "
-                        "VALUES (:f, :r, :why, :uid) "
-                        "ON CONFLICT (family_id) DO NOTHING"
-                    ),
-                    {"f": r_fid, "r": now, "why": "user_ended_session", "uid": user_id},
-                )
-            except Exception as _fe:
-                import logging as _log
-                _log.getLogger("nassaq").debug(
-                    f"_revoke_session_refresh_chain: family insert: {_fe}"
-                )
-
-    def _fmt_session(s: dict, current_jti: Optional[str]) -> dict:
-        device = s.get("device") or "Unknown"
-        browser = s.get("browser") or ""
-        os_name = s.get("os") or ""
-        location = s.get("location") or s.get("ip_address") or "—"
-        last_seen = s.get("last_seen_at") or s.get("created_at")
-        created = s.get("created_at")
-        is_current = bool(current_jti and s.get("jti") == current_jti)
-        return {
-            "id": str(s.get("id")),
-            "device": f"{device} • {browser}".strip(" •"),
-            "device_name": device,
-            "browser": browser,
-            "os": os_name,
-            "ip": s.get("ip_address") or "",
-            "ip_address": s.get("ip_address") or "",
-            "location": location,
-            "started_at": created.isoformat() if hasattr(created, "isoformat") else (created or ""),
-            "lastActive": last_seen.isoformat() if hasattr(last_seen, "isoformat") else (last_seen or ""),
-            "last_active": last_seen.isoformat() if hasattr(last_seen, "isoformat") else (last_seen or ""),
-            "current": is_current,
-            "is_current": is_current,
-        }
-
-    @router.get("/sessions")
+    @r.get("/sessions")
     async def list_my_sessions(
-        current_user: dict = Depends(get_current_user),
+        current_user: dict = Depends(get_current_user_dep),
         creds: Optional[HTTPAuthorizationCredentials] = Depends(_session_security),
     ):
-        """List the current user's active (non-revoked, non-expired) sessions."""
-        from datetime import datetime as _dt, timezone as _tz
-        try:
-            now = _dt.now(_tz.utc)
-            rows = await gd_find(
-                db.session, "user_sessions",
-                {"user_id": current_user["id"], "revoked_at": None},
-                order_by="last_seen_at", desc_order=True, limit=200,
-            )
-            current_jti = _jti_from_creds(creds)
-            sessions = []
-            for s in rows:
-                exp = s.get("expires_at")
-                if exp and hasattr(exp, "tzinfo") and exp < now:
-                    continue
-                sessions.append(_fmt_session(s, current_jti))
-            return {"sessions": sessions, "count": len(sessions)}
-        except Exception as e:
-            import logging as _log
-            _log.getLogger("nassaq").error(f"list_my_sessions error: {e}", exc_info=True)
-            return {"sessions": [], "count": 0}
+        return await SystemSettingsService.list_my_sessions(db_instance.session, current_user, creds)
 
-    @router.delete("/sessions/{session_id}")
+    @r.delete("/sessions/{session_id}")
     async def end_my_session(
         session_id: str,
-        current_user: dict = Depends(get_current_user),
+        current_user: dict = Depends(get_current_user_dep),
         creds: Optional[HTTPAuthorizationCredentials] = Depends(_session_security),
-        # Task #172 P0: revoking a session is sensitive — require fresh MFA
-        # for users on a tier with MFA policy (no-op for student/driver/etc).
-        _stepup: dict = Depends(require_recent_mfa()),
+        _stepup: dict = Depends(require_recent_mfa_dep()),
     ):
-        """Revoke a single session belonging to the current user."""
-        from datetime import datetime as _dt, timezone as _tz
-        row = await gd_find_one(db.session, "user_sessions", {"id": session_id, "user_id": current_user["id"]})
-        if not row:
-            raise HTTPException(status_code=404, detail="الجلسة غير موجودة")
-        now = _dt.now(_tz.utc)
-        await gd_update_one(db.session, "user_sessions", {"id": session_id}, {"revoked_at": now})
-        jti = row.get("jti")
-        if jti:
-            try:
-                exp = row.get("expires_at") or now
-                await gd_insert(db.session, "revoked_tokens", {
-                    "jti": jti,
-                    "expires_at": exp.isoformat() if hasattr(exp, "isoformat") else str(exp),
-                    "revoked_at": now.isoformat(),
-                })
-            except Exception:
-                pass
-        # Task #374 — also block the linked refresh JTI and revoke the
-        # whole refresh family. Without this the "ended" device silently
-        # revives on its next /auth/refresh as soon as its short-lived
-        # access token expires.
-        await _revoke_session_refresh_chain(row, now, current_user["id"])
-        was_current = bool(jti and _jti_from_creds(creds) == jti)
-        return {"success": True, "was_current": was_current, "message": "تم إنهاء الجلسة"}
+        return await SystemSettingsService.end_my_session(db_instance.session, session_id, current_user, creds)
 
-    @router.post("/sessions/end-all")
+    @r.post("/sessions/end-all")
     async def end_all_other_sessions(
-        current_user: dict = Depends(get_current_user),
+        current_user: dict = Depends(get_current_user_dep),
         creds: Optional[HTTPAuthorizationCredentials] = Depends(_session_security),
-        # Task #172 P0: bulk-revoke is even more sensitive than single-session
-        # revoke — same step-up gate.
-        _stepup: dict = Depends(require_recent_mfa()),
+        _stepup: dict = Depends(require_recent_mfa_dep()),
     ):
-        """Revoke all of the current user's sessions except the current one."""
-        from datetime import datetime as _dt, timezone as _tz
-        now = _dt.now(_tz.utc)
-        current_jti = _jti_from_creds(creds)
-        # Task #172 P0: refuse to "end all OTHERS" when we cannot identify the
-        # current session — otherwise we'd silently revoke EVERY session
-        # including the caller's. Safer to fail closed with a clear message.
-        if not current_jti:
-            raise HTTPException(
-                status_code=400,
-                detail="تعذر تحديد الجلسة الحالية؛ يرجى تسجيل الدخول مرة أخرى ثم إعادة المحاولة",
-            )
-        rows = await gd_find(
-            db.session, "user_sessions",
-            {"user_id": current_user["id"], "revoked_at": None},
-            limit=500,
-        )
-        ended = 0
-        for s in rows:
-            if current_jti and s.get("jti") == current_jti:
-                continue
-            try:
-                await gd_update_one(db.session, "user_sessions", {"id": s.get("id")}, {"revoked_at": now})
-                jti = s.get("jti")
-                if jti:
-                    exp = s.get("expires_at") or now
-                    await gd_insert(db.session, "revoked_tokens", {
-                        "jti": jti,
-                        "expires_at": exp.isoformat() if hasattr(exp, "isoformat") else str(exp),
-                        "revoked_at": now.isoformat(),
-                    })
-                # Task #374 — also block the refresh path for every other
-                # session, otherwise each one silently revives on refresh.
-                await _revoke_session_refresh_chain(s, now, current_user["id"])
-                ended += 1
-            except Exception:
-                pass
-        return {"success": True, "ended": ended, "message": f"تم إنهاء {ended} جلسة أخرى"}
-    
-    # ============= TITLES (الألقاب) =============
-    # Task #174: Retired. The static title dictionary was only consumed by the
-    # legacy account-settings UI; the active profile UI ships its own title
-    # list. Removed alongside `/settings/account*` to drop the duplicate
-    # personal-account surface.
+        return await SystemSettingsService.end_all_other_sessions(db_instance.session, current_user, creds)
 
-    return router
+    return r
+
+
+# Module-level router instance
+router = setup_settings_routes(db, get_current_user, require_roles, UserRole, require_recent_mfa)

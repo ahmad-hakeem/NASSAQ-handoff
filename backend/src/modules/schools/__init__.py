@@ -1,1 +1,4 @@
-"""Schools module."""
+"""
+Schools module.
+"""
+
