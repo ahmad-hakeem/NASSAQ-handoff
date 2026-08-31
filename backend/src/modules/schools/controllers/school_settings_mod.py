@@ -236,6 +236,7 @@ class SchoolInfoUpdate(BaseModel):
     type: Optional[str] = None
     stage: Optional[str] = None
     principal_name: Optional[str] = None
+    principal_phone: Optional[str] = None
     principal_mobile: Optional[str] = None
     educational_pathway: Optional[str] = None
 
@@ -466,7 +467,8 @@ async def get_school_info(
         "email": school.get("email"),
         "license_number": school.get("license_number"),
         "principal_name": school.get("principal_name"),
-        "principal_mobile": school.get("principal_mobile"),
+        "principal_phone": school.get("principal_phone") or school.get("principal_mobile"),
+        "principal_mobile": school.get("principal_phone") or school.get("principal_mobile"),
         "educational_pathway": school.get("educational_pathway"),
         "logo_url": signed_image_url("logo", school_id, school.get("logo_url")),
         "is_active": school.get("is_active", True),
@@ -496,9 +498,16 @@ async def update_school_info_direct(
 
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
     update_data.pop("license_number", None)
-    update_data.pop("id", None)
-    if "principal_mobile" in update_data and not update_data["principal_mobile"].strip():
-        raise HTTPException(status_code=422, detail="رقم جوال المدير مطلوب")
+    phone_val = update_data.pop("principal_phone", None)
+    if phone_val is None and "principal_mobile" in update_data:
+        phone_val = update_data.pop("principal_mobile", None)
+    else:
+        update_data.pop("principal_mobile", None)
+
+    if phone_val is not None:
+        if isinstance(phone_val, str) and not phone_val.strip():
+            raise HTTPException(status_code=422, detail="رقم هاتف المدير مطلوب")
+        update_data["principal_phone"] = phone_val
     if "stage" in update_data and update_data.get("stage") != "secondary_pathways":
         update_data["educational_pathway"] = None
     # The schools table column is `school_type`; the API exposes it as `type`.

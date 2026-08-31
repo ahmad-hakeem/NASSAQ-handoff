@@ -168,28 +168,26 @@ export default function TenantsDraftsSection({
                 </div>
 
                 {/* Card Footer: Action Buttons */}
-                <div className="flex items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800 mt-1.5">
+                <div className="flex items-center gap-2.5 pt-3.5 border-t border-slate-100 dark:border-slate-800 mt-2">
                   <Button
-                    size="sm"
                     onClick={() => onNavigateToDraft(draft.id)}
-                    className="flex-1 h-8.5 rounded-xl bg-[#1C3D74] hover:bg-[#152e57] text-white text-xs font-bold font-cairo gap-2 shadow-xs transition-all group/btn"
+                    className="flex-1 h-10 rounded-xl bg-[#1C3D74] hover:bg-[#152e57] text-white font-bold font-cairo text-xs gap-2 shadow-xs transition-all group/btn"
                   >
-                    <FileEdit className="h-3.5 w-3.5 text-[#46C1BE] transition-transform group-hover/btn:scale-110" />
+                    <FileEdit className="h-4 w-4 text-[#46C1BE] shrink-0 transition-transform group-hover/btn:scale-110" />
                     <span>{isRTL ? 'استكمال الإعداد' : 'Resume Setup'}</span>
                   </Button>
 
                   <Button
-                    size="sm"
                     variant="outline"
                     onClick={() => onDeleteDraft(draft)}
                     disabled={deletingDraftId === draft.id}
-                    className="h-8.5 w-8.5 p-0 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-slate-200/80 dark:border-slate-800 hover:border-rose-200 dark:hover:border-rose-900/60 transition-colors shrink-0"
+                    className="h-10 w-10 p-0 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-slate-200 dark:border-slate-800 hover:border-rose-200 dark:hover:border-rose-900/60 transition-colors shrink-0"
                     title={isRTL ? 'حذف المسودة' : 'Delete Draft'}
                   >
                     {deletingDraftId === draft.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-500" />
+                      <Loader2 className="h-4 w-4 animate-spin text-rose-500" />
                     ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                     )}
                   </Button>
                 </div>

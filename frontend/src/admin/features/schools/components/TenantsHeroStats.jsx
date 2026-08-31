@@ -92,7 +92,7 @@ export default function TenantsHeroStats({
           <div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-xl sm:text-2xl font-black font-cairo text-slate-900 dark:text-white">
-                {isRTL ? 'إدارة المدارس والمستأجرين' : 'Schools & Tenants Management'}
+                {isRTL ? 'إدارة المدارس' : 'Schools Management'}
               </h1>
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
