@@ -85,7 +85,6 @@ class TenantEngine:
             "website": kwargs.get("website"),
             "ministry_id": kwargs.get("ministry_id"),
             "license_number": kwargs.get("license_number"),
-            "configuration": config.model_dump(),
             "setup_completed": False,
             "setup_steps_completed": [],
             "principal_id": kwargs.get("principal_id"),
@@ -267,16 +266,11 @@ class TenantEngine:
         if not current:
             raise ValueError("المدرسة غير موجودة")
 
-        current_config = current.get("configuration", {})
-
-        for key, value in config_updates.items():
-            current_config[key] = value
-
         stmt = select(School).where(School.id == tenant_id).limit(1)
         result = await self.session.execute(stmt)
         obj = result.scalars().first()
         if obj:
-            apply_updates(obj, {"configuration": current_config, "updated_at": now})
+            apply_updates(obj, {"updated_at": now})
             await self.session.flush()
 
         ai_keys = ["ai_enabled", "ai_hakim_enabled", "ai_analytics_enabled", "ai_import_enabled"]

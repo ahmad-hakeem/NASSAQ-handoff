@@ -83,7 +83,7 @@ export default function TenantsManagement() {
             name_en: s.name_en,
             code: s.code || '',
             email: s.email || '',
-            phone: s.phone || s.principal_mobile || '',
+            phone: s.phone || s.principal_phone || s.principal_mobile || '',
             status: s.status || 'active',
             city: s.city || '',
             region: s.region || '',
