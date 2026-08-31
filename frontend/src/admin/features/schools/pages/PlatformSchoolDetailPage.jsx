@@ -12,7 +12,7 @@ import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
 import {
   Building2, Users, BookOpen, Activity, CreditCard,
-  ChevronRight, RefreshCw, AlertTriangle, Loader2
+  ChevronRight, RefreshCw, AlertTriangle, Loader2, ArrowRight, ArrowLeft
 } from 'lucide-react';
 
 // Sub-components
@@ -58,7 +58,7 @@ export default function PlatformSchoolDetailPage() {
   const [credResult, setCredResult] = useState(null);
 
   const generatePassword = () => {
-    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$';
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
     const pwd = Array.from({ length: 14 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     setCredForm(f => ({ ...f, password: pwd, confirmPassword: pwd }));
   };
@@ -99,7 +99,7 @@ export default function PlatformSchoolDetailPage() {
     setSaving(true);
     try {
       await api.put(`/schools/${schoolId}`, editData);
-      toast.success(t('changesSaved') || (isRTL ? 'تم حفظ التعديلات بنجاح' : 'Changes saved'));
+      toast.success(t('changesSaved') || (isRTL ? 'تم حفظ التعديلات بنجاح' : 'Changes saved successfully'));
       setEditMode(false);
       fetchDetail();
     } catch (err) {
@@ -203,11 +203,13 @@ export default function PlatformSchoolDetailPage() {
   if (loading) {
     return (
       <Sidebar>
-        <div className="min-h-screen flex items-center justify-center bg-slate-50/70 dark:bg-slate-950">
-          <div className="text-center space-y-4">
-            <Loader2 className="h-12 w-12 animate-spin text-[#46C1BE] mx-auto" />
-            <p className="font-cairo font-bold text-slate-700 dark:text-slate-300">
-              {t('loading') || (isRTL ? 'جاري تحميل تفاصيل المدرسة...' : 'Loading school details...')}
+        <div className="min-h-screen flex items-center justify-center bg-slate-50/70 dark:bg-slate-950 font-tajawal">
+          <div className="text-center space-y-3 p-8">
+            <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-center mx-auto text-[#1C3D74] dark:text-[#46C1BE]">
+              <Loader2 className="h-6 w-6 animate-spin text-[#1C3D74] dark:text-[#46C1BE]" />
+            </div>
+            <p className="font-cairo font-bold text-xs text-slate-600 dark:text-slate-300">
+              {t('loading') || (isRTL ? 'جاري تحميل بيانات المدرسة...' : 'Loading school profile...')}
             </p>
           </div>
         </div>
@@ -218,21 +220,26 @@ export default function PlatformSchoolDetailPage() {
   if (error || !detail) {
     return (
       <Sidebar>
-        <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50/70 dark:bg-slate-950" dir={isRTL ? 'rtl' : 'ltr'}>
-          <Card className="max-w-md w-full rounded-3xl border-slate-200 dark:border-slate-800 shadow-xl bg-white dark:bg-slate-900">
+        <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50/70 dark:bg-slate-950 font-tajawal" dir={isRTL ? 'rtl' : 'ltr'}>
+          <Card className="max-w-md w-full rounded-2xl border-slate-200/90 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden">
             <CardContent className="p-8 text-center space-y-5">
-              <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950/60 flex items-center justify-center mx-auto text-rose-600">
+              <div className="w-14 h-14 rounded-2xl bg-rose-50 dark:bg-rose-950/60 flex items-center justify-center mx-auto text-rose-600 border border-rose-100 dark:border-rose-900/60">
                 <AlertTriangle className="h-7 w-7" />
               </div>
-              <p className="font-cairo text-lg font-black text-slate-900 dark:text-white">
-                {t('failedToLoadSchoolData') || (isRTL ? 'تعذر تحميل بيانات المدرسة' : 'Failed to load school data')}
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-                <Button onClick={() => fetchDetail()} className="w-full sm:w-auto rounded-xl font-bold bg-[#1C3D74] text-white">
-                  <RefreshCw className={`h-4 w-4 ${isRTL ? 'ms-1.5' : 'me-1.5'}`} />
+              <div className="space-y-1">
+                <p className="font-cairo text-base font-extrabold text-slate-900 dark:text-white">
+                  {t('failedToLoadSchoolData') || (isRTL ? 'تعذر تحميل بيانات المدرسة' : 'Failed to load school data')}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {isRTL ? 'يرجى التحقق من اتصالك بالإنترنت أو إعادة المحاولة.' : 'Please check your connection and try again.'}
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-2">
+                <Button onClick={() => fetchDetail()} className="w-full sm:w-auto rounded-xl font-bold bg-[#1C3D74] hover:bg-[#152e57] text-white text-xs h-9.5 px-4 gap-2">
+                  <RefreshCw className="h-3.5 w-3.5" />
                   <span>{t('retry') || (isRTL ? 'إعادة المحاولة' : 'Retry')}</span>
                 </Button>
-                <Button variant="outline" onClick={() => navigate('/admin/schools')} className="w-full sm:w-auto rounded-xl font-bold">
+                <Button variant="outline" onClick={() => navigate('/admin/schools')} className="w-full sm:w-auto rounded-xl font-bold border-slate-200 dark:border-slate-700 text-xs h-9.5">
                   <span>{t('schoolsManagement') || (isRTL ? 'العودة للمدارس' : 'Back to Schools')}</span>
                 </Button>
               </div>
@@ -247,27 +254,27 @@ export default function PlatformSchoolDetailPage() {
 
   const tabs = [
     { value: 'general', label: t('generalInfo') || (isRTL ? 'المعلومات العامة' : 'General Info'), icon: Building2 },
-    { value: 'users', label: t('users') || (isRTL ? 'المستخدمون' : 'Users'), icon: Users },
-    { value: 'academic', label: t('academicStructure') || (isRTL ? 'الهيكل الأكاديمي' : 'Academic Structure'), icon: BookOpen },
-    { value: 'billing', label: t('billingSubscription') || (isRTL ? 'الاشتراك والسعة' : 'Billing & Tier'), icon: CreditCard },
-    { value: 'activity', label: isRTL ? 'سجل النشاط' : 'Activity Logs', icon: Activity },
+    { value: 'users', label: t('users') || (isRTL ? 'المستخدمون' : 'Users'), icon: Users, count: detail.stats?.total_users },
+    { value: 'academic', label: t('academicStructure') || (isRTL ? 'الهيكل الأكاديمي' : 'Academic Structure'), icon: BookOpen, count: detail.stats?.total_classes },
+    { value: 'billing', label: t('billingSubscription') || (isRTL ? 'الاشتراك والفواتير' : 'Billing & Tier'), icon: CreditCard },
+    { value: 'activity', label: isRTL ? 'سجل النشاط' : 'Activity Logs', icon: Activity, count: detail.audit_logs?.length },
   ];
 
   return (
     <Sidebar>
-      <div className="min-h-screen bg-slate-50/70 dark:bg-slate-950 font-tajawal" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="min-h-screen bg-slate-50/70 dark:bg-slate-950 font-tajawal text-slate-900 dark:text-slate-100" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
 
           {/* Breadcrumb Navigation */}
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
             <button
               onClick={() => navigate('/admin/schools')}
-              className="hover:text-[#1C3D74] dark:hover:text-[#46C1BE] transition-colors"
+              className="hover:text-[#1C3D74] dark:hover:text-[#46C1BE] transition-colors flex items-center gap-1 font-bold"
             >
-              {t('schoolsManagement') || (isRTL ? 'إدارة المدارس' : 'Schools Management')}
+              <span>{t('schoolsManagement') || (isRTL ? 'إدارة المدارس' : 'Schools')}</span>
             </button>
-            <ChevronRight className={`h-3.5 w-3.5 ${isRTL ? 'rotate-180' : ''}`} />
-            <span className="text-slate-900 dark:text-white font-bold">{school?.name}</span>
+            <ChevronRight className={`h-3.5 w-3.5 text-slate-400 ${isRTL ? 'rotate-180' : ''}`} />
+            <span className="text-slate-800 dark:text-slate-200 font-bold truncate max-w-[200px] sm:max-w-md">{school?.name}</span>
           </div>
 
           {/* 1. Header Banner & Quick Stats */}
@@ -283,26 +290,33 @@ export default function PlatformSchoolDetailPage() {
             t={t}
           />
 
-          {/* 2. Structured Tabs Bar */}
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="w-full justify-start bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-1 gap-1 overflow-x-auto shadow-2xs">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <TabsTrigger
-                    key={tab.value}
-                    value={tab.value}
-                    className="flex items-center gap-2 rounded-xl text-xs font-bold py-2.5 px-4 data-[state=active]:bg-[#1C3D74] data-[state=active]:text-white dark:data-[state=active]:bg-[#1C3D74] whitespace-nowrap transition-all"
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{tab.label}</span>
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
+          {/* 2. Structured Tabs Bar - Refined Segmented Tabs */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <div className="overflow-x-auto pb-1">
+              <TabsList className="bg-slate-100/90 dark:bg-slate-800/60 p-1.5 rounded-2xl border border-slate-200/70 dark:border-slate-700/60 inline-flex gap-1 h-auto min-w-max">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <TabsTrigger
+                      key={tab.value}
+                      value={tab.value}
+                      className="flex items-center gap-2 rounded-xl text-xs font-bold py-2 px-3.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:text-[#1C3D74] dark:data-[state=active]:text-[#46C1BE] data-[state=active]:shadow-xs transition-all"
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span>{tab.label}</span>
+                      {typeof tab.count === 'number' && (
+                        <span className="ms-1 px-2 py-0.5 rounded-md text-[10px] font-mono bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300 data-[state=active]:bg-[#1C3D74]/10 data-[state=active]:text-[#1C3D74] dark:data-[state=active]:bg-[#46C1BE]/20 dark:data-[state=active]:text-[#46C1BE]">
+                          {tab.count}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+            </div>
 
             {/* Tab 1: General Info */}
-            <TabsContent value="general" className="mt-4">
+            <TabsContent value="general" className="mt-0 focus-visible:outline-none">
               <GeneralInfoTab
                 school={school}
                 editMode={editMode}
@@ -322,7 +336,7 @@ export default function PlatformSchoolDetailPage() {
             </TabsContent>
 
             {/* Tab 2: Users List */}
-            <TabsContent value="users" className="mt-4">
+            <TabsContent value="users" className="mt-0 focus-visible:outline-none">
               <SchoolUsersTab
                 users={detail.users || []}
                 isRTL={isRTL}
@@ -331,7 +345,7 @@ export default function PlatformSchoolDetailPage() {
             </TabsContent>
 
             {/* Tab 3: Academic Structure */}
-            <TabsContent value="academic" className="mt-4">
+            <TabsContent value="academic" className="mt-0 focus-visible:outline-none">
               <AcademicStructureTab
                 students={detail.students || []}
                 classes={detail.classes || []}
@@ -341,7 +355,7 @@ export default function PlatformSchoolDetailPage() {
             </TabsContent>
 
             {/* Tab 4: Billing & Tier */}
-            <TabsContent value="billing" className="mt-4">
+            <TabsContent value="billing" className="mt-0 focus-visible:outline-none">
               <BillingSubscriptionTab
                 school={school}
                 stats={detail.stats}
@@ -351,7 +365,7 @@ export default function PlatformSchoolDetailPage() {
             </TabsContent>
 
             {/* Tab 5: Activity Logs */}
-            <TabsContent value="activity" className="mt-4">
+            <TabsContent value="activity" className="mt-0 focus-visible:outline-none">
               <SchoolActivityTab
                 auditLogs={detail.audit_logs || []}
                 isRTL={isRTL}
