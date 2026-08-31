@@ -245,7 +245,7 @@ export default function GeneralInfoTab({
                   <span>{t('status2') || (isRTL ? 'حالة المدرسة' : 'Status')}</span>
                 </div>
                 <Badge className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${statusCfg.badge}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot} ${isRTL ? 'ms-1.5' : 'me-1.5'}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot} me-1.5`} />
                   <span>{isRTL ? statusCfg.label : statusCfg.label_en}</span>
                 </Badge>
               </div>

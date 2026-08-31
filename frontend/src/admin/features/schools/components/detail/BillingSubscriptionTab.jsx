@@ -105,7 +105,7 @@ export default function BillingSubscriptionTab({
               </div>
 
               {/* Enhanced Progress Bar */}
-              <div className="mt-3 w-full h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 p-0.5 overflow-hidden">
+              <div dir="ltr" className="mt-3 w-full h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 p-0.5 overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-700 ${
                     utilizationPercent > 90

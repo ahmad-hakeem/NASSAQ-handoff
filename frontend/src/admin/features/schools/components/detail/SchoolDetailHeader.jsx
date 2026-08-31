@@ -87,7 +87,7 @@ export default function SchoolDetailHeader({
             <div className="flex flex-wrap items-center gap-2 pt-0.5 text-xs">
               <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/80 font-mono font-bold">
                 <Hash className="h-3.5 w-3.5 text-[#46C1BE]" />
-                <span>{school?.code || '—'}</span>
+                <span dir="ltr">{school?.code || '—'}</span>
               </div>
 
               {school?.city && (

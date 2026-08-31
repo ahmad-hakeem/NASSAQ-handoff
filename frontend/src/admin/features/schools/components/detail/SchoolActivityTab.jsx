@@ -41,17 +41,17 @@ export default function SchoolActivityTab({
 
         {auditLogs.length > 0 && (
           <div className="relative w-full sm:w-56">
-            <Search className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400`} />
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={isRTL ? 'بحث في السجل...' : 'Search logs...'}
-              className={`${isRTL ? 'pr-9 pl-7' : 'pl-9 pr-7'} h-8.5 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-200/90 dark:border-slate-800 focus:ring-2 focus:ring-[#46C1BE]/20 focus:border-[#46C1BE]`}
+              className="ps-9 pe-7 h-8.5 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-200/90 dark:border-slate-800 focus:ring-2 focus:ring-[#46C1BE]/20 focus:border-[#46C1BE]"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className={`absolute ${isRTL ? 'left-2.5' : 'right-2.5'} top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600`}
+                className="absolute end-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 <X className="h-3 w-3" />
               </button>

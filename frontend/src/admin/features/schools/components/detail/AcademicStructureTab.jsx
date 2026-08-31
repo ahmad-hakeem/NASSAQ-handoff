@@ -57,17 +57,17 @@ export default function AcademicStructureTab({
 
           {classes.length > 0 && (
             <div className="relative w-full sm:w-56">
-              <Search className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400`} />
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
               <Input
                 value={classSearch}
                 onChange={(e) => setClassSearch(e.target.value)}
                 placeholder={isRTL ? 'بحث عن فصل...' : 'Search class...'}
-                className={`${isRTL ? 'pr-9 pl-7' : 'pl-9 pr-7'} h-8.5 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-200/90 dark:border-slate-800 focus:ring-2 focus:ring-[#615090]/20 focus:border-[#615090]`}
+                className="ps-9 pe-7 h-8.5 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-200/90 dark:border-slate-800 focus:ring-2 focus:ring-[#615090]/20 focus:border-[#615090]"
               />
               {classSearch && (
                 <button
                   onClick={() => setClassSearch('')}
-                  className={`absolute ${isRTL ? 'left-2.5' : 'right-2.5'} top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600`}
+                  className="absolute end-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -132,17 +132,17 @@ export default function AcademicStructureTab({
 
           {students.length > 0 && (
             <div className="relative w-full sm:w-56">
-              <Search className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400`} />
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
               <Input
                 value={studentSearch}
                 onChange={(e) => setStudentSearch(e.target.value)}
                 placeholder={isRTL ? 'بحث عن طالب...' : 'Search student...'}
-                className={`${isRTL ? 'pr-9 pl-7' : 'pl-9 pr-7'} h-8.5 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-200/90 dark:border-slate-800 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500`}
+                className="ps-9 pe-7 h-8.5 rounded-xl text-xs bg-slate-50/80 dark:bg-slate-950 border-slate-200/90 dark:border-slate-800 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
               />
               {studentSearch && (
                 <button
                   onClick={() => setStudentSearch('')}
-                  className={`absolute ${isRTL ? 'left-2.5' : 'right-2.5'} top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600`}
+                  className="absolute end-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -170,7 +170,7 @@ export default function AcademicStructureTab({
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-cairo">
-                    <th className={`p-3 font-bold ${isRTL ? 'text-right' : 'text-left'}`}>{t('name') || (isRTL ? 'اسم الطالب' : 'Student Name')}</th>
+                    <th className="p-3 font-bold text-start">{t('name') || (isRTL ? 'اسم الطالب' : 'Student Name')}</th>
                     <th className="p-3 font-bold text-center">{t('grade') || (isRTL ? 'الصف الدراسي' : 'Grade Level')}</th>
                     <th className="p-3 font-bold text-center">{t('status2') || (isRTL ? 'الحالة' : 'Status')}</th>
                   </tr>
