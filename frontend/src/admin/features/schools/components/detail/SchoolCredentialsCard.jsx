@@ -17,7 +17,7 @@ export default function SchoolCredentialsCard({
 }) {
   return (
     <Card className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden font-tajawal">
-      <CardHeader className="pb-3.5 border-b border-slate-100 dark:border-slate-800/80">
+      <CardHeader className="pb-4 border-b border-slate-100 dark:border-slate-800/80">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <CardTitle className="font-cairo text-sm sm:text-base font-extrabold flex items-center gap-2.5 text-slate-900 dark:text-white">
             <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-100 dark:border-amber-900/60">
@@ -29,7 +29,7 @@ export default function SchoolCredentialsCard({
           <Button
             size="sm"
             onClick={() => onOpenCredForm(principal)}
-            className={`gap-1.5 text-xs font-bold font-cairo rounded-xl h-8.5 px-3.5 shadow-2xs transition-all ${
+            className={`gap-2 text-xs font-bold font-cairo rounded-xl h-9 px-4 shadow-2xs transition-all ${
               hasCreds
                 ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-100 border border-slate-200 dark:border-slate-700'
                 : 'bg-[#1C3D74] hover:bg-[#152e57] text-white shadow-xs'
@@ -50,7 +50,7 @@ export default function SchoolCredentialsCard({
         </div>
       </CardHeader>
 
-      <CardContent className="pt-4 pb-5 space-y-3.5">
+      <CardContent className="pt-5 pb-6 space-y-4">
         {hasCreds && principal ? (
           <div className="space-y-3.5">
             {/* Active Status Banner */}
@@ -140,7 +140,7 @@ export default function SchoolCredentialsCard({
             <Button
               size="sm"
               onClick={() => onOpenCredForm(null)}
-              className="mt-1 gap-1.5 text-xs font-bold rounded-xl h-8.5 px-4 bg-[#1C3D74] hover:bg-[#152e57] text-white shadow-xs"
+              className="mt-1 gap-2 text-xs font-bold rounded-xl h-9 px-5 bg-[#1C3D74] hover:bg-[#152e57] text-white shadow-xs"
             >
               <UserPlus className="h-3.5 w-3.5" />
               <span>{t('createPrincipalAccount') || (isRTL ? 'إنشاء حساب المدير الآن' : 'Create Principal Account Now')}</span>

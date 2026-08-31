@@ -94,7 +94,7 @@ export default function GeneralInfoTab({
 
         {/* Column 1 (Left 2 spans): Editable School Details */}
         <Card className="lg:col-span-2 rounded-2xl border-slate-200/90 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3.5">
+          <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-4">
             <CardTitle className="font-cairo text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-[#1C3D74] dark:text-[#46C1BE] flex items-center justify-center shrink-0 border border-blue-100 dark:border-blue-900/60">
                 <Building2 className="h-4 w-4" />
@@ -107,26 +107,26 @@ export default function GeneralInfoTab({
                 size="sm"
                 variant="outline"
                 onClick={() => setEditMode(true)}
-                className="rounded-xl h-8.5 px-3 font-bold text-xs border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all gap-1.5"
+                className="rounded-xl h-9 px-4 font-bold text-xs border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all gap-2"
               >
                 <Edit3 className="h-3.5 w-3.5 text-[#1C3D74] dark:text-[#46C1BE]" />
                 <span>{t('edit') || (isRTL ? 'تعديل البيانات' : 'Edit')}</span>
               </Button>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => setEditMode(false)}
                   disabled={saving}
-                  className="rounded-xl h-8.5 px-3 text-xs font-bold border-slate-200 dark:border-slate-700"
+                  className="rounded-xl h-9 px-4 text-xs font-bold border-slate-200 dark:border-slate-700 gap-1.5"
                 >
-                  <X className={`h-3.5 w-3.5 ${isRTL ? 'ms-1' : 'me-1'}`} />
+                  <X className="h-3.5 w-3.5" />
                   <span>{t('cancel') || (isRTL ? 'إلغاء' : 'Cancel')}</span>
                 </Button>
                 <Button
                   size="sm"
-                  className="rounded-xl h-8.5 px-3.5 bg-[#1C3D74] hover:bg-[#152e57] text-white font-bold text-xs shadow-xs gap-1.5"
+                  className="rounded-xl h-9 px-4 bg-[#1C3D74] hover:bg-[#152e57] text-white font-bold text-xs shadow-xs gap-2"
                   onClick={onSave}
                   disabled={saving}
                 >
@@ -141,8 +141,8 @@ export default function GeneralInfoTab({
             )}
           </CardHeader>
 
-          <CardContent className="pt-5 pb-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <CardContent className="pt-6 pb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               {/* Arabic Name */}
               <EditableField
                 label={t('schoolNameArabic') || (isRTL ? 'اسم المدرسة (بالعربية)' : 'School Name (Arabic)')}
@@ -219,7 +219,7 @@ export default function GeneralInfoTab({
         {/* Column 2 (Right 1 span): System & Tenant Metadata */}
         <Card className="rounded-2xl border-slate-200/90 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 overflow-hidden flex flex-col justify-between">
           <div>
-            <CardHeader className="border-b border-slate-100 dark:border-slate-800/80 pb-3.5">
+            <CardHeader className="border-b border-slate-100 dark:border-slate-800/80 pb-4">
               <CardTitle className="font-cairo text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-[#615090] dark:text-purple-300 flex items-center justify-center shrink-0 border border-purple-100 dark:border-purple-900/60">
                   <Shield className="h-4 w-4" />
@@ -228,7 +228,7 @@ export default function GeneralInfoTab({
               </CardTitle>
             </CardHeader>
 
-            <CardContent className="pt-4 space-y-3">
+            <CardContent className="pt-5 space-y-3.5">
               {/* Tenant Code */}
               <InfoTile
                 label={t('schoolCode') || (isRTL ? 'رمز المستأجر (Code)' : 'Tenant Code')}

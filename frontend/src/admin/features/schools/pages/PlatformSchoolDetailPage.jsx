@@ -263,7 +263,7 @@ export default function PlatformSchoolDetailPage() {
   return (
     <Sidebar>
       <div className="min-h-screen bg-slate-50/70 dark:bg-slate-950 font-tajawal text-slate-900 dark:text-slate-100" dir={isRTL ? 'rtl' : 'ltr'}>
-        <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        <div className="max-w-7xl mx-auto p-5 sm:p-7 lg:p-9 space-y-7">
 
           {/* Breadcrumb Navigation */}
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -300,7 +300,7 @@ export default function PlatformSchoolDetailPage() {
                     <TabsTrigger
                       key={tab.value}
                       value={tab.value}
-                      className="flex items-center gap-2 rounded-xl text-xs font-bold py-2 px-3.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:text-[#1C3D74] dark:data-[state=active]:text-[#46C1BE] data-[state=active]:shadow-xs transition-all"
+                      className="flex items-center gap-2 rounded-xl text-xs font-bold py-2.5 px-4 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:text-[#1C3D74] dark:data-[state=active]:text-[#46C1BE] data-[state=active]:shadow-xs transition-all"
                     >
                       <Icon className="h-4 w-4 shrink-0" />
                       <span>{tab.label}</span>
