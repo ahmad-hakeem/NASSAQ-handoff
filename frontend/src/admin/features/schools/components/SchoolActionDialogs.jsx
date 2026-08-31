@@ -22,7 +22,7 @@ export default function SchoolActionDialogs({
     <>
       {/* Suspend Confirmation Dialog */}
       <Dialog open={!!suspendDialogSchool} onOpenChange={onCloseSuspendDialog}>
-        <DialogContent className="rounded-3xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 max-w-md shadow-2xl p-6 font-cairo z-50">
+        <DialogContent className="rounded-3xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 max-w-md shadow-2xl p-6 font-cairo">
           <DialogHeader>
             <div className="w-12 h-12 rounded-2xl bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center mb-2 border border-rose-500/20">
               <ShieldAlert className="h-6 w-6" />
@@ -75,7 +75,7 @@ export default function SchoolActionDialogs({
 
       {/* Activate Confirmation Dialog */}
       <Dialog open={!!activateDialogSchool} onOpenChange={onCloseActivateDialog}>
-        <DialogContent className="rounded-3xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 max-w-md shadow-2xl p-6 font-cairo z-50">
+        <DialogContent className="rounded-3xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 max-w-md shadow-2xl p-6 font-cairo">
           <DialogHeader>
             <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-2 border border-emerald-500/20">
               <CheckCircle2 className="h-6 w-6" />
