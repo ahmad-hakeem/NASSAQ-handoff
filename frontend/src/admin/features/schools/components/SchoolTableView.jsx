@@ -60,18 +60,18 @@ export default function SchoolTableView({
           <Button
             onClick={onResetFilters}
             variant="outline"
-            className="rounded-xl h-9.5 px-4 font-bold text-xs border-slate-300 dark:border-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white gap-1.5 shadow-2xs"
+            className="rounded-xl h-11 px-6 font-bold text-sm border-slate-300 dark:border-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white gap-2 shadow-2xs"
           >
-            <RefreshCw className="h-3.5 w-3.5 text-slate-500" />
+            <RefreshCw className="h-4 w-4 text-slate-500" />
             <span>{isRTL ? 'إعادة ضبط الفلاتر' : 'Reset Filters'}</span>
           </Button>
 
           {onOpenCreateWizard && (
             <Button
               onClick={onOpenCreateWizard}
-              className="rounded-xl h-9.5 px-4 font-bold text-xs bg-[#1C3D74] hover:bg-[#152e57] text-white shadow-xs gap-1.5"
+              className="rounded-xl h-11 px-6 font-bold text-sm bg-[#1C3D74] hover:bg-[#152e57] text-white shadow-xs gap-2"
             >
-              <Plus className="h-3.5 w-3.5 text-[#46C1BE]" />
+              <Plus className="h-4 w-4 text-[#46C1BE]" />
               <span>{isRTL ? 'إضافة مدرسة جديدة' : 'Add New School'}</span>
             </Button>
           )}

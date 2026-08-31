@@ -8,6 +8,7 @@ export default function WizardHeader({
   currentStep,
   onStepClick,
   isRTL,
+  draftSchool = null,
 }) {
   return (
     <DialogHeader className="px-6 py-5 border-b border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 flex-shrink-0">
@@ -17,11 +18,26 @@ export default function WizardHeader({
             <School className="h-5 w-5 text-[#46C1BE]" />
           </div>
           <div>
-            <DialogTitle className="font-cairo text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              {isRTL ? 'إنشاء مدرسة جديدة' : 'Create New School'}
-            </DialogTitle>
+            <div className="flex items-center gap-2">
+              <DialogTitle className="font-cairo text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                {isRTL
+                  ? (draftSchool ? 'استكمال إعداد المدرسة' : 'إنشاء مدرسة جديدة')
+                  : (draftSchool ? 'Resume School Setup' : 'Create New School')}
+              </DialogTitle>
+              {draftSchool && (
+                <Badge className="bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 text-[10px] font-bold px-2 py-0.5 border border-amber-300 dark:border-amber-700">
+                  {isRTL ? 'مسودة' : 'Draft'}
+                </Badge>
+              )}
+            </div>
             <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
-              {isRTL ? 'إعداد وتهيئة مستأجر جديد في منظومة نَسَّق المدرسية' : 'Onboard a new school tenant in NASSAQ ecosystem'}
+              {isRTL
+                ? (draftSchool
+                    ? `استكمال تهيئة مسودة: ${draftSchool.name || 'مدرسة بدون اسم'}`
+                    : 'إعداد وتهيئة مستأجر جديد في منظومة نَسَّق المدرسية')
+                : (draftSchool
+                    ? `Resume onboarding draft: ${draftSchool.name || 'Draft School'}`
+                    : 'Onboard a new school tenant in NASSAQ ecosystem')}
             </p>
           </div>
         </div>

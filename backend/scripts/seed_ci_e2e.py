@@ -139,7 +139,6 @@ async def _materialise_it_workspace(session, user_id, *, name_ar):
         "status": "active",
         "school_type": "independent_teacher",
         "tenant_type": "independent_teacher",
-        "setup_completed": True,
         "principal_id": user_id,
         "principal_name": user.get("full_name"),
         "principal_email": user.get("email"),
@@ -301,7 +300,6 @@ async def seed() -> dict:
             "school_type": "public",
             "tenant_type": "production",
             "status": "active",
-            "setup_completed": True,
             "created_at": now_iso,
             "updated_at": now_iso,
         })

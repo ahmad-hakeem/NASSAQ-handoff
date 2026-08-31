@@ -257,7 +257,6 @@ async def seed_schools(db: SeedDB) -> dict:
                 "language": "ar",
                 "calendar_system": "hijri_gregorian",
                 "student_capacity": 300,
-                "setup_completed": True,
                 "tenant_type": "production",
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),

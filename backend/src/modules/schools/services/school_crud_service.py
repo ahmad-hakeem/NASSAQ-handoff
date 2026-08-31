@@ -66,12 +66,25 @@ def normalize_school(
         "name": s.get("name") or s.get("name_ar") or s.get("name_en") or "",
         "code": s.get("code") or s.get("license_number") or s.get("id") or "",
         "email": s.get("email") or "",
+        "phone": s.get("phone") or s.get("principal_phone") or s.get("principal_mobile") or "",
+        "address": s.get("address") or "",
+        "city": s.get("city") or "",
+        "region": s.get("region") or "",
         "country": s.get("country") or "SA",
         "status": s.get("status") or "active",
         "student_capacity": s.get("student_capacity") or s.get("student_count") or 500,
         "current_students": current_students,
         "current_teachers": current_teachers,
         "created_at": s.get("created_at") or "",
+        "school_type": s.get("school_type") or "public",
+        "stage": s.get("stage") or "primary",
+        "language": s.get("language") or "ar",
+        "calendar_system": s.get("calendar_system") or "hijri_gregorian",
+        "educational_pathway": s.get("educational_pathway"),
+        "principal_name": s.get("principal_name"),
+        "principal_email": s.get("principal_email"),
+        "principal_phone": s.get("principal_phone") or s.get("phone"),
+        "principal_mobile": s.get("principal_mobile") or s.get("phone") or s.get("principal_phone"),
         "entity_kind": preview["entity_kind"],
         "can_preview_as_principal": preview["can_preview_as_principal"],
         "preview_block_reason": preview["preview_block_reason"],
@@ -121,7 +134,8 @@ class SchoolCrudService:
 
         school_id = str(uuid.uuid4())
         created_at = datetime.now(timezone.utc).isoformat()
-        school_phone = school_data.phone or school_data.principal_phone
+        school_phone = school_data.principal_mobile or school_data.phone or school_data.principal_phone
+        logo_url = await normalize_image_field_or_400(school_data.logo_url) if school_data.logo_url else None
 
         def _build_school_doc(code: str) -> dict:
             return {
@@ -135,7 +149,7 @@ class SchoolCrudService:
                 "city": school_data.city,
                 "region": school_data.region,
                 "country": school_data.country or "SA",
-                "logo_url": None,
+                "logo_url": logo_url,
                 "status": SchoolStatus.ACTIVE.value,
                 "student_capacity": school_data.student_capacity,
                 "current_students": 0,
@@ -147,6 +161,7 @@ class SchoolCrudService:
                 "principal_name": school_data.principal_name,
                 "principal_email": school_data.principal_email,
                 "principal_phone": school_data.principal_phone or getattr(school_data, 'principal_mobile', None),
+                "principal_mobile": school_data.principal_mobile or school_phone,
                 "educational_pathway": school_data.educational_pathway,
                 "created_at": created_at,
                 "updated_at": created_at,
@@ -273,7 +288,8 @@ class SchoolCrudService:
     async def create_school_draft(session, school_data: SchoolCreate, current_user: dict) -> SchoolResponse:
         school_id = str(uuid.uuid4())
         created_at = datetime.now(timezone.utc).isoformat()
-        school_phone = school_data.phone or school_data.principal_phone
+        school_phone = school_data.principal_mobile or school_data.phone or school_data.principal_phone
+        logo_url = await normalize_image_field_or_400(school_data.logo_url) if school_data.logo_url else None
 
         def _build_school_doc(code: str) -> dict:
             return {
@@ -287,7 +303,7 @@ class SchoolCrudService:
                 "city": school_data.city or "",
                 "region": school_data.region,
                 "country": school_data.country or "SA",
-                "logo_url": None,
+                "logo_url": logo_url,
                 "status": "setup",
                 "student_capacity": school_data.student_capacity,
                 "current_students": 0,
@@ -299,6 +315,7 @@ class SchoolCrudService:
                 "principal_name": school_data.principal_name or "",
                 "principal_email": school_data.principal_email or "",
                 "principal_phone": school_data.principal_phone or getattr(school_data, 'principal_mobile', None) or "",
+                "principal_mobile": school_data.principal_mobile or school_phone,
                 "educational_pathway": school_data.educational_pathway or "",
                 "created_at": created_at,
                 "updated_at": created_at,
@@ -402,6 +419,168 @@ class SchoolCrudService:
         return {"success": True, "message": "تم حذف المسودة بنجاح"}
 
     @staticmethod
+    async def update_school_draft(session, school_id: str, school_data: SchoolCreate, current_user: dict) -> SchoolResponse:
+        school = await gd_find_one(session, "schools", {"id": school_id})
+        if not school:
+            raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
+        if school.get("status") != "setup":
+            raise HTTPException(status_code=400, detail="يمكن تعديل مسودة مدرسة قيد الإعداد فقط")
+
+        now = datetime.now(timezone.utc).isoformat()
+        school_phone = school_data.principal_mobile or school_data.phone or school_data.principal_phone or school.get("phone")
+
+        update_fields = {
+            "name": school_data.name or school.get("name"),
+            "name_en": school_data.name_en,
+            "email": school_data.email or school.get("email"),
+            "phone": school_phone,
+            "address": school_data.address or "",
+            "city": school_data.city or "",
+            "region": school_data.region or school.get("region"),
+            "country": school_data.country or "SA",
+            "language": school_data.language or "ar",
+            "calendar_system": school_data.calendar_system or "hijri_gregorian",
+            "school_type": school_data.school_type or "public",
+            "stage": school_data.stage or "primary",
+            "student_capacity": school_data.student_capacity or school.get("student_capacity", 500),
+            "principal_name": school_data.principal_name or school.get("principal_name") or "",
+            "principal_email": school_data.principal_email or school.get("principal_email") or "",
+            "principal_phone": school_data.principal_phone or getattr(school_data, 'principal_mobile', None) or school.get("principal_phone") or "",
+            "principal_mobile": school_data.principal_mobile or school_phone or "",
+            "educational_pathway": school_data.educational_pathway or "",
+            "updated_at": now,
+        }
+        if school_data.logo_url:
+            update_fields["logo_url"] = await normalize_image_field_or_400(school_data.logo_url)
+        await gd_update_one(session, "schools", {"id": school_id}, update_fields)
+
+        await audit_engine.log_data_change(
+            action=AuditAction.TENANT_UPDATED.value,
+            performed_by=current_user.get("id", current_user.get("user_id")),
+            entity_type="tenant",
+            entity_id=school_id,
+            new_values={
+                "action": "DRAFT_UPDATED",
+                "school_name": update_fields["name"],
+            }
+        )
+
+        updated = await gd_find_one(session, "schools", {"id": school_id})
+        return SchoolResponse(**normalize_school(updated))
+
+    @staticmethod
+    async def finalize_school_draft(session, school_id: str, school_data: SchoolCreate, current_user: dict) -> dict:
+        school = await gd_find_one(session, "schools", {"id": school_id})
+        if not school:
+            raise HTTPException(status_code=404, detail="المدرسة غير موجودة")
+        if school.get("status") != "setup":
+            raise HTTPException(status_code=400, detail="المدرسة ليست مسودة قيد الإعداد")
+
+        if school_data.principal_email:
+            existing_email = await gd_find_one(session, "users", {"email": school_data.principal_email})
+            if existing_email and existing_email.get("tenant_id") != school_id:
+                raise HTTPException(status_code=400, detail="البريد الإلكتروني مستخدم مسبقاً")
+
+        if school_data.principal_phone:
+            existing_phone = await gd_find_one(session, "users", {"phone": school_data.principal_phone})
+            if existing_phone and existing_phone.get("tenant_id") != school_id:
+                raise HTTPException(status_code=400, detail="رقم الهاتف مستخدم مسبقاً")
+
+        now = datetime.now(timezone.utc).isoformat()
+        school_phone = school_data.principal_mobile or school_data.phone or school_data.principal_phone or school.get("phone")
+
+        update_fields = {
+            "name": school_data.name or school.get("name"),
+            "name_en": school_data.name_en,
+            "email": school_data.email or school_data.principal_email or school.get("email"),
+            "phone": school_phone,
+            "address": school_data.address or "",
+            "city": school_data.city or "",
+            "region": school_data.region or school.get("region"),
+            "country": school_data.country or "SA",
+            "status": SchoolStatus.ACTIVE.value,
+            "language": school_data.language or "ar",
+            "calendar_system": school_data.calendar_system or "hijri_gregorian",
+            "school_type": school_data.school_type or "public",
+            "stage": school_data.stage or "primary",
+            "student_capacity": school_data.student_capacity or school.get("student_capacity", 500),
+            "principal_name": school_data.principal_name or school.get("principal_name") or "",
+            "principal_email": school_data.principal_email or school.get("principal_email") or "",
+            "principal_phone": school_data.principal_phone or getattr(school_data, 'principal_mobile', None) or school.get("principal_phone") or "",
+            "principal_mobile": school_data.principal_mobile or school_phone or "",
+            "educational_pathway": school_data.educational_pathway or "",
+            "updated_at": now,
+        }
+        if school_data.logo_url:
+            update_fields["logo_url"] = await normalize_image_field_or_400(school_data.logo_url)
+        await gd_update_one(session, "schools", {"id": school_id}, update_fields)
+
+        import secrets, string
+        chars = string.ascii_letters + string.digits + "@#$"
+        temp_password = ''.join(secrets.choice(chars) for _ in range(12))
+        hashed_password = hash_password(temp_password)
+
+        if school_data.principal_email and school_data.principal_name:
+            existing_principal = await gd_find_one(session, "users", {
+                "tenant_id": school_id,
+                "role": UserRole.SCHOOL_PRINCIPAL.value
+            })
+            if existing_principal:
+                await gd_update_one(session, "users", {"id": existing_principal["id"]}, {
+                    "email": school_data.principal_email,
+                    "full_name": school_data.principal_name,
+                    "phone": school_data.principal_phone or getattr(school_data, 'principal_mobile', None),
+                    "password_hash": hashed_password,
+                    "is_active": True,
+                    "must_change_password": True,
+                    "updated_at": now,
+                })
+            else:
+                principal_id = str(uuid.uuid4())
+                principal_doc = {
+                    "id": principal_id,
+                    "email": school_data.principal_email,
+                    "password_hash": hashed_password,
+                    "full_name": school_data.principal_name,
+                    "full_name_en": None,
+                    "role": UserRole.SCHOOL_PRINCIPAL.value,
+                    "tenant_id": school_id,
+                    "phone": school_data.principal_phone or getattr(school_data, 'principal_mobile', None),
+                    "avatar_url": None,
+                    "is_active": True,
+                    "must_change_password": True,
+                    "preferred_language": school_data.language or "ar",
+                    "preferred_theme": "light",
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                await gd_insert(session, "users", principal_doc)
+
+        # Ensure default subjects if not already present
+        existing_subjects = await gd_count(session, "subjects", {"school_id": school_id})
+        if existing_subjects == 0:
+            from src.common.constants.default_subjects import build_default_subject_docs
+            await gd_insert_many(session, "subjects", build_default_subject_docs(school_id, now))
+
+        await audit_engine.log_data_change(
+            action=AuditAction.TENANT_UPDATED.value,
+            performed_by=current_user.get("id", current_user.get("user_id")),
+            entity_type="tenant",
+            entity_id=school_id,
+            new_values={
+                "school_code": school.get("code"),
+                "school_name": update_fields["name"],
+                "status": SchoolStatus.ACTIVE.value,
+                "action": "DRAFT_FINALIZED",
+            }
+        )
+
+        updated = await gd_find_one(session, "schools", {"id": school_id})
+        resp = normalize_school(updated)
+        resp["temp_password"] = temp_password
+        return resp
+
+    @staticmethod
     async def get_schools_list(session, status: Optional[str] = None) -> List[SchoolResponse]:
         query = {}
         if status:
@@ -457,14 +636,21 @@ class SchoolCrudService:
 
         previous_status = school.get("status", "active")
         if previous_status == "suspended":
-            raise HTTPException(status_code=400, detail="المدرسة معلقة مسبقاً")
+            return {
+                "message": "المدرسة معلقة بالفعل",
+                "school_id": school_id,
+                "previous_status": previous_status,
+                "new_status": "suspended",
+                "reason": body.reason or "إيقاف إداري مؤقت",
+            }
 
         now = datetime.now(timezone.utc).isoformat()
+        reason_text = (body.reason if body and body.reason else "").strip() or "إيقاف إداري مؤقت"
         await gd_update_one(session, "schools", {"id": school_id}, {
             "status": "suspended",
             "suspended_at": now,
             "suspended_by": current_user.get("id", current_user.get("user_id")),
-            "suspension_reason": body.reason,
+            "suspension_reason": reason_text,
             "updated_at": now,
         })
         await gd_update_many(session, "users", {"tenant_id": school_id, "is_active": True}, {
@@ -483,7 +669,7 @@ class SchoolCrudService:
             previous_values={"status": previous_status},
             new_values={
                 "status": "suspended",
-                "reason": body.reason,
+                "reason": reason_text,
                 "performed_by_email": current_user.get("email", ""),
                 "school_name": school.get("name", ""),
             },
@@ -497,7 +683,7 @@ class SchoolCrudService:
             "school_id": school_id,
             "previous_status": previous_status,
             "new_status": "suspended",
-            "reason": body.reason,
+            "reason": reason_text,
             "timestamp": now,
         }
 
@@ -509,12 +695,13 @@ class SchoolCrudService:
 
         previous_status = school.get("status", "suspended")
         now = datetime.now(timezone.utc).isoformat()
+        reason_text = (body.reason if body and body.reason else "").strip() or "إعادة تفعيل المدرسة"
 
         await gd_update_one(session, "schools", {"id": school_id}, {
             "status": "active",
             "activated_at": now,
             "activated_by": current_user.get("id", current_user.get("user_id")),
-            "activation_reason": body.reason,
+            "activation_reason": reason_text,
             "updated_at": now,
         })
 

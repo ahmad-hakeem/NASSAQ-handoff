@@ -4,6 +4,16 @@ import sys
 from logging.config import fileConfig
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
+try:
+    from dotenv import load_dotenv
+    env_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    if os.path.exists(env_file):
+        load_dotenv(env_file)
+    else:
+        load_dotenv()
+except ImportError:
+    pass
+
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context

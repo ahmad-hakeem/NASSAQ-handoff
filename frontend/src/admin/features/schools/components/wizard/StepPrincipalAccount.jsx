@@ -2,7 +2,7 @@ import React from 'react';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
 import {
-  User, Mail, Phone, ShieldCheck
+  User, Mail, Phone, ShieldCheck, UserCheck
 } from 'lucide-react';
 
 function RequiredBadge({ text = 'إجباري' }) {
@@ -138,18 +138,27 @@ export default function StepPrincipalAccount({
       </div>
 
       {/* Security & Credentials Info Box */}
-      <div className="bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-3xl p-4.5 flex items-start gap-3.5 shadow-xs">
-        <div className="w-8 h-8 rounded-xl bg-[#1C3D74] text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
-          <ShieldCheck className="h-5 w-5 text-[#46C1BE]" />
+      <div className="bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-2xl p-5 flex items-start gap-4 shadow-sm">
+        <div className="w-11 h-11 rounded-xl bg-[#1C3D74] flex items-center justify-center shrink-0 shadow-sm">
+          <ShieldCheck className="h-6 w-6 text-[#46C1BE]" />
         </div>
-        <div className="space-y-1 text-xs">
-          <p className="font-bold text-blue-950 dark:text-blue-200">
-            {isRTL ? 'سيتم توليد كلمة مرور مؤقتة وتفعيل الحساب تلقائياً' : 'A temporary password will be generated automatically'}
+        <div className="flex-1 space-y-3">
+          <p className="font-bold text-sm text-blue-950 dark:text-blue-100 leading-snug">
+            {isRTL ? 'سيتم توليد كلمة مرور مؤقتة وتفعيل الحساب تلقائياً' : 'A temporary password will be generated and the account activated automatically'}
           </p>
-          <div className="flex flex-wrap gap-x-5 gap-y-1 text-blue-800/80 dark:text-blue-300 font-medium text-[11px]">
-            <span>• {isRTL ? 'التحقق من عدم تكرار أرقام الهواتف' : 'No duplicate phone numbers'}</span>
-            <span>• {isRTL ? 'التحقق من تفرد البريد الإلكتروني' : 'No duplicate emails'}</span>
-            <span>• {isRTL ? 'منح صلاحية مدير المدرسة للمستأجر' : 'Principal role assigned'}</span>
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1.5 bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 text-xs font-medium px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-700">
+              <Phone className="h-3.5 w-3.5 shrink-0" />
+              {isRTL ? 'التحقق من عدم تكرار أرقام الهواتف' : 'No duplicate phone numbers'}
+            </span>
+            <span className="inline-flex items-center gap-1.5 bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 text-xs font-medium px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-700">
+              <Mail className="h-3.5 w-3.5 shrink-0" />
+              {isRTL ? 'التحقق من تفرد البريد الإلكتروني' : 'No duplicate emails'}
+            </span>
+            <span className="inline-flex items-center gap-1.5 bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 text-xs font-medium px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-700">
+              <UserCheck className="h-3.5 w-3.5 shrink-0" />
+              {isRTL ? 'منح صلاحية مدير المدرسة للمستأجر' : 'Principal role assigned automatically'}
+            </span>
           </div>
         </div>
       </div>

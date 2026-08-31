@@ -382,7 +382,6 @@ async def bootstrap_independent_teacher_workspace(
             "status": "active",
             "school_type": "independent_teacher",
             "tenant_type": "independent_teacher",
-            "setup_completed": True,
             "principal_id": current_user.get("id"),
             "principal_name": current_user.get("full_name"),
             "principal_email": current_user.get("email"),

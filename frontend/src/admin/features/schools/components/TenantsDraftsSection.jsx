@@ -170,7 +170,7 @@ export default function TenantsDraftsSection({
                 {/* Card Footer: Action Buttons */}
                 <div className="flex items-center gap-2.5 pt-3.5 border-t border-slate-100 dark:border-slate-800 mt-2">
                   <Button
-                    onClick={() => onNavigateToDraft(draft.id)}
+                    onClick={() => onNavigateToDraft(draft)}
                     className="flex-1 h-10 rounded-xl bg-[#1C3D74] hover:bg-[#152e57] text-white font-bold font-cairo text-xs gap-2 shadow-xs transition-all group/btn"
                   >
                     <FileEdit className="h-4 w-4 text-[#46C1BE] shrink-0 transition-transform group-hover/btn:scale-110" />

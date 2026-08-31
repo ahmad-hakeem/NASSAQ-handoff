@@ -55,7 +55,14 @@ const INITIAL_PRINCIPAL_STATE = {
   email: '',
 };
 
-export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api, isRTL = true }) {
+export default function CreateSchoolWizard({
+  open,
+  onOpenChange,
+  onSuccess,
+  api,
+  isRTL = true,
+  draftSchool = null,
+}) {
   const { t } = useTranslation();
   const { nassaqError, nassaqWarning } = useNassaqAlert();
 
@@ -70,6 +77,48 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
   const [principalData, setPrincipalData] = useState(INITIAL_PRINCIPAL_STATE);
   const [createdSchool, setCreatedSchool] = useState(null);
   const [errors, setErrors] = useState({});
+
+  // Sync state when wizard opens with or without a draft school
+  React.useEffect(() => {
+    if (open) {
+      if (draftSchool) {
+        setSchoolData({
+          name: draftSchool.name || '',
+          logo: null,
+          logoPreview: draftSchool.logo_url || null,
+          country: draftSchool.country || 'SA',
+          city: draftSchool.city || '',
+          region: draftSchool.region || '',
+          address: draftSchool.address || '',
+          email: draftSchool.email || '',
+          principal_name: draftSchool.principal_name || '',
+          principal_mobile: draftSchool.principal_mobile || draftSchool.principal_phone || draftSchool.phone || '',
+        });
+        setSettingsData({
+          defaultLanguage: draftSchool.language || 'ar',
+          calendarSystem: draftSchool.calendar_system || 'hijri_gregorian',
+          schoolType: draftSchool.school_type || draftSchool.type || 'public',
+          educationalStage: draftSchool.stage || 'primary',
+          educationalPathway: draftSchool.educational_pathway || '',
+          assessmentSystem: draftSchool.assessment_system || 'standard',
+        });
+        setPrincipalData({
+          fullName: draftSchool.principal_name || '',
+          primaryPhone: draftSchool.principal_phone || draftSchool.principal_mobile || draftSchool.phone || '',
+          secondaryPhone: draftSchool.secondary_phone || '',
+          email: draftSchool.principal_email || (draftSchool.email && draftSchool.email.includes('@') && !draftSchool.email.startsWith('school-') ? draftSchool.email : '') || '',
+        });
+      } else {
+        setSchoolData(INITIAL_SCHOOL_STATE);
+        setSettingsData(INITIAL_SETTINGS_STATE);
+        setPrincipalData(INITIAL_PRINCIPAL_STATE);
+      }
+      setCurrentStep(1);
+      setIsComplete(false);
+      setCreatedSchool(null);
+      setErrors({});
+    }
+  }, [open, draftSchool]);
 
   const clearFieldError = useCallback((field) => {
     setErrors((prev) => {
@@ -217,15 +266,27 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
         principal_name: schoolData.principal_name || principalData.fullName || '',
         principal_phone: principalData.primaryPhone || '',
         principal_mobile: schoolData.principal_mobile || '',
+        phone: schoolData.principal_mobile || principalData.primaryPhone || '',
         status: 'setup',
       };
+      if (schoolData.logoPreview) schoolPayload.logo_url = schoolData.logoPreview;
       if (schoolData.email && schoolData.email.trim()) schoolPayload.email = schoolData.email.trim();
       if (principalData.email && principalData.email.trim()) {
         schoolPayload.principal_email = principalData.email.trim();
       }
 
-      const response = await api.post('/schools/draft', schoolPayload);
-      toast.success(t('schoolSavedAsDraftFindItInTheDraftsSection') || (isRTL ? 'تم حفظ المدرسة كمسودة بنجاح' : 'School saved as draft'));
+      let response;
+      if (draftSchool?.id) {
+        try {
+          response = await api.put(`/schools/${draftSchool.id}/draft`, schoolPayload);
+        } catch {
+          response = await api.put(`/schools/${draftSchool.id}`, schoolPayload);
+        }
+        toast.success(isRTL ? 'تم حفظ تعديلات المسودة بنجاح' : 'Draft updated successfully');
+      } else {
+        response = await api.post('/schools/draft', schoolPayload);
+        toast.success(t('schoolSavedAsDraftFindItInTheDraftsSection') || (isRTL ? 'تم حفظ المدرسة كمسودة بنجاح' : 'School saved as draft'));
+      }
 
       if (onSuccess) onSuccess(response.data);
       handleClose();
@@ -268,18 +329,33 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
         principal_email: principalData.email,
         principal_phone: principalData.primaryPhone,
         principal_mobile: schoolData.principal_mobile,
+        phone: schoolData.principal_mobile || principalData.primaryPhone || '',
       };
+      if (schoolData.logoPreview) schoolPayload.logo_url = schoolData.logoPreview;
       if (schoolData.email && schoolData.email.trim()) schoolPayload.email = schoolData.email.trim();
 
-      const response = await api.post('/schools', schoolPayload);
+      let response;
+      let finalPassword = tempPassword;
+      if (draftSchool?.id) {
+        try {
+          response = await api.post(`/schools/${draftSchool.id}/finalize-draft`, schoolPayload);
+          if (response.data?.temp_password) {
+            finalPassword = response.data.temp_password;
+          }
+        } catch {
+          response = await api.post('/schools', schoolPayload);
+        }
+      } else {
+        response = await api.post('/schools', schoolPayload);
+      }
 
       setCreatedSchool({
         ...response.data,
-        tenant_code: response.data.code,
+        tenant_code: response.data?.code || draftSchool?.code,
         principal: {
           full_name: principalData.fullName,
           email: principalData.email,
-          temp_password: tempPassword,
+          temp_password: finalPassword,
         },
       });
 
@@ -371,6 +447,7 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
               currentStep={currentStep}
               onStepClick={setCurrentStep}
               isRTL={isRTL}
+              draftSchool={draftSchool}
             />
 
             {/* Scrollable Content Form Area */}
@@ -426,6 +503,7 @@ export default function CreateSchoolWizard({ open, onOpenChange, onSuccess, api,
               onCreateSchool={handleCreateSchool}
               isSubmitting={isSubmitting}
               isRTL={isRTL}
+              draftSchool={draftSchool}
             />
           </>
         ) : (

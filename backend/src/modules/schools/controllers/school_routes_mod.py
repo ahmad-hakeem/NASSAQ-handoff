@@ -54,6 +54,26 @@ async def delete_school_draft(
     return await SchoolCrudService.delete_school_draft(db.session, school_id, current_user)
 
 
+@router.put("/schools/{school_id}/draft", response_model=SchoolResponse)
+async def update_school_draft(
+    school_id: str,
+    school_data: SchoolCreate,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Update a school draft (status stays setup)"""
+    return await SchoolCrudService.update_school_draft(db.session, school_id, school_data, current_user)
+
+
+@router.post("/schools/{school_id}/finalize-draft")
+async def finalize_school_draft(
+    school_id: str,
+    school_data: SchoolCreate,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN]))
+):
+    """Finalize a school draft to active status and create principal credentials"""
+    return await SchoolCrudService.finalize_school_draft(db.session, school_id, school_data, current_user)
+
+
 @router.get("/schools", response_model=List[SchoolResponse])
 async def get_schools(
     status: Optional[str] = None,
@@ -79,25 +99,23 @@ async def update_school_status(
 @router.post("/schools/{school_id}/suspend")
 async def suspend_school(
     school_id: str,
-    body: SchoolStatusChangeRequest,
-    request: Request,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
-    _stepup: dict = Depends(require_recent_mfa()),
+    body: Optional[SchoolStatusChangeRequest] = None,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER])),
 ):
     """Suspend a school with reason - logs full audit trail"""
-    return await SchoolCrudService.suspend_school(db.session, school_id, body, current_user)
+    req_body = body or SchoolStatusChangeRequest()
+    return await SchoolCrudService.suspend_school(db.session, school_id, req_body, current_user)
 
 
 @router.post("/schools/{school_id}/activate")
 async def activate_school(
     school_id: str,
-    body: SchoolStatusChangeRequest,
-    request: Request,
-    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN])),
-    _stepup: dict = Depends(require_recent_mfa()),
+    body: Optional[SchoolStatusChangeRequest] = None,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER])),
 ):
     """Activate a suspended school with reason - logs full audit trail"""
-    return await SchoolCrudService.activate_school(db.session, school_id, body, current_user)
+    req_body = body or SchoolStatusChangeRequest(reason="إعادة تفعيل المدرسة")
+    return await SchoolCrudService.activate_school(db.session, school_id, req_body, current_user)
 
 
 @router.get("/schools/{school_id}/detail")

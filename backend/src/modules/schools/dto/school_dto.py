@@ -39,6 +39,7 @@ class SchoolCreate(BaseModel):
     city: Optional[str] = None
     region: Optional[str] = None
     country: str = "SA"
+    logo_url: Optional[str] = None
     student_capacity: int = 500
     language: Optional[str] = "ar"
     calendar_system: Optional[str] = "hijri_gregorian"
@@ -66,13 +67,22 @@ class SchoolResponse(BaseModel):
     address: Optional[str] = None
     city: Optional[str] = None
     region: Optional[str] = None
-    country: str
+    country: str = "SA"
     logo_url: Optional[str] = None
     status: SchoolStatus
-    student_capacity: int
-    current_students: int
-    current_teachers: int
+    student_capacity: int = 500
+    current_students: int = 0
+    current_teachers: int = 0
     created_at: str
+    school_type: Optional[str] = "public"
+    stage: Optional[str] = "primary"
+    language: Optional[str] = "ar"
+    calendar_system: Optional[str] = "hijri_gregorian"
+    educational_pathway: Optional[str] = None
+    principal_name: Optional[str] = None
+    principal_email: Optional[str] = None
+    principal_phone: Optional[str] = None
+    principal_mobile: Optional[str] = None
     entity_kind: str = "standard_school"
     can_preview_as_principal: bool = True
     preview_block_reason: Optional[str] = None
@@ -123,7 +133,7 @@ class SchoolInfoUpdate(BaseModel):
 
 
 class SchoolStatusChangeRequest(BaseModel):
-    reason: str = Field(..., min_length=3, description="سبب التغيير")
+    reason: Optional[str] = Field(default="إيقاف إداري مؤقت", description="سبب التغيير")
 
 
 class SchoolCredentialsRequest(BaseModel):

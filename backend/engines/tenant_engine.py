@@ -85,8 +85,6 @@ class TenantEngine:
             "website": kwargs.get("website"),
             "ministry_id": kwargs.get("ministry_id"),
             "license_number": kwargs.get("license_number"),
-            "setup_completed": False,
-            "setup_steps_completed": [],
             "principal_id": kwargs.get("principal_id"),
             "subscription_start": kwargs.get("subscription_start"),
             "subscription_end": kwargs.get("subscription_end"),
@@ -291,51 +289,6 @@ class TenantEngine:
 
         return await self.get_tenant_by_id(tenant_id)
 
-    async def complete_setup_step(
-        self,
-        tenant_id: str,
-        step: str,
-        completed_by: str
-    ) -> Dict[str, Any]:
-        """Mark a setup step as completed"""
-        now = datetime.now(timezone.utc).isoformat()
-
-        current = await self.get_tenant_by_id(tenant_id)
-        if not current:
-            raise ValueError("المدرسة غير موجودة")
-
-        completed_steps = current.get("setup_steps_completed", [])
-        if step not in completed_steps:
-            completed_steps.append(step)
-
-        required_steps = [
-            "basic_info",
-            "principal_assigned",
-            "academic_structure",
-            "initial_teachers",
-            "initial_students"
-        ]
-
-        setup_completed = all(s in completed_steps for s in required_steps)
-
-        updates = {
-            "setup_steps_completed": completed_steps,
-            "updated_at": now,
-        }
-
-        if setup_completed and not current.get("setup_completed"):
-            updates["setup_completed"] = True
-            updates["status"] = TenantStatus.ACTIVE.value
-
-        stmt = select(School).where(School.id == tenant_id).limit(1)
-        result = await self.session.execute(stmt)
-        obj = result.scalars().first()
-        if obj:
-            apply_updates(obj, updates)
-            await self.session.flush()
-
-        return await self.get_tenant_by_id(tenant_id)
-
     async def update_health_score(
         self,
         tenant_id: str,
@@ -395,6 +348,14 @@ class TenantEngine:
         class_count = (await self.session.execute(cc)).scalar() or 0
 
         capacity = tenant.get("student_capacity")
+        is_active = tenant.get("status") == TenantStatus.ACTIVE.value
+        has_items = sum([
+            (student_count or 0) > 0,
+            (teacher_count or 0) > 0,
+            (class_count or 0) > 0,
+        ])
+        setup_progress = 100.0 if is_active else min(90.0, (has_items / 3.0) * 100)
+
         return {
             "tenant_id": tenant_id,
             "name": tenant.get("name"),
@@ -405,8 +366,7 @@ class TenantEngine:
             "student_capacity": capacity,
             "capacity_usage": (student_count / capacity) * 100 if capacity else None,
             "health_score": tenant.get("health_score"),
-            "setup_completed": tenant.get("setup_completed"),
-            "setup_progress": len(tenant.get("setup_steps_completed", [])) / 5 * 100
+            "setup_progress": setup_progress,
         }
 
     def get_tenant_query(self, tenant_id: str) -> Dict[str, Any]:

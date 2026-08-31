@@ -73,16 +73,30 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
             session = db.session
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
+            from src.common.utils.avatar_serving import signed_image_url
             sql = _sa_text("""
                 SELECT
                     s.id,
                     s.name,
                     s.name_en,
+                    s.code,
                     s.status,
                     s.city,
                     s.region,
+                    s.address,
+                    s.country,
+                    s.phone,
+                    s.email,
+                    s.logo_url,
                     s.school_type,
                     s.stage,
+                    s.language,
+                    s.calendar_system,
+                    s.student_capacity,
+                    s.principal_name,
+                    s.principal_email,
+                    s.principal_phone,
+                    s.educational_pathway,
                     s.created_at,
                     s.updated_at,
                     COALESCE(st.cnt, 0) AS student_count,
@@ -137,16 +151,31 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
 
                 created_at = r["created_at"].isoformat() if r["created_at"] else ""
                 updated_at = r["updated_at"].isoformat() if r["updated_at"] else ""
+                phone_num = r["phone"] or r["principal_phone"] or ""
 
                 result.append({
                     "id": sid,
                     "name": r["name"] or "",
                     "name_en": r["name_en"] or "",
+                    "code": r["code"] or "",
                     "status": r["status"] or "active",
                     "city": r["city"] or "",
                     "region": r["region"] or "",
-                    "school_type": r["school_type"] or "",
-                    "stage": r["stage"] or "",
+                    "address": r["address"] or "",
+                    "country": r["country"] or "SA",
+                    "phone": phone_num,
+                    "email": r["email"] or "",
+                    "logo_url": signed_image_url("logo", sid, r["logo_url"]),
+                    "school_type": r["school_type"] or "public",
+                    "stage": r["stage"] or "primary",
+                    "language": r["language"] or "ar",
+                    "calendar_system": r["calendar_system"] or "hijri_gregorian",
+                    "student_capacity": r["student_capacity"] or 500,
+                    "principal_name": r["principal_name"] or "",
+                    "principal_email": r["principal_email"] or "",
+                    "principal_phone": r["principal_phone"] or phone_num,
+                    "principal_mobile": phone_num,
+                    "educational_pathway": r["educational_pathway"] or "",
                     "student_count": student_count,
                     "teacher_count": teacher_count,
                     "class_count": class_count,

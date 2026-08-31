@@ -58,8 +58,6 @@ class School(Base):
     ministry_id = Column(String, nullable=True)
     license_number = Column(String, nullable=True)
     tenant_type = Column(String, default="production")
-    setup_completed = Column(Boolean, default=False)
-    setup_steps_completed = Column(JSONB, default=list)
     health_score = Column(Float, nullable=True)
     last_health_check = Column(DateTime(timezone=True), nullable=True)
     subscription_start = Column(DateTime(timezone=True), nullable=True)

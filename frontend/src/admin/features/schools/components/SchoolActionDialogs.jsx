@@ -39,7 +39,7 @@ export default function SchoolActionDialogs({
 
           <div className="space-y-2 py-3 font-tajawal">
             <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-              {isRTL ? 'سبب الإيقاف (مطلوب للتوثيق)' : 'Suspension Reason (Required)'}
+              {isRTL ? 'سبب الإيقاف المؤقت (اختياري)' : 'Suspension Reason (Optional)'}
             </label>
             <Textarea
               value={actionReason}
@@ -59,7 +59,7 @@ export default function SchoolActionDialogs({
             </Button>
             <Button
               onClick={onConfirmSuspend}
-              disabled={actionLoading || !actionReason.trim()}
+              disabled={actionLoading}
               className="rounded-2xl text-xs font-black bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/25 gap-2 h-10 px-5"
             >
               {actionLoading ? (
@@ -67,7 +67,7 @@ export default function SchoolActionDialogs({
               ) : (
                 <Pause className="h-4 w-4" />
               )}
-              <span>{isRTL ? 'تأكيد الإيقاف' : 'Confirm Suspend'}</span>
+              <span>{isRTL ? 'إيقاف الحساب' : 'Suspend Account'}</span>
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -92,7 +92,7 @@ export default function SchoolActionDialogs({
 
           <div className="space-y-2 py-3 font-tajawal">
             <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-              {isRTL ? 'ملاحظة التفعيل (مطلوب)' : 'Activation Note (Required)'}
+              {isRTL ? 'ملاحظة التفعيل (اختياري)' : 'Activation Note (Optional)'}
             </label>
             <Textarea
               value={actionReason}
@@ -112,7 +112,7 @@ export default function SchoolActionDialogs({
             </Button>
             <Button
               onClick={onConfirmActivate}
-              disabled={actionLoading || !actionReason.trim()}
+              disabled={actionLoading}
               className="rounded-2xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/25 gap-2 h-10 px-5"
             >
               {actionLoading ? (

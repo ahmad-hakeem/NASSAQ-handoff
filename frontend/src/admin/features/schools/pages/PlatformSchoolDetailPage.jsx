@@ -158,13 +158,11 @@ export default function PlatformSchoolDetailPage() {
   };
 
   const handleSuspend = async () => {
-    if (!actionReason.trim()) {
-      nassaqError(t('reasonIsRequired') || (isRTL ? 'سبب الإيقاف مطلوب' : 'Reason is required'));
-      return;
-    }
+    const reason = actionReason.trim() || (isRTL ? 'إيقاف إداري مؤقت' : 'Temporary administrative suspension');
     setActionLoading(true);
     try {
-      await api.post(`/schools/${schoolId}/suspend`, { reason: actionReason });
+      await api.post(`/schools/${schoolId}/suspend`, { reason });
+      setDetail(prev => prev ? { ...prev, school: { ...prev.school, status: 'suspended' } } : prev);
       toast.success(t('schoolSuspendedSuccessfully') || (isRTL ? 'تم إيقاف المدرسة بنجاح' : 'School suspended'));
       setSuspendDialog(null);
       setActionReason('');
@@ -177,13 +175,11 @@ export default function PlatformSchoolDetailPage() {
   };
 
   const handleActivate = async () => {
-    if (!actionReason.trim()) {
-      nassaqError(t('reasonIsRequired2') || (isRTL ? 'سبب التفعيل مطلوب' : 'Activation note is required'));
-      return;
-    }
+    const reason = actionReason.trim() || (isRTL ? 'إعادة تفعيل المدرسة' : 'Reactivate school');
     setActionLoading(true);
     try {
-      await api.post(`/schools/${schoolId}/activate`, { reason: actionReason });
+      await api.post(`/schools/${schoolId}/activate`, { reason });
+      setDetail(prev => prev ? { ...prev, school: { ...prev.school, status: 'active' } } : prev);
       toast.success(t('schoolActivatedSuccessfully') || (isRTL ? 'تم تفعيل المدرسة بنجاح' : 'School activated'));
       setActivateDialog(null);
       setActionReason('');

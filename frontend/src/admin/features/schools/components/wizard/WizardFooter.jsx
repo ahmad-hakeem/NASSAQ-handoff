@@ -13,6 +13,7 @@ export default function WizardFooter({
   onCreateSchool,
   isSubmitting,
   isRTL,
+  draftSchool = null,
 }) {
   return (
     <div className="px-6 py-4 md:px-8 border-t border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 flex-shrink-0">
@@ -39,7 +40,7 @@ export default function WizardFooter({
             className="h-10 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-2xs gap-2 transition-all"
           >
             <Save className="h-4 w-4 text-slate-400" />
-            <span>{isRTL ? 'حفظ كمسودة' : 'Save Draft'}</span>
+            <span>{isRTL ? (draftSchool ? 'حفظ التعديلات كمسودة' : 'حفظ كمسودة') : (draftSchool ? 'Save Draft' : 'Save Draft')}</span>
           </Button>
         </div>
 
@@ -79,12 +80,12 @@ export default function WizardFooter({
               {isSubmitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>{isRTL ? 'جاري الإنشاء...' : 'Creating...'}</span>
+                  <span>{isRTL ? (draftSchool ? 'جاري الاعتماد...' : 'جاري الإنشاء...') : (draftSchool ? 'Finalizing...' : 'Creating...')}</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="h-4 w-4" />
-                  <span>{isRTL ? 'إنشاء المدرسة' : 'Create School'}</span>
+                  <span>{isRTL ? (draftSchool ? 'اعتماد وإنشاء المدرسة' : 'إنشاء المدرسة') : (draftSchool ? 'Finalize & Create' : 'Create School')}</span>
                 </>
               )}
             </Button>

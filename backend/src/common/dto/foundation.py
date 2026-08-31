@@ -328,10 +328,6 @@ class Tenant(BaseModel):
     # Configuration
     configuration: TenantConfiguration = TenantConfiguration()
     
-    # Setup Progress
-    setup_completed: bool = False
-    setup_steps_completed: List[str] = []
-    
     # Health
     health_score: Optional[float] = None
     last_health_check: Optional[str] = None

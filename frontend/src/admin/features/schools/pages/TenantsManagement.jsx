@@ -35,6 +35,7 @@ export default function TenantsManagement() {
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
   const [showFilters, setShowFilters] = useState(false);
   const [showCreateWizard, setShowCreateWizard] = useState(false);
+  const [selectedDraftForEdit, setSelectedDraftForEdit] = useState(null);
   const [activeStatusFilter, setActiveStatusFilter] = useState(null);
   const [showSuspendDialog, setShowSuspendDialog] = useState(null);
   const [showActivateDialog, setShowActivateDialog] = useState(null);
@@ -87,16 +88,26 @@ export default function TenantsManagement() {
             status: s.status || 'active',
             city: s.city || '',
             region: s.region || '',
-            school_type: s.type || s.school_type || 'public',
+            address: s.address || '',
+            country: s.country || 'SA',
+            logo_url: s.logo_url || null,
+            school_type: s.school_type || s.type || 'public',
             stage: s.stage || 'primary',
+            language: s.language || 'ar',
+            calendar_system: s.calendar_system || 'hijri_gregorian',
+            educational_pathway: s.educational_pathway || '',
+            principal_name: s.principal_name || '',
+            principal_email: s.principal_email || '',
+            principal_phone: s.principal_phone || '',
+            principal_mobile: s.principal_mobile || s.phone || '',
             student_capacity: s.student_capacity || 500,
             student_count: s.student_count || s.current_students || 0,
             teacher_count: s.teacher_count || s.current_teachers || 0,
             class_count: s.class_count || 0,
             parent_count: s.parent_count || 0,
-            sessions_today: 0,
-            setup_score: s.status === 'active' ? 100 : 50,
-            has_timetable: false,
+            sessions_today: s.sessions_today || 0,
+            setup_score: s.setup_score !== undefined ? s.setup_score : (s.status === 'active' ? 100 : 50),
+            has_timetable: Boolean(s.has_timetable),
             created_at: s.created_at || '',
             last_activity: s.updated_at || s.created_at || '',
           }));
@@ -210,13 +221,10 @@ export default function TenantsManagement() {
   const handleEnterSchoolDashboard = (school) => openPrincipalDashboard(school);
 
   const handleSuspendConfirm = async () => {
-    if (!actionReason.trim()) {
-      nassaqError(t('reasonIsRequired') || (isRTL ? 'سبب الإيقاف مطلوب' : 'Suspension reason is required'));
-      return;
-    }
+    const reason = actionReason.trim() || (isRTL ? 'إيقاف إداري مؤقت' : 'Temporary administrative suspension');
     setActionLoading(true);
     try {
-      await api.post(`/schools/${showSuspendDialog.id}/suspend`, { reason: actionReason });
+      await api.post(`/schools/${showSuspendDialog.id}/suspend`, { reason });
       setSchools(prev => prev.map(s =>
         s.id === showSuspendDialog.id ? { ...s, status: 'suspended' } : s
       ));
@@ -231,13 +239,10 @@ export default function TenantsManagement() {
   };
 
   const handleActivateConfirm = async () => {
-    if (!actionReason.trim()) {
-      nassaqError(t('reasonIsRequired2') || (isRTL ? 'سبب التفعيل مطلوب' : 'Activation note is required'));
-      return;
-    }
+    const reason = actionReason.trim() || (isRTL ? 'إعادة تفعيل المدرسة' : 'Reactivate school');
     setActionLoading(true);
     try {
-      await api.post(`/schools/${showActivateDialog.id}/activate`, { reason: actionReason });
+      await api.post(`/schools/${showActivateDialog.id}/activate`, { reason });
       setSchools(prev => prev.map(s =>
         s.id === showActivateDialog.id ? { ...s, status: 'active' } : s
       ));
@@ -252,10 +257,22 @@ export default function TenantsManagement() {
   };
 
   const handleSchoolCreated = () => {
+    setSelectedDraftForEdit(null);
     setShowCreateWizard(false);
     setShowDrafts(true);
     setActiveStatusFilter(null);
     fetchSchools(true);
+  };
+
+  const handleResumeDraft = async (draft) => {
+    try {
+      const res = await api.get(`/schools/${draft.id}`);
+      setSelectedDraftForEdit(res.data || draft);
+    } catch (err) {
+      console.warn('Could not fetch fresh draft details, using local data:', err);
+      setSelectedDraftForEdit(draft);
+    }
+    setShowCreateWizard(true);
   };
 
   const handleDeleteDraft = async (draft) => {
@@ -331,7 +348,10 @@ export default function TenantsManagement() {
             onRefresh={() => fetchSchools(true)}
             refreshing={refreshing}
             onExport={exportToCSV}
-            onOpenCreateWizard={() => setShowCreateWizard(true)}
+            onOpenCreateWizard={() => {
+              setSelectedDraftForEdit(null);
+              setShowCreateWizard(true);
+            }}
             isRTL={isRTL}
           />
 
@@ -370,7 +390,7 @@ export default function TenantsManagement() {
               draftSchools={draftSchools}
               showDrafts={showDrafts}
               onToggleShowDrafts={() => setShowDrafts(!showDrafts)}
-              onNavigateToDraft={(id) => navigate(`/platform/schools/${id}`)}
+              onNavigateToDraft={handleResumeDraft}
               onDeleteDraft={handleDeleteDraft}
               deletingDraftId={deletingDraftId}
               isRTL={isRTL}
@@ -402,7 +422,10 @@ export default function TenantsManagement() {
                 setActionReason('');
               }}
               onResetFilters={resetFilters}
-              onOpenCreateWizard={() => setShowCreateWizard(true)}
+              onOpenCreateWizard={() => {
+                setSelectedDraftForEdit(null);
+                setShowCreateWizard(true);
+              }}
               isRTL={isRTL}
             />
           ) : (
@@ -420,7 +443,10 @@ export default function TenantsManagement() {
                 setActionReason('');
               }}
               onResetFilters={resetFilters}
-              onOpenCreateWizard={() => setShowCreateWizard(true)}
+              onOpenCreateWizard={() => {
+                setSelectedDraftForEdit(null);
+                setShowCreateWizard(true);
+              }}
               isRTL={isRTL}
             />
           )}
@@ -447,7 +473,11 @@ export default function TenantsManagement() {
         {showCreateWizard && (
           <CreateSchoolWizard
             open={showCreateWizard}
-            onOpenChange={setShowCreateWizard}
+            onOpenChange={(isOpen) => {
+              setShowCreateWizard(isOpen);
+              if (!isOpen) setSelectedDraftForEdit(null);
+            }}
+            draftSchool={selectedDraftForEdit}
             onSuccess={handleSchoolCreated}
             api={api}
             isRTL={isRTL}
