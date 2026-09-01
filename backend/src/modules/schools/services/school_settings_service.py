@@ -99,8 +99,7 @@ def resolve_weekend_days_ar(nested_settings: dict, settings: dict) -> list:
 async def resolve_school_context(current_user: dict, x_school_context: str = None) -> str:
     """Resolve school_id from header or current user tenant."""
     from src.common.utils.tenant_scope import resolve_school_id
-    from dependencies import db
-    return await resolve_school_id(current_user, x_school_context, db.session)
+    return resolve_school_id(current_user, x_school_context)
 
 
 class SchoolSettingsService:
