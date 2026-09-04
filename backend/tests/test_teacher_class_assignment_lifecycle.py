@@ -27,6 +27,9 @@ from src.modules.schools.controllers.school_settings_mod import (
     TeacherClassAssignmentCreate,
     create_teacher_class_assignment,
     delete_teacher_class_assignment,
+    TeacherSubjectAssignmentCreate,
+    create_teacher_subject_assignment,
+    delete_teacher_subject_assignment,
 )
 from src.common.utils.teacher_assignment_sync import load_tombstones
 
@@ -269,3 +272,37 @@ async def test_duplicate_assign_rejected(tenant_a):
     with pytest.raises(HTTPException) as exc:
         await _assign(tenant_a, teacher, cid)
     assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_delete_teacher_subject_assignment_success_and_not_found(tenant_a):
+    sid = await _mk_subject(tenant_a, "الكيمياء")
+    tid = await _mk_teacher(tenant_a, "الكيمياء")
+
+    create_resp = await create_teacher_subject_assignment(
+        payload=TeacherSubjectAssignmentCreate(teacher_id=tid, subject_id=sid),
+        current_user=_principal(tenant_a),
+        x_school_context=None,
+    )
+    assignment_id = create_resp["assignment"]["id"]
+
+    del_resp = await delete_teacher_subject_assignment(
+        assignment_id=assignment_id,
+        current_user=_principal(tenant_a),
+        x_school_context=None,
+    )
+    assert del_resp["message"] == "تم حذف الإسناد بنجاح"
+
+    # Confirm row is deleted
+    found = await gd_find_one(db.session, "teacher_assignments", {"id": assignment_id})
+    assert found is None
+
+    # Deleting again should raise 404
+    with pytest.raises(HTTPException) as exc:
+        await delete_teacher_subject_assignment(
+            assignment_id=assignment_id,
+            current_user=_principal(tenant_a),
+            x_school_context=None,
+        )
+    assert exc.value.status_code == 404
+

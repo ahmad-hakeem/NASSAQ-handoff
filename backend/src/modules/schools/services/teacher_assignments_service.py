@@ -10,7 +10,7 @@ import uuid
 import logging
 
 from engines.sql_utils import (
-    gd_find, gd_find_one, gd_insert, gd_update_one, gd_update_many, gd_delete_many,
+    gd_find, gd_find_one, gd_insert, gd_update_one, gd_update_many, gd_delete_one, gd_delete_many,
 )
 from src.modules.schools.dto.assignments_dto import (
     TeacherClassAssignmentCreate, TeacherSubjectAssignmentCreate
