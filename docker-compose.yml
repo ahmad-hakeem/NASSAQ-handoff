@@ -18,7 +18,7 @@ services:
 
   app:
     platform: linux/amd64
-    image: ${REGISTRY_IMAGE:-registry.nassaqapp.com/uat-nassaq/nassaq-app:1.0.7}
+    image: ${REGISTRY_IMAGE:-registry.nassaqapp.com/uat-nassaq/nassaq-app:1.0.8}
     build: .
     restart: unless-stopped
     depends_on:
