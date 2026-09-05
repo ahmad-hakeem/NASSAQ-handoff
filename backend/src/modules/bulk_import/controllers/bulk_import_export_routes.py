@@ -188,9 +188,9 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
                 raise HTTPException(status_code=400, detail="حجم الملف يتجاوز الحد المسموح (10 ميغابايت)")
 
             if file.filename.endswith('.csv'):
-                df = pd.read_csv(io.BytesIO(contents))
+                df = pd.read_csv(io.BytesIO(contents), dtype=str)
             else:
-                df = pd.read_excel(io.BytesIO(contents))
+                df = pd.read_excel(io.BytesIO(contents), dtype=str)
             
             # Remove empty rows
             df = df.dropna(how='all')
@@ -443,6 +443,8 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
             # 2. National ID format & duplication validation
             clean_national_id = re.sub(r'\D', '', national_id_raw)
             if national_id_raw:
+                if len(clean_national_id) == 9:
+                    clean_national_id = clean_national_id.zfill(10)
                 if len(clean_national_id) != 10:
                     row_errors.append({"row": row_num, "field": "رقم الهوية", "message": f"رقم الهوية ({national_id_raw}): يجب أن يتكون من 10 أرقام"})
                 else:
@@ -513,9 +515,8 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
         except Exception as e:
             errors.append({"row": row_num, "field": "عام", "message": f"خطأ في معالجة الصف: {str(e)}"})
 
-    # ATOMIC CHECK: If any validation errors exist, do NOT insert any rows!
     failed_rows_count = len(set(e['row'] for e in errors))
-    if errors:
+    if not valid_records:
         return {"imported": 0, "failed": failed_rows_count}
 
     # Pass 2: Commit all valid records
@@ -584,13 +585,19 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
             except Exception as ex:
                 logger.warning(f"link_or_update_real_school_guardian error for row {item['row_num']}: {ex}")
 
-        await gd_insert(db.session, "students", student_doc)
-        imported += 1
+        try:
+            await gd_insert(db.session, "students", student_doc)
+            imported += 1
+        except Exception as ex:
+            logger.exception(f"Failed to insert student row {item['row_num']}: {ex}")
+            errors.append({"row": item["row_num"], "field": "عام", "message": f"فشل حفظ الطالب: {str(ex)}"})
 
     from engines.entity_counts import reconcile_school_counts
-    await reconcile_school_counts(db.session, school_id)
+    if imported > 0:
+        await reconcile_school_counts(db.session, school_id)
 
-    return {"imported": imported, "failed": 0}
+    failed_rows_count = len(set(e['row'] for e in errors))
+    return {"imported": imported, "failed": failed_rows_count}
 
 
 async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):

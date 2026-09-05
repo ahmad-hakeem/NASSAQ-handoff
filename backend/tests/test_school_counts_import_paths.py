@@ -61,7 +61,7 @@ async def test_bulk_import_students_reconciles_stored_count(client):
 
     assert result["imported"] == 3, (result, errors)
 
-    student_counts, _ = await _live_entity_counts_by_tenant()
+    student_counts, _ = await _live_entity_counts_by_tenant(db.session)
     row = await gd_find_one(db.session, "schools", {"id": school})
     assert student_counts.get(school) == 3
     assert row["current_students"] == 3
@@ -87,7 +87,7 @@ async def test_bulk_import_teachers_reconciles_stored_count(client):
 
     assert result["imported"] == 2, (result, errors)
 
-    _, teacher_counts = await _live_entity_counts_by_tenant()
+    _, teacher_counts = await _live_entity_counts_by_tenant(db.session)
     row = await gd_find_one(db.session, "schools", {"id": school})
     assert teacher_counts.get(school) == 2
     assert row["current_teachers"] == 2

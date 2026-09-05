@@ -62,7 +62,7 @@ def _create_excel_file(rows: list) -> io.BytesIO:
 
 
 @pytest.mark.asyncio
-async def test_bulk_student_import_atomic_rollback_on_partial_failure(client):
+async def test_bulk_student_import_partial_success_commits_valid_rows(client):
     school_id = f"sch_{uuid.uuid4().hex[:8]}"
     await _mk_school(school_id)
     principal = await _mk_principal(school_id)
@@ -116,11 +116,11 @@ async def test_bulk_student_import_atomic_rollback_on_partial_failure(client):
     assert resp1.status_code == 200, resp1.text
     res1_data = resp1.json()
 
-    # Verify response schema and atomic rollback
+    # Verify response schema: valid student is imported, invalid row fails
     assert res1_data["success"] is False
     assert res1_data["total_rows"] == 2
-    assert res1_data["imported"] == 0, "No records should be imported when any row fails"
-    assert res1_data["failed"] >= 1
+    assert res1_data["imported"] == 1, "Valid records should be imported even if other rows fail"
+    assert res1_data["failed"] == 1
     assert len(res1_data["errors"]) >= 1
 
     # Verify errors contain exact row number and detailed messages
@@ -129,24 +129,60 @@ async def test_bulk_student_import_atomic_rollback_on_partial_failure(client):
     error_messages = " ".join([e.get("message", "") for e in row3_errors])
     assert "اسم العائلة" in error_messages or "رقم الهوية" in error_messages
 
-    # Verify Database state is 100% clean (0 students inserted)
+    # Verify Database state: valid student was committed
     students_in_db = await gd_find(db.session, "students", {"school_id": school_id})
-    assert len(students_in_db) == 0, "Database must not contain partial records after failed import"
+    assert len(students_in_db) == 1
+    assert students_in_db[0]["national_id"] == valid_national_id
 
-    # 3. Upload the exact same file a second time without changes
-    excel_file2 = _create_excel_file(rows)
-    resp2 = await client.post(
+
+@pytest.mark.asyncio
+async def test_bulk_student_import_9_digit_iqama_and_leading_zero(client):
+    school_id = f"sch_{uuid.uuid4().hex[:8]}"
+    await _mk_school(school_id)
+    principal = await _mk_principal(school_id)
+    h = _headers(principal["id"], principal["role"], school_id)
+
+    # 1. 9-digit Iqama (needs zfill to 10)
+    # 2. 10-digit ID with leading zero (must preserve zero)
+    nine_digit_iqama = "234567891"
+    ten_digit_leading_zero = "0123456789"
+
+    rows = [
+        {
+            'الاسم الأول (مطلوب)': 'عمر',
+            'اسم الأب': 'يوسف',
+            'اسم العائلة (مطلوب)': 'المصري',
+            'رقم الهوية (مطلوب)': nine_digit_iqama,  # 9 digits, should become 0234567891
+            'جوال ولي الأمر (مطلوب)': '0501112255',
+        },
+        {
+            'الاسم الأول (مطلوب)': 'طارق',
+            'اسم الأب': 'جمال',
+            'اسم العائلة (مطلوب)': 'السيد',
+            'رقم الهوية (مطلوب)': ten_digit_leading_zero,  # 10 digits starting with 0
+            'جوال ولي الأمر (مطلوب)': '0501112266',
+        }
+    ]
+
+    excel_file = _create_excel_file(rows)
+    resp = await client.post(
         "/bulk/import/students",
-        files={"file": ("test_students.xlsx", excel_file2, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        files={"file": ("iqama_students.xlsx", excel_file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         headers=h,
     )
-    assert resp2.status_code == 200, resp2.text
-    res2_data = resp2.json()
+    assert resp.status_code == 200, resp.text
+    res_data = resp.json()
 
-    # Ensure consistent behavior on re-upload (same 0 imported, same validation errors)
-    assert res2_data["success"] is False
-    assert res2_data["imported"] == 0
-    assert len(res2_data["errors"]) >= 1
+    assert res_data["success"] is True
+    assert res_data["imported"] == 2
+    assert res_data["failed"] == 0
+    assert len(res_data["errors"]) == 0
+
+    students_in_db = await gd_find(db.session, "students", {"school_id": school_id})
+    assert len(students_in_db) == 2
+    nids = {s["national_id"] for s in students_in_db}
+    assert "0234567891" in nids, "9-digit Iqama should be padded to 10 digits with leading zero"
+    assert "0123456789" in nids, "Leading zero should be preserved in 10-digit national ID"
 
 
 @pytest.mark.asyncio
@@ -248,7 +284,7 @@ async def test_bulk_student_import_catches_in_file_duplicates(client):
     res_data = resp.json()
 
     assert res_data["success"] is False
-    assert res_data["imported"] == 0
+    assert res_data["imported"] == 1
     assert res_data["failed"] >= 1
     # Check error message mentions duplication
     dup_error = next((e for e in res_data["errors"] if duplicate_nid in e.get("message", "")), None)

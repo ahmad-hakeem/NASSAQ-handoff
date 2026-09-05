@@ -1509,11 +1509,15 @@ export default function UsersClassesManagement() {
       formData.append('file', selectedFile);
       const response = await api.post(`/bulk/import/${importType}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       setImportResult(response.data);
-      if (response.data.success && response.data.imported > 0) {
-        toast.success(t('importedNRecords', { n: response.data.imported }) || `تم استيراد ${response.data.imported} سجل بنجاح`);
+      if (response.data.imported > 0) {
+        if (response.data.failed === 0) {
+          toast.success(t('importedNRecords', { n: response.data.imported }) || `تم استيراد ${response.data.imported} سجل بنجاح`);
+        } else {
+          toast.warning(`تم استيراد ${response.data.imported} سجل بنجاح مع تخطي ${response.data.failed} صف غير صالح`);
+        }
         fetchAllData();
       } else if (response.data.failed > 0) {
-        nassaqError(`فشل التحقق من ملف الاستيراد لوجود ${response.data.failed} صف يحتوي على أخطاء. يرجى مراجعة سجل الأخطاء أدناه.`);
+        nassaqError(`فشل استيراد الملف لوجود ${response.data.failed} صف يحتوي على أخطاء. يرجى مراجعة سجل الأخطاء أدناه.`);
       } else {
         nassaqWarning(t('importedOfTotal', { imported: response.data.imported, total: response.data.total_rows }));
       }
@@ -1971,8 +1975,8 @@ export default function UsersClassesManagement() {
                                   <FileSpreadsheet className="h-5 w-5 text-brand-turquoise" />
                                   {t('importResult') || 'نتيجة الاستيراد'}
                                 </span>
-                                <Badge variant={importResult.success && importResult.failed === 0 ? "default" : "destructive"} className="text-xs">
-                                  {importResult.success && importResult.failed === 0 ? (t('done') || 'ناجح') : (t('failed') || 'يحتوي على أخطاء')}
+                                <Badge variant={importResult.success && importResult.failed === 0 ? "default" : importResult.imported > 0 ? "outline" : "destructive"} className="text-xs">
+                                  {importResult.success && importResult.failed === 0 ? (t('done') || 'ناجح') : importResult.imported > 0 ? (t('partial') || 'استيراد جزئي') : (t('failed') || 'فشل الاستيراد')}
                                 </Badge>
                               </CardTitle>
                             </CardHeader>
@@ -1983,12 +1987,20 @@ export default function UsersClassesManagement() {
                                   <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                                   <span>تم استيراد كافة السجلات ({importResult.imported}) بنجاح دون أي أخطاء.</span>
                                 </div>
-                              ) : (
+                              ) : importResult.imported > 0 ? (
                                 <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl text-amber-800 dark:text-amber-300 text-xs">
                                   <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
                                   <div>
-                                    <p className="font-semibold">تم إلغاء عملية الاستيراد لوجود أخطاء في البيانات ({importResult.failed} صف يحتاج تصحيح).</p>
-                                    <p className="text-[11px] text-amber-700 dark:text-amber-400/90 mt-0.5">لم يتم حفظ أي بيانات لحماية سلامة النظام وقاعدة البيانات. يرجى تصحيح الأخطاء الموضحة أدناه وإعادة رفع الملف.</p>
+                                    <p className="font-semibold">تم استيراد السجلات السليمة ({importResult.imported} سجل) وتخطي {importResult.failed} صف به أخطاء.</p>
+                                    <p className="text-[11px] text-amber-700 dark:text-amber-400/90 mt-0.5">تم حفظ السجلات الصالحة بنجاح. يرجى مراجعة وتصحيح الصفوف المرفوضة الموضحة أدناه.</p>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-start gap-2 p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 rounded-xl text-rose-800 dark:text-rose-300 text-xs">
+                                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                                  <div>
+                                    <p className="font-semibold">لم يتم استيراد أي سجلات لوجود أخطاء في البيانات ({importResult.failed} صف يحتاج تصحيح).</p>
+                                    <p className="text-[11px] text-rose-700 dark:text-rose-400/90 mt-0.5">يرجى تصحيح الأخطاء الموضحة أدناه وإعادة رفع الملف.</p>
                                   </div>
                                 </div>
                               )}
