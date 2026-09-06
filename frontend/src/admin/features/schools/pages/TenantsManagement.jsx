@@ -77,6 +77,19 @@ export default function TenantsManagement() {
 
   const fetchSchoolsInFlightRef = useRef(null);
 
+  const fetchStatsAndDrafts = useCallback(async () => {
+    try {
+      const [draftsRes, statsRes] = await Promise.all([
+        api.get('/schools/draft'),
+        api.get('/schools/numbers'),
+      ]);
+      setServerDrafts(draftsRes.data || []);
+      if (statsRes.data) setServerStats(statsRes.data);
+    } catch (error) {
+      console.error('Error fetching stats and drafts:', error);
+    }
+  }, [api]);
+
   const fetchSchools = useCallback(async (showToast = false, pageOverride = null) => {
     if (!showToast && fetchSchoolsInFlightRef.current) return fetchSchoolsInFlightRef.current;
     if (showToast) setRefreshing(true);
@@ -101,16 +114,17 @@ export default function TenantsManagement() {
         if (filters.stage !== 'all') params.stage = filters.stage;
         if (sortBy) params.sort_by = sortBy;
 
-        const response = await api.get('/admin/command-center/schools-overview', { params });
-        const data = response.data || {};
-        const schoolsData = data.schools || [];
+        const schoolsRes = await api.get('/schools', { params });
+
+        const rawData = schoolsRes.data || {};
+        const schoolsData = Array.isArray(rawData) ? rawData : (rawData.schools || []);
+        const total = rawData.total !== undefined ? rawData.total : schoolsData.length;
+        const totalPagesCount = rawData.total_pages || Math.ceil(total / itemsPerPage) || 1;
 
         setSchools(schoolsData);
-        setTotalCount(data.total !== undefined ? data.total : schoolsData.length);
-        setTotalPages(data.total_pages || Math.ceil((data.total || schoolsData.length) / itemsPerPage) || 1);
-        if (data.stats) setServerStats(data.stats);
-        if (data.drafts) setServerDrafts(data.drafts);
-        if (data.cities) setServerCities(data.cities);
+        setTotalCount(total);
+        setTotalPages(totalPagesCount);
+        if (rawData.cities && rawData.cities.length > 0) setServerCities(rawData.cities);
 
         if (showToast) toast.success(t('dataRefreshed') || (isRTL ? 'تم تحديث البيانات بنجاح' : 'Data refreshed'));
       } catch (error) {
@@ -128,6 +142,10 @@ export default function TenantsManagement() {
   }, [api, isRTL, nassaqError, t, currentPage, itemsPerPage, debouncedSearch, activeStatusFilter, filters, sortBy]);
 
   useEffect(() => {
+    fetchStatsAndDrafts();
+  }, [fetchStatsAndDrafts]);
+
+  useEffect(() => {
     fetchSchools();
   }, [fetchSchools]);
 
@@ -136,26 +154,40 @@ export default function TenantsManagement() {
     return schools.filter(s => s.status === 'setup');
   }, [serverDrafts, schools]);
 
-  const filteredSchools = schools;
-
   const cities = useMemo(() => {
     if (serverCities && serverCities.length > 0) return serverCities;
-    return [...new Set(schools.map(s => s.city).filter(Boolean))];
-  }, [serverCities, schools]);
+    const unique = [...new Set(schools.map(s => s.city).filter(Boolean))];
+    unique.sort((a, b) => a.localeCompare(b, isRTL ? 'ar' : 'en'));
+    return unique;
+  }, [serverCities, schools, isRTL]);
 
   const stats = useMemo(() => {
-    if (serverStats) return serverStats;
+    if (serverStats) {
+      return {
+        total: serverStats.total ?? serverStats.total_schools ?? schools.filter(s => s.status !== 'setup').length,
+        active: serverStats.active ?? serverStats.active_schools ?? schools.filter(s => s.status === 'active').length,
+        suspended: serverStats.suspended ?? serverStats.suspended_schools ?? schools.filter(s => s.status === 'suspended').length,
+        pending: serverStats.pending ?? serverStats.pending_schools ?? schools.filter(s => s.status === 'pending').length,
+        drafts: serverStats.drafts ?? serverStats.draft_schools ?? draftSchools.length,
+        totalStudents: serverStats.totalStudents ?? serverStats.total_students ?? schools.reduce((sum, s) => sum + (s.student_count || s.current_students || 0), 0),
+        totalTeachers: serverStats.totalTeachers ?? serverStats.total_teachers ?? schools.reduce((sum, s) => sum + (s.teacher_count || s.current_teachers || 0), 0),
+        totalClasses: serverStats.totalClasses ?? serverStats.total_classes ?? schools.reduce((sum, s) => sum + (s.class_count || 0), 0),
+      };
+    }
     return {
       total: schools.filter(s => s.status !== 'setup').length,
       active: schools.filter(s => s.status === 'active').length,
       suspended: schools.filter(s => s.status === 'suspended').length,
       pending: schools.filter(s => s.status === 'pending').length,
       drafts: draftSchools.length,
-      totalStudents: schools.reduce((sum, s) => sum + (s.student_count || 0), 0),
-      totalTeachers: schools.reduce((sum, s) => sum + (s.teacher_count || 0), 0),
+      totalStudents: schools.reduce((sum, s) => sum + (s.student_count || s.current_students || 0), 0),
+      totalTeachers: schools.reduce((sum, s) => sum + (s.teacher_count || s.current_teachers || 0), 0),
       totalClasses: schools.reduce((sum, s) => sum + (s.class_count || 0), 0),
     };
   }, [serverStats, schools, draftSchools.length]);
+
+  const filteredSchools = schools;
+  const paginatedSchools = schools;
 
   const resetFilters = () => {
     setFilters({ status: 'all', city: 'all', schoolType: 'all', stage: 'all' });
@@ -185,6 +217,7 @@ export default function TenantsManagement() {
       setShowSuspendDialog(null);
       setActionReason('');
       fetchSchools();
+      fetchStatsAndDrafts();
     } catch (err) {
       nassaqError(getApiErrorMessage(err) || (isRTL ? 'فشل إيقاف المدرسة' : 'Failed to suspend school'));
     } finally {
@@ -204,6 +237,7 @@ export default function TenantsManagement() {
       setShowActivateDialog(null);
       setActionReason('');
       fetchSchools();
+      fetchStatsAndDrafts();
     } catch (err) {
       nassaqError(getApiErrorMessage(err) || (isRTL ? 'فشل تفعيل المدرسة' : 'Failed to activate school'));
     } finally {
@@ -217,6 +251,7 @@ export default function TenantsManagement() {
     setShowDrafts(true);
     setActiveStatusFilter(null);
     fetchSchools(true);
+    fetchStatsAndDrafts();
   };
 
   const handleResumeDraft = async (draft) => {
@@ -237,6 +272,7 @@ export default function TenantsManagement() {
       setSchools(prev => prev.filter(s => s.id !== draft.id));
       toast.success(isRTL ? `تم حذف مسودة "${draft.name}"` : `Draft "${draft.name}" deleted`);
       fetchSchools();
+      fetchStatsAndDrafts();
     } catch (err) {
       nassaqError(getApiErrorMessage(err) || (t('failedToDeleteDraft') || (isRTL ? 'فشل حذف المسودة' : 'Failed to delete draft')));
     } finally {
@@ -244,10 +280,28 @@ export default function TenantsManagement() {
     }
   };
 
-  const exportToCSV = () => {
+  const handleRefreshAll = useCallback(async () => {
+    await Promise.all([
+      fetchSchools(true),
+      fetchStatsAndDrafts(),
+    ]);
+  }, [fetchSchools, fetchStatsAndDrafts]);
+
+  const exportToCSV = async () => {
     try {
+      let exportData = schools;
+      try {
+        const fullRes = await api.get('/schools');
+        if (Array.isArray(fullRes.data)) {
+          exportData = fullRes.data;
+        } else if (Array.isArray(fullRes.data?.schools)) {
+          exportData = fullRes.data.schools;
+        }
+      } catch (err) {
+        console.warn('Export fallback to current page:', err);
+      }
       const headers = ['اسم المدرسة', 'كود المدرسة', 'المدينة', 'المنطقة', 'الحالة', 'نوع المدرسة', 'المرحلة', 'عدد الطلاب', 'عدد المعلمين', 'عدد الفصول'];
-      const rows = filteredSchools.map(s => [
+      const rows = exportData.map(s => [
         `"${s.name || ''}"`,
         `"${s.code || ''}"`,
         `"${s.city || ''}"`,
@@ -255,8 +309,8 @@ export default function TenantsManagement() {
         `"${SCHOOL_STATUS[s.status]?.label || s.status}"`,
         `"${s.school_type === 'private' ? 'أهلية' : 'حكومية'}"`,
         `"${s.stage || ''}"`,
-        s.student_count || 0,
-        s.teacher_count || 0,
+        s.student_count || s.current_students || 0,
+        s.teacher_count || s.current_teachers || 0,
         s.class_count || 0,
       ]);
 
@@ -301,7 +355,7 @@ export default function TenantsManagement() {
           {/* 1. Hero Statistics & Actions */}
           <TenantsHeroStats
             stats={stats}
-            onRefresh={() => fetchSchools(true)}
+            onRefresh={handleRefreshAll}
             refreshing={refreshing}
             onExport={exportToCSV}
             onOpenCreateWizard={() => {
@@ -356,8 +410,8 @@ export default function TenantsManagement() {
           {/* 4. Schools Display (Card Grid or Table View) */}
           {viewMode === 'table' ? (
             <SchoolTableView
-              schools={filteredSchools}
-              paginatedSchools={filteredSchools}
+              schools={paginatedSchools}
+              paginatedSchools={paginatedSchools}
               currentPage={currentPage}
               totalPages={totalPages}
               totalCount={totalCount}
@@ -387,7 +441,7 @@ export default function TenantsManagement() {
             />
           ) : (
             <SchoolCardGrid
-              schools={filteredSchools}
+              schools={paginatedSchools}
               currentPage={currentPage}
               totalPages={totalPages}
               totalCount={totalCount}

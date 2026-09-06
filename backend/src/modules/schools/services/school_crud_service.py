@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from dependencies import (
     UserRole, SchoolStatus,
     hash_password, audit_engine, AuditAction,
+    db,
 )
 from engines.sql_utils import (
     gd_find, gd_find_one, gd_insert, gd_insert_many,
@@ -39,6 +40,8 @@ def normalize_school(
     principal_counts: Optional[Dict[str, int]] = None,
     student_counts: Optional[Dict[str, int]] = None,
     teacher_counts: Optional[Dict[str, int]] = None,
+    class_counts: Optional[Dict[str, int]] = None,
+    parent_counts: Optional[Dict[str, int]] = None,
 ) -> dict:
     """Normalize school document to match SchoolResponse fields with live counts."""
     school_id = s.get("id") or ""
@@ -60,6 +63,23 @@ def normalize_school(
     else:
         current_teachers = s.get("current_teachers") or s.get("teacher_count") or 0
 
+    if class_counts is not None:
+        current_classes = class_counts.get(school_id, 0)
+    else:
+        current_classes = s.get("class_count") or 0
+
+    if parent_counts is not None:
+        current_parents = parent_counts.get(school_id, 0)
+    else:
+        current_parents = s.get("parent_count") or 0
+
+    created_at_val = s.get("created_at") or ""
+    if isinstance(created_at_val, datetime):
+        created_at_val = created_at_val.isoformat()
+    updated_at_val = s.get("updated_at")
+    if isinstance(updated_at_val, datetime):
+        updated_at_val = updated_at_val.isoformat()
+
     return {
         **s,
         "logo_url": signed_image_url("logo", school_id, s.get("logo_url")),
@@ -75,7 +95,12 @@ def normalize_school(
         "student_capacity": s.get("student_capacity") or s.get("student_count") or 500,
         "current_students": current_students,
         "current_teachers": current_teachers,
-        "created_at": s.get("created_at") or "",
+        "student_count": current_students,
+        "teacher_count": current_teachers,
+        "class_count": current_classes,
+        "parent_count": current_parents,
+        "created_at": created_at_val,
+        "updated_at": updated_at_val,
         "school_type": s.get("school_type") or "public",
         "stage": s.get("stage") or "primary",
         "language": s.get("language") or "ar",
@@ -88,11 +113,21 @@ def normalize_school(
         "entity_kind": preview["entity_kind"],
         "can_preview_as_principal": preview["can_preview_as_principal"],
         "preview_block_reason": preview["preview_block_reason"],
+        "setup_score": int(s.get("setup_score") if s.get("setup_score") is not None else (
+            sum([
+                current_teachers > 0,
+                current_students > 0,
+                current_classes > 0,
+                bool(s.get("phone") or s.get("principal_phone")),
+            ]) * 25
+        )),
     }
 
 
-async def active_principal_counts_by_tenant(session) -> Dict[str, int]:
+async def active_principal_counts_by_tenant(session=None) -> Dict[str, int]:
     """Batch count active school principals per tenant for preview metadata."""
+    if session is None:
+        session = db.session
     from sqlalchemy import text as _sa_text
 
     result = await session.execute(
@@ -111,10 +146,32 @@ async def active_principal_counts_by_tenant(session) -> Dict[str, int]:
     return {row["tenant_id"]: row["cnt"] for row in rows if row.get("tenant_id")}
 
 
-async def live_entity_counts_by_tenant(session) -> Tuple[Dict[str, int], Dict[str, int]]:
+async def live_entity_counts_by_tenant(session=None) -> Tuple[Dict[str, int], Dict[str, int]]:
     """Batch live student/teacher counts per tenant for platform lists."""
+    if session is None:
+        session = db.session
     from engines.entity_counts import live_counts_by_tenant
     return await live_counts_by_tenant(session)
+
+
+async def class_counts_by_tenant(session=None) -> Dict[str, int]:
+    """Batch class counts per school."""
+    if session is None:
+        session = db.session
+    from sqlalchemy import text as _sa_text
+
+    result = await session.execute(
+        _sa_text(
+            """
+            SELECT school_id, COUNT(*)::int AS cnt
+            FROM classes
+            WHERE school_id IS NOT NULL
+            GROUP BY school_id
+            """
+        )
+    )
+    rows = result.mappings().all()
+    return {row["school_id"]: row["cnt"] for row in rows if row.get("school_id")}
 
 
 class SchoolCrudService:
@@ -580,6 +637,146 @@ class SchoolCrudService:
         resp["temp_password"] = temp_password
         return resp
 
+    @classmethod
+    async def get_schools_paginated(
+        cls,
+        session,
+        page: int = 1,
+        limit: int = 10,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+        city: Optional[str] = None,
+        school_type: Optional[str] = None,
+        stage: Optional[str] = None,
+        sort_by: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Fetch paginated schools with live counts, dynamic filters, and sorting."""
+        from sqlalchemy import text as _sa_text
+        import math
+
+        page = max(1, int(page or 1))
+        limit = max(1, min(1000, int(limit or 10)))
+        offset = (page - 1) * limit
+
+        where_clauses: List[str] = []
+        params: Dict[str, Any] = {}
+
+        if status and status != "all":
+            where_clauses.append("s.status = :status")
+            params["status"] = status
+        else:
+            where_clauses.append("s.status != 'setup'")
+
+        if city and city != "all":
+            where_clauses.append("s.city = :city")
+            params["city"] = city
+
+        if school_type and school_type != "all":
+            where_clauses.append("s.school_type = :school_type")
+            params["school_type"] = school_type
+
+        if stage and stage != "all":
+            where_clauses.append("s.stage = :stage")
+            params["stage"] = stage
+
+        if search and str(search).strip():
+            where_clauses.append(
+                "(s.name ILIKE :search OR s.name_en ILIKE :search"
+                " OR s.code ILIKE :search OR s.city ILIKE :search"
+                " OR s.email ILIKE :search)"
+            )
+            params["search"] = f"%{str(search).strip()}%"
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        order_map = {
+            "name_asc":      "ORDER BY s.name ASC NULLS LAST",
+            "name_desc":     "ORDER BY s.name DESC NULLS LAST",
+            "students_desc": "ORDER BY student_count DESC NULLS LAST",
+            "teachers_desc": "ORDER BY teacher_count DESC NULLS LAST",
+            "classes_desc":  "ORDER BY class_count DESC NULLS LAST",
+            "newest":        "ORDER BY s.created_at DESC NULLS LAST",
+        }
+        order_sql = order_map.get(sort_by or "", "ORDER BY s.created_at DESC NULLS LAST")
+
+        count_query = _sa_text(f"SELECT COUNT(*) FROM schools s {where_sql}")
+        total_matching = (await session.execute(count_query, params)).scalar() or 0
+
+        query_params = dict(params)
+        query_params["limit"] = limit
+        query_params["offset"] = offset
+
+        rows = (await session.execute(_sa_text(f"""
+            SELECT
+                s.id, s.name, s.name_en, s.code, s.status,
+                s.city, s.region, s.address, s.country,
+                s.phone, s.email, s.logo_url,
+                s.school_type, s.stage, s.language,
+                s.calendar_system, s.student_capacity,
+                s.principal_name, s.principal_email, s.principal_phone,
+                s.educational_pathway,
+                s.created_at, s.updated_at,
+                COALESCE(st.cnt, 0)         AS student_count,
+                COALESCE(t.cnt,  0)         AS teacher_count,
+                COALESCE(c.cnt,  0)         AS class_count,
+                COALESCE(p.cnt,  0)         AS parent_count,
+                COALESCE(pr.cnt, 0)         AS active_principal_count
+            FROM schools s
+            LEFT JOIN (SELECT school_id, COUNT(*) AS cnt FROM students GROUP BY school_id) st ON st.school_id = s.id
+            LEFT JOIN (SELECT school_id, COUNT(*) AS cnt FROM teachers GROUP BY school_id) t  ON t.school_id  = s.id
+            LEFT JOIN (SELECT school_id, COUNT(*) AS cnt FROM classes  GROUP BY school_id) c  ON c.school_id  = s.id
+            LEFT JOIN (SELECT school_id, COUNT(*) AS cnt FROM parents  GROUP BY school_id) p  ON p.school_id  = s.id
+            LEFT JOIN (
+                SELECT tenant_id, COUNT(*)::int AS cnt
+                FROM users
+                WHERE role = 'school_principal'
+                  AND is_active = TRUE
+                  AND tenant_id IS NOT NULL
+                GROUP BY tenant_id
+            ) pr ON pr.tenant_id = s.id
+            {where_sql}
+            {order_sql}
+            LIMIT :limit OFFSET :offset
+        """), query_params)).mappings().all()
+
+        principal_counts = {r["id"]: r["active_principal_count"] for r in rows}
+        student_counts = {r["id"]: r["student_count"] for r in rows}
+        teacher_counts = {r["id"]: r["teacher_count"] for r in rows}
+        class_counts = {r["id"]: r["class_count"] for r in rows}
+        parent_counts = {r["id"]: r["parent_count"] for r in rows}
+
+        schools = [
+            SchoolResponse(**normalize_school(
+                dict(r),
+                principal_counts=principal_counts,
+                student_counts=student_counts,
+                teacher_counts=teacher_counts,
+                class_counts=class_counts,
+                parent_counts=parent_counts,
+            ))
+            for r in rows
+        ]
+
+        total_pages = math.ceil(total_matching / limit) if limit > 0 else 1
+
+        cities = [
+            c for c in (await session.execute(_sa_text("""
+                SELECT DISTINCT city FROM schools
+                WHERE city IS NOT NULL AND TRIM(city) != ''
+                ORDER BY city ASC
+            """))).scalars().all()
+            if c
+        ]
+
+        return {
+            "schools": schools,
+            "total": total_matching,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages,
+            "cities": cities,
+        }
+
     @staticmethod
     async def get_schools_list(session, status: Optional[str] = None) -> List[SchoolResponse]:
         query = {}
@@ -588,15 +785,83 @@ class SchoolCrudService:
         schools = await gd_find(session, "schools", query, limit=1000)
         principal_counts = await active_principal_counts_by_tenant(session)
         student_counts, teacher_counts = await live_entity_counts_by_tenant(session)
+        class_counts = await class_counts_by_tenant(session)
         return [
             SchoolResponse(**normalize_school(
                 s,
                 principal_counts=principal_counts,
                 student_counts=student_counts,
                 teacher_counts=teacher_counts,
+                class_counts=class_counts,
             ))
             for s in schools
         ]
+
+    @staticmethod
+    async def get_draft_schools(session) -> List[SchoolResponse]:
+        """Fetch all school drafts (schools with status = 'setup')."""
+        schools = await gd_find(session, "schools", {"status": "setup"}, limit=1000)
+        schools.sort(key=lambda s: str(s.get("created_at") or ""), reverse=True)
+        principal_counts = await active_principal_counts_by_tenant(session)
+        student_counts, teacher_counts = await live_entity_counts_by_tenant(session)
+        class_counts = await class_counts_by_tenant(session)
+        return [
+            SchoolResponse(**normalize_school(
+                s,
+                principal_counts=principal_counts,
+                student_counts=student_counts,
+                teacher_counts=teacher_counts,
+                class_counts=class_counts,
+            ))
+            for s in schools
+        ]
+
+    @staticmethod
+    async def get_schools_numbers(session) -> Dict[str, int]:
+        """Fetch aggregated numbers and metrics for schools module."""
+        from sqlalchemy import text as _sa_text
+        stats_row = (await session.execute(_sa_text("""
+            SELECT
+                COUNT(*)                                          AS total_schools,
+                COUNT(*) FILTER (WHERE status = 'active')        AS active_schools,
+                COUNT(*) FILTER (WHERE status = 'suspended')     AS suspended_schools,
+                COUNT(*) FILTER (WHERE status = 'pending')       AS pending_schools,
+                COUNT(*) FILTER (WHERE status = 'setup')         AS draft_schools,
+                COALESCE((SELECT COUNT(*) FROM students), 0)     AS total_students,
+                COALESCE((SELECT COUNT(*) FROM teachers), 0)     AS total_teachers,
+                COALESCE((SELECT COUNT(*) FROM classes),  0)     AS total_classes
+            FROM schools
+        """))).mappings().first() or {}
+
+        draft_count = int(stats_row.get("draft_schools") or 0)
+        total_schools = int(stats_row.get("total_schools") or 0)
+        operational_schools = max(0, total_schools - draft_count)
+        active_schools = int(stats_row.get("active_schools") or 0)
+        suspended_schools = int(stats_row.get("suspended_schools") or 0)
+        pending_schools = int(stats_row.get("pending_schools") or 0)
+        total_students = int(stats_row.get("total_students") or 0)
+        total_teachers = int(stats_row.get("total_teachers") or 0)
+        total_classes = int(stats_row.get("total_classes") or 0)
+
+        return {
+            "total": operational_schools,
+            "active": active_schools,
+            "suspended": suspended_schools,
+            "pending": pending_schools,
+            "drafts": draft_count,
+            "totalStudents": total_students,
+            "totalTeachers": total_teachers,
+            "totalClasses": total_classes,
+            # snake_case mirrors
+            "total_schools": operational_schools,
+            "active_schools": active_schools,
+            "suspended_schools": suspended_schools,
+            "pending_schools": pending_schools,
+            "draft_schools": draft_count,
+            "total_students": total_students,
+            "total_teachers": total_teachers,
+            "total_classes": total_classes,
+        }
 
     @staticmethod
     async def get_school_by_id(session, school_id: str, current_user: dict) -> SchoolResponse:

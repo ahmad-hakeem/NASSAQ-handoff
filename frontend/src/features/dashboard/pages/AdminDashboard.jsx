@@ -185,7 +185,7 @@ export const AdminDashboard = () => {
   const fetchSchoolsOverviewPage = useCallback(async (newPage = 1) => {
     setSchoolsPageLoading(true);
     try {
-      const res = await api.get('/admin/command-center/schools-overview', {
+      const res = await api.get('/schools', {
         params: { page: newPage, limit: 5 },
       });
       const data = res.data || {};
@@ -212,7 +212,7 @@ export const AdminDashboard = () => {
         const [ccRes, saRes, schoolsRes, healthRes] = await Promise.allSettled([
           api.get('/admin/command-center/stats'),
           api.get('/super-admin/dashboard-stats'),
-          api.get('/admin/command-center/schools-overview', { params: { page: 1, limit: 5 } }),
+          api.get('/schools', { params: { page: 1, limit: 5 } }),
           api.get('/admin/command-center/system-health'),
         ]);
 

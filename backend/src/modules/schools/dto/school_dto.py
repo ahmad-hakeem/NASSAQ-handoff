@@ -3,7 +3,8 @@ NASSAQ - School Models & DTOs
 All school/tenant-related Pydantic models for CRUD, info updates, status, and credentials.
 """
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
-from typing import List, Optional
+from typing import List, Optional, Union
+from datetime import datetime
 from src.common.dto.enums import SchoolStatus
 from src.common.utils.school_type import normalize_school_type
 
@@ -73,7 +74,12 @@ class SchoolResponse(BaseModel):
     student_capacity: int = 500
     current_students: int = 0
     current_teachers: int = 0
-    created_at: str
+    student_count: int = 0
+    teacher_count: int = 0
+    class_count: int = 0
+    parent_count: int = 0
+    created_at: Union[str, datetime]
+    updated_at: Optional[Union[str, datetime]] = None
     school_type: Optional[str] = "public"
     stage: Optional[str] = "primary"
     language: Optional[str] = "ar"
@@ -86,6 +92,17 @@ class SchoolResponse(BaseModel):
     entity_kind: str = "standard_school"
     can_preview_as_principal: bool = True
     preview_block_reason: Optional[str] = None
+    setup_score: int = 0
+
+
+class SchoolPaginatedResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
+    schools: List[SchoolResponse]
+    total: int
+    page: int
+    limit: int
+    total_pages: int
+    cities: Optional[List[str]] = None
 
 
 class SchoolUpdate(BaseModel):

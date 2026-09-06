@@ -11,7 +11,6 @@ import uuid
 import logging
 from sqlalchemy.exc import SQLAlchemyError
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
-from src.modules.platform.services import AdminSchoolsOverviewService
 
 logger = logging.getLogger("nassaq.admin_dashboard")
 
@@ -64,37 +63,6 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
     # handler lives in dashboard_routes_mod.py, whose router is registered first, so
     # any copy here would be shadowed (dead) by FastAPI's first-match-wins. Edit the
     # roles/logic there, not here.
-
-    @router.get("/command-center/schools-overview")
-    async def get_schools_overview(
-        page: int = 1,
-        limit: int = 10,
-        status: Optional[str] = None,
-        search: Optional[str] = None,
-        city: Optional[str] = None,
-        school_type: Optional[str] = None,
-        stage: Optional[str] = None,
-        sort_by: Optional[str] = None,
-        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER, UserRole.PLATFORM_SUB_ADMIN]))
-    ):
-        try:
-            filters = {
-                "status": status,
-                "search": search,
-                "city": city,
-                "school_type": school_type,
-                "stage": stage,
-            }
-            return await AdminSchoolsOverviewService.get_schools_overview(
-                session=db.session,
-                page=page,
-                limit=limit,
-                filters=filters,
-                sort_by=sort_by,
-            )
-        except Exception as e:
-            logger.error(f"Error getting schools overview: {e}", exc_info=True)
-            return AdminSchoolsOverviewService.get_empty_fallback(limit=limit)
 
     @router.get("/command-center/system-health")
     async def get_system_health(

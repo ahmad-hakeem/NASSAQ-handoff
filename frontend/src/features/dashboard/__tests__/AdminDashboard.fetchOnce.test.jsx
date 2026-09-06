@@ -95,7 +95,7 @@ describe('AdminDashboard — single fetch of /admin/command-center/stats', () =>
     mockApiGet.mockImplementation((url) => {
       if (url === STATS_URL) return Promise.resolve({ data: MOCK_STATS });
       if (url === '/super-admin/dashboard-stats') return Promise.resolve({ data: {} });
-      if (url === '/admin/command-center/schools-overview') return Promise.resolve({ data: { schools: [] } });
+      if (url === '/schools') return Promise.resolve({ data: { schools: [], total: 0, page: 1, limit: 5, total_pages: 1 } });
       if (url === '/admin/command-center/system-health') return Promise.resolve({ data: {} });
       if (url === '/analytics/overview') return Promise.resolve({ data: {} });
       if (url === '/reports/school/overview') return Promise.resolve({ data: {} });

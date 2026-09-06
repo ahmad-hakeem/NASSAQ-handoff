@@ -3,14 +3,14 @@ NASSAQ Route Module: School CRUD, Dashboard, and Platform Public Metrics
 Controller layer delegating business logic to SchoolCrudService and SchoolDashboardService.
 """
 from fastapi import APIRouter, HTTPException, Depends, Request
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
     require_recent_mfa,
 )
 from src.modules.schools.dto.school_dto import (
-    SchoolCreate, SchoolResponse, SchoolStatusChangeRequest, SchoolCredentialsRequest,
+    SchoolCreate, SchoolResponse, SchoolPaginatedResponse, SchoolStatusChangeRequest, SchoolCredentialsRequest,
 )
 from src.modules.schools.services.school_crud_service import (
     SchoolCrudService,
@@ -74,12 +74,53 @@ async def finalize_school_draft(
     return await SchoolCrudService.finalize_school_draft(db.session, school_id, school_data, current_user)
 
 
-@router.get("/schools", response_model=List[SchoolResponse])
+@router.get("/schools", response_model=Union[SchoolPaginatedResponse, List[SchoolResponse]])
 async def get_schools(
+    page: Optional[int] = None,
+    limit: Optional[int] = None,
     status: Optional[str] = None,
+    search: Optional[str] = None,
+    city: Optional[str] = None,
+    school_type: Optional[str] = None,
+    stage: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    paginate: Optional[bool] = None,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.MINISTRY_REP, UserRole.PLATFORM_SUB_ADMIN]))
 ):
+    """List schools. If page, limit, or paginate=True is specified, returns paginated response; otherwise returns full list."""
+    if paginate is True or page is not None or limit is not None:
+        p = page or 1
+        l = limit or 10
+        return await SchoolCrudService.get_schools_paginated(
+            db.session,
+            page=p,
+            limit=l,
+            status=status,
+            search=search,
+            city=city,
+            school_type=school_type,
+            stage=stage,
+            sort_by=sort_by,
+        )
     return await SchoolCrudService.get_schools_list(db.session, status=status)
+
+
+@router.get("/schools/numbers")
+@router.get("/schools/stats")
+async def get_schools_numbers(
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER, UserRole.PLATFORM_SUB_ADMIN, UserRole.MINISTRY_REP]))
+):
+    """Get aggregated numbers and platform metrics for the schools module."""
+    return await SchoolCrudService.get_schools_numbers(db.session)
+
+
+@router.get("/schools/draft", response_model=List[SchoolResponse])
+@router.get("/schools/drafts", response_model=List[SchoolResponse])
+async def get_school_drafts(
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.MINISTRY_REP, UserRole.PLATFORM_SUB_ADMIN]))
+):
+    """Get all draft schools (setup status) in the schools module."""
+    return await SchoolCrudService.get_draft_schools(db.session)
 
 
 @router.get("/schools/{school_id}", response_model=SchoolResponse)
