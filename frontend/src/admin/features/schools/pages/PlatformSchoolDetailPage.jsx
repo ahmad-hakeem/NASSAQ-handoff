@@ -24,6 +24,7 @@ import BillingSubscriptionTab from '../components/detail/BillingSubscriptionTab'
 import SchoolActivityTab from '../components/detail/SchoolActivityTab';
 import SchoolCredentialsDialog from '../components/detail/SchoolCredentialsDialog';
 import SchoolActionDialogs from '../components/SchoolActionDialogs';
+import { schoolsService } from '../services';
 
 export default function PlatformSchoolDetailPage() {
   const { schoolId } = useParams();
@@ -72,16 +73,16 @@ export default function PlatformSchoolDetailPage() {
     setLoading(true);
     setError(false);
     try {
-      const res = await api.get(`/schools/${schoolId}/detail`);
-      setDetail(res.data);
+      const data = await schoolsService.fetchSchoolDetail(api, schoolId);
+      setDetail(data);
       setEditData({
-        name: res.data.school?.name || '',
-        name_en: res.data.school?.name_en || '',
-        email: res.data.school?.email || '',
-        phone: res.data.school?.phone || '',
-        city: res.data.school?.city || '',
-        region: res.data.school?.region || '',
-        address: res.data.school?.address || '',
+        name: data.school?.name || '',
+        name_en: data.school?.name_en || '',
+        email: data.school?.email || '',
+        phone: data.school?.phone || '',
+        city: data.school?.city || '',
+        region: data.school?.region || '',
+        address: data.school?.address || '',
       });
     } catch (err) {
       setError(true);
@@ -98,7 +99,7 @@ export default function PlatformSchoolDetailPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.put(`/schools/${schoolId}`, editData);
+      await schoolsService.updateSchool(api, schoolId, editData);
       toast.success(t('changesSaved') || (isRTL ? 'تم حفظ التعديلات بنجاح' : 'Changes saved successfully'));
       setEditMode(false);
       fetchDetail();
@@ -131,9 +132,9 @@ export default function PlatformSchoolDetailPage() {
     try {
       const payload = { email: credForm.email, name: credForm.name || undefined };
       if (credForm.password) payload.password = credForm.password;
-      const res = await api.post(`/schools/${schoolId}/credentials`, payload);
-      setCredResult(res.data);
-      toast.success(res.data.is_new
+      const resData = await schoolsService.saveSchoolCredentials(api, schoolId, payload);
+      setCredResult(resData);
+      toast.success(resData.is_new
         ? (t('principalAccountCreatedSuccessfully') || (isRTL ? 'تم إنشاء حساب المدير بنجاح' : 'Principal account created'))
         : (t('credentialsUpdatedSuccessfully') || (isRTL ? 'تم تحديث بيانات الدخول بنجاح' : 'Credentials updated'))
       );
@@ -161,7 +162,7 @@ export default function PlatformSchoolDetailPage() {
     const reason = actionReason.trim() || (isRTL ? 'إيقاف إداري مؤقت' : 'Temporary administrative suspension');
     setActionLoading(true);
     try {
-      await api.post(`/schools/${schoolId}/suspend`, { reason });
+      await schoolsService.suspendSchool(api, schoolId, reason);
       setDetail(prev => prev ? { ...prev, school: { ...prev.school, status: 'suspended' } } : prev);
       toast.success(t('schoolSuspendedSuccessfully') || (isRTL ? 'تم إيقاف المدرسة بنجاح' : 'School suspended'));
       setSuspendDialog(null);
@@ -178,7 +179,7 @@ export default function PlatformSchoolDetailPage() {
     const reason = actionReason.trim() || (isRTL ? 'إعادة تفعيل المدرسة' : 'Reactivate school');
     setActionLoading(true);
     try {
-      await api.post(`/schools/${schoolId}/activate`, { reason });
+      await schoolsService.activateSchool(api, schoolId, reason);
       setDetail(prev => prev ? { ...prev, school: { ...prev.school, status: 'active' } } : prev);
       toast.success(t('schoolActivatedSuccessfully') || (isRTL ? 'تم تفعيل المدرسة بنجاح' : 'School activated'));
       setActivateDialog(null);

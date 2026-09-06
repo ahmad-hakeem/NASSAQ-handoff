@@ -17,6 +17,7 @@ import SchoolCardGrid from '../components/SchoolCardGrid';
 import SchoolTableView from '../components/SchoolTableView';
 import SchoolActionDialogs from '../components/SchoolActionDialogs';
 import { SCHOOL_STATUS } from '../constants/schoolConstants';
+import { schoolsService, schoolsExportService } from '../services';
 
 const CreateSchoolWizard = lazy(() => import('@/admin/features/schools/components/CreateSchoolWizard'));
 
@@ -79,12 +80,12 @@ export default function TenantsManagement() {
 
   const fetchStatsAndDrafts = useCallback(async () => {
     try {
-      const [draftsRes, statsRes] = await Promise.all([
-        api.get('/schools/draft'),
-        api.get('/schools/numbers'),
+      const [drafts, stats] = await Promise.all([
+        schoolsService.fetchSchoolDrafts(api),
+        schoolsService.fetchSchoolNumbers(api),
       ]);
-      setServerDrafts(draftsRes.data || []);
-      if (statsRes.data) setServerStats(statsRes.data);
+      setServerDrafts(drafts);
+      if (stats) setServerStats(stats);
     } catch (error) {
       console.error('Error fetching stats and drafts:', error);
     }
@@ -114,17 +115,12 @@ export default function TenantsManagement() {
         if (filters.stage !== 'all') params.stage = filters.stage;
         if (sortBy) params.sort_by = sortBy;
 
-        const schoolsRes = await api.get('/schools', { params });
+        const result = await schoolsService.fetchSchools(api, params);
 
-        const rawData = schoolsRes.data || {};
-        const schoolsData = Array.isArray(rawData) ? rawData : (rawData.schools || []);
-        const total = rawData.total !== undefined ? rawData.total : schoolsData.length;
-        const totalPagesCount = rawData.total_pages || Math.ceil(total / itemsPerPage) || 1;
-
-        setSchools(schoolsData);
-        setTotalCount(total);
-        setTotalPages(totalPagesCount);
-        if (rawData.cities && rawData.cities.length > 0) setServerCities(rawData.cities);
+        setSchools(result.schools);
+        setTotalCount(result.total);
+        setTotalPages(result.totalPages);
+        if (result.cities && result.cities.length > 0) setServerCities(result.cities);
 
         if (showToast) toast.success(t('dataRefreshed') || (isRTL ? 'تم تحديث البيانات بنجاح' : 'Data refreshed'));
       } catch (error) {
@@ -209,7 +205,7 @@ export default function TenantsManagement() {
     const reason = actionReason.trim() || (isRTL ? 'إيقاف إداري مؤقت' : 'Temporary administrative suspension');
     setActionLoading(true);
     try {
-      await api.post(`/schools/${showSuspendDialog.id}/suspend`, { reason });
+      await schoolsService.suspendSchool(api, showSuspendDialog.id, reason);
       setSchools(prev => prev.map(s =>
         s.id === showSuspendDialog.id ? { ...s, status: 'suspended' } : s
       ));
@@ -229,7 +225,7 @@ export default function TenantsManagement() {
     const reason = actionReason.trim() || (isRTL ? 'إعادة تفعيل المدرسة' : 'Reactivate school');
     setActionLoading(true);
     try {
-      await api.post(`/schools/${showActivateDialog.id}/activate`, { reason });
+      await schoolsService.activateSchool(api, showActivateDialog.id, reason);
       setSchools(prev => prev.map(s =>
         s.id === showActivateDialog.id ? { ...s, status: 'active' } : s
       ));
@@ -256,8 +252,8 @@ export default function TenantsManagement() {
 
   const handleResumeDraft = async (draft) => {
     try {
-      const res = await api.get(`/schools/${draft.id}`);
-      setSelectedDraftForEdit(res.data || draft);
+      const data = await schoolsService.fetchSchoolDraftById(api, draft.id);
+      setSelectedDraftForEdit(data || draft);
     } catch (err) {
       console.warn('Could not fetch fresh draft details, using local data:', err);
       setSelectedDraftForEdit(draft);
@@ -268,7 +264,7 @@ export default function TenantsManagement() {
   const handleDeleteDraft = async (draft) => {
     setDeletingDraftId(draft.id);
     try {
-      await api.delete(`/schools/${draft.id}/draft`);
+      await schoolsService.deleteSchoolDraft(api, draft.id);
       setSchools(prev => prev.filter(s => s.id !== draft.id));
       toast.success(isRTL ? `تم حذف مسودة "${draft.name}"` : `Draft "${draft.name}" deleted`);
       fetchSchools();
@@ -291,38 +287,14 @@ export default function TenantsManagement() {
     try {
       let exportData = schools;
       try {
-        const fullRes = await api.get('/schools');
-        if (Array.isArray(fullRes.data)) {
-          exportData = fullRes.data;
-        } else if (Array.isArray(fullRes.data?.schools)) {
-          exportData = fullRes.data.schools;
+        const fullSchools = await schoolsService.fetchAllSchoolsForExport(api);
+        if (fullSchools && fullSchools.length > 0) {
+          exportData = fullSchools;
         }
       } catch (err) {
         console.warn('Export fallback to current page:', err);
       }
-      const headers = ['اسم المدرسة', 'كود المدرسة', 'المدينة', 'المنطقة', 'الحالة', 'نوع المدرسة', 'المرحلة', 'عدد الطلاب', 'عدد المعلمين', 'عدد الفصول'];
-      const rows = exportData.map(s => [
-        `"${s.name || ''}"`,
-        `"${s.code || ''}"`,
-        `"${s.city || ''}"`,
-        `"${s.region || ''}"`,
-        `"${SCHOOL_STATUS[s.status]?.label || s.status}"`,
-        `"${s.school_type === 'private' ? 'أهلية' : 'حكومية'}"`,
-        `"${s.stage || ''}"`,
-        s.student_count || s.current_students || 0,
-        s.teacher_count || s.current_teachers || 0,
-        s.class_count || 0,
-      ]);
-
-      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `schools_export_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      schoolsExportService.exportSchoolsToCSV(exportData, isRTL, SCHOOL_STATUS);
       toast.success(isRTL ? 'تم تصدير ملف المدارس بنجاح' : 'Schools exported successfully');
     } catch (e) {
       console.error('Export error:', e);
