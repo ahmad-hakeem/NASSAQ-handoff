@@ -11,6 +11,7 @@ import uuid
 import logging
 from sqlalchemy.exc import SQLAlchemyError
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
+from src.modules.platform.services import AdminSchoolsOverviewService
 
 logger = logging.getLogger("nassaq.admin_dashboard")
 
@@ -66,130 +67,34 @@ def setup_admin_routes(db, get_current_user, require_roles, UserRole):
 
     @router.get("/command-center/schools-overview")
     async def get_schools_overview(
+        page: int = 1,
+        limit: int = 10,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+        city: Optional[str] = None,
+        school_type: Optional[str] = None,
+        stage: Optional[str] = None,
+        sort_by: Optional[str] = None,
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.PLATFORM_OPERATIONS_MANAGER, UserRole.PLATFORM_SUB_ADMIN]))
     ):
         try:
-            from sqlalchemy import text as _sa_text
-            session = db.session
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-            from src.common.utils.avatar_serving import signed_image_url
-            sql = _sa_text("""
-                SELECT
-                    s.id,
-                    s.name,
-                    s.name_en,
-                    s.code,
-                    s.status,
-                    s.city,
-                    s.region,
-                    s.address,
-                    s.country,
-                    s.phone,
-                    s.email,
-                    s.logo_url,
-                    s.school_type,
-                    s.stage,
-                    s.language,
-                    s.calendar_system,
-                    s.student_capacity,
-                    s.principal_name,
-                    s.principal_email,
-                    s.principal_phone,
-                    s.educational_pathway,
-                    s.created_at,
-                    s.updated_at,
-                    COALESCE(st.cnt, 0) AS student_count,
-                    COALESCE(t.cnt,  0) AS teacher_count,
-                    COALESCE(c.cnt,  0) AS class_count,
-                    COALESCE(p.cnt,  0) AS parent_count,
-                    COALESCE(tt.published, 0) AS published_timetable_count
-                FROM schools s
-                LEFT JOIN (SELECT school_id, COUNT(*) AS cnt FROM students  GROUP BY school_id) st ON st.school_id = s.id
-                LEFT JOIN (SELECT school_id, COUNT(*) AS cnt FROM teachers  GROUP BY school_id) t  ON t.school_id  = s.id
-                LEFT JOIN (SELECT school_id, COUNT(*) AS cnt FROM classes   GROUP BY school_id) c  ON c.school_id  = s.id
-                LEFT JOIN (SELECT school_id, COUNT(*) AS cnt FROM parents   GROUP BY school_id) p  ON p.school_id  = s.id
-                LEFT JOIN (
-                    SELECT school_id, COUNT(*) AS published
-                    FROM timetable_runs WHERE status = 'published'
-                    GROUP BY school_id
-                ) tt ON tt.school_id = s.id
-                ORDER BY s.created_at DESC NULLS LAST
-                LIMIT 100
-            """)
-            rows = (await session.execute(sql)).mappings().all()
-            school_ids = [r["id"] for r in rows]
-
-            sessions_today_map: Dict[str, int] = {}
-            if school_ids:
-                stmt = _sa_text("""
-                    SELECT data->>'school_id' AS sid, COUNT(*) AS cnt
-                    FROM generic_documents
-                    WHERE collection = 'class_sessions'
-                      AND data->>'date' = :today
-                      AND data->>'school_id' = ANY(:sids)
-                    GROUP BY data->>'school_id'
-                """)
-                rs = await session.execute(stmt, {"today": today, "sids": school_ids})
-                for sid, cnt in rs.all():
-                    sessions_today_map[sid] = cnt
-
-            result = []
-            for r in rows:
-                sid = r["id"]
-                student_count = int(r["student_count"] or 0)
-                teacher_count = int(r["teacher_count"] or 0)
-                class_count = int(r["class_count"] or 0)
-                parent_count = int(r["parent_count"] or 0)
-                has_timetable = (r["published_timetable_count"] or 0) > 0
-                setup_score = sum([
-                    teacher_count > 0,
-                    student_count > 0,
-                    class_count > 0,
-                    has_timetable,
-                ]) * 25
-
-                created_at = r["created_at"].isoformat() if r["created_at"] else ""
-                updated_at = r["updated_at"].isoformat() if r["updated_at"] else ""
-                phone_num = r["phone"] or r["principal_phone"] or ""
-
-                result.append({
-                    "id": sid,
-                    "name": r["name"] or "",
-                    "name_en": r["name_en"] or "",
-                    "code": r["code"] or "",
-                    "status": r["status"] or "active",
-                    "city": r["city"] or "",
-                    "region": r["region"] or "",
-                    "address": r["address"] or "",
-                    "country": r["country"] or "SA",
-                    "phone": phone_num,
-                    "email": r["email"] or "",
-                    "logo_url": signed_image_url("logo", sid, r["logo_url"]),
-                    "school_type": r["school_type"] or "public",
-                    "stage": r["stage"] or "primary",
-                    "language": r["language"] or "ar",
-                    "calendar_system": r["calendar_system"] or "hijri_gregorian",
-                    "student_capacity": r["student_capacity"] or 500,
-                    "principal_name": r["principal_name"] or "",
-                    "principal_email": r["principal_email"] or "",
-                    "principal_phone": r["principal_phone"] or phone_num,
-                    "principal_mobile": phone_num,
-                    "educational_pathway": r["educational_pathway"] or "",
-                    "student_count": student_count,
-                    "teacher_count": teacher_count,
-                    "class_count": class_count,
-                    "parent_count": parent_count,
-                    "sessions_today": sessions_today_map.get(sid, 0),
-                    "setup_score": setup_score,
-                    "has_timetable": has_timetable,
-                    "created_at": created_at,
-                    "last_activity": updated_at or created_at,
-                })
-            return {"schools": result}
+            filters = {
+                "status": status,
+                "search": search,
+                "city": city,
+                "school_type": school_type,
+                "stage": stage,
+            }
+            return await AdminSchoolsOverviewService.get_schools_overview(
+                session=db.session,
+                page=page,
+                limit=limit,
+                filters=filters,
+                sort_by=sort_by,
+            )
         except Exception as e:
-            logger.error(f"Error getting schools overview: {e}")
-            return {"schools": []}
+            logger.error(f"Error getting schools overview: {e}", exc_info=True)
+            return AdminSchoolsOverviewService.get_empty_fallback(limit=limit)
 
     @router.get("/command-center/system-health")
     async def get_system_health(

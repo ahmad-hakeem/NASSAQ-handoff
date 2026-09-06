@@ -172,6 +172,8 @@ export const AdminDashboard = () => {
 
   const [stats, setStats] = useState(null);
   const [schoolsOverview, setSchoolsOverview] = useState([]);
+  const [schoolsPagination, setSchoolsPagination] = useState({ page: 1, limit: 5, total: 0, total_pages: 1 });
+  const [schoolsPageLoading, setSchoolsPageLoading] = useState(false);
   const [systemHealth, setSystemHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -179,6 +181,27 @@ export const AdminDashboard = () => {
   const [hakimInsights, setHakimInsights] = useState([]);
 
   const fetchInFlightRef = useRef(null);
+
+  const fetchSchoolsOverviewPage = useCallback(async (newPage = 1) => {
+    setSchoolsPageLoading(true);
+    try {
+      const res = await api.get('/admin/command-center/schools-overview', {
+        params: { page: newPage, limit: 5 },
+      });
+      const data = res.data || {};
+      setSchoolsOverview(data.schools || []);
+      setSchoolsPagination({
+        total:       data.total       ?? 0,
+        page:        data.page        ?? newPage,
+        limit:       data.limit       ?? 5,
+        total_pages: data.total_pages ?? 1,
+      });
+    } catch (err) {
+      console.error('Dashboard schools page fetch error:', err);
+    } finally {
+      setSchoolsPageLoading(false);
+    }
+  }, [api]);
 
   const fetchAllData = useCallback(async (showToast = false) => {
     if (!showToast && fetchInFlightRef.current) return fetchInFlightRef.current;
@@ -189,7 +212,7 @@ export const AdminDashboard = () => {
         const [ccRes, saRes, schoolsRes, healthRes] = await Promise.allSettled([
           api.get('/admin/command-center/stats'),
           api.get('/super-admin/dashboard-stats'),
-          api.get('/admin/command-center/schools-overview'),
+          api.get('/admin/command-center/schools-overview', { params: { page: 1, limit: 5 } }),
           api.get('/admin/command-center/system-health'),
         ]);
 
@@ -199,13 +222,20 @@ export const AdminDashboard = () => {
         setStats({ ...sa, ...cc });
 
         if (schoolsRes.status === 'fulfilled') {
-          setSchoolsOverview(schoolsRes.value.data?.schools || []);
+          const sData = schoolsRes.value.data || {};
+          setSchoolsOverview(sData.schools || []);
+          setSchoolsPagination({
+            total:       sData.total       ?? 0,
+            page:        sData.page        ?? 1,
+            limit:       sData.limit       ?? 5,
+            total_pages: sData.total_pages ?? 1,
+          });
         }
         if (healthRes.status === 'fulfilled') {
           setSystemHealth(healthRes.value.data);
         }
 
-        generateHakimInsights(cc, schoolsRes.status === 'fulfilled' ? schoolsRes.value.data?.schools : []);
+        generateHakimInsights(cc, schoolsRes.status === 'fulfilled' ? (schoolsRes.value.data?.schools || []) : []);
 
         if (showToast) toast.success(t('dataRefreshed'));
       } catch (error) {
@@ -641,6 +671,44 @@ export const AdminDashboard = () => {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Schools Quick View Pagination */}
+                {schoolsPagination.total > 0 && (
+                  <div className="p-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2 text-xs font-tajawal bg-slate-50/50 dark:bg-slate-900/40">
+                    <span className="text-slate-500 dark:text-slate-400">
+                      {isRTL
+                        ? `عرض ${(schoolsPagination.page - 1) * schoolsPagination.limit + 1} إلى ${Math.min(schoolsPagination.page * schoolsPagination.limit, schoolsPagination.total)} من أصل ${schoolsPagination.total} مدرسة`
+                        : `Showing ${(schoolsPagination.page - 1) * schoolsPagination.limit + 1} to ${Math.min(schoolsPagination.page * schoolsPagination.limit, schoolsPagination.total)} of ${schoolsPagination.total} schools`}
+                    </span>
+                    {schoolsPagination.total_pages > 1 && (
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={schoolsPagination.page <= 1 || schoolsPageLoading}
+                          onClick={() => fetchSchoolsOverviewPage(schoolsPagination.page - 1)}
+                          className="h-7 px-2 text-xs font-bold rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200"
+                        >
+                          {isRTL ? <ChevronRight className="h-3 w-3 ms-0.5" /> : <ChevronLeft className="h-3 w-3 me-0.5" />}
+                          {isRTL ? 'السابق' : 'Prev'}
+                        </Button>
+                        <span className="px-2 py-0.5 font-bold font-mono text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md">
+                          {schoolsPagination.page} / {schoolsPagination.total_pages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={schoolsPagination.page >= schoolsPagination.total_pages || schoolsPageLoading}
+                          onClick={() => fetchSchoolsOverviewPage(schoolsPagination.page + 1)}
+                          className="h-7 px-2 text-xs font-bold rounded-lg border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200"
+                        >
+                          {isRTL ? 'التالي' : 'Next'}
+                          {isRTL ? <ChevronLeft className="h-3 w-3 me-0.5" /> : <ChevronRight className="h-3 w-3 ms-0.5" />}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
 

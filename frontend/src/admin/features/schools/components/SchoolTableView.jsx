@@ -23,6 +23,7 @@ export default function SchoolTableView({
   paginatedSchools,
   currentPage,
   totalPages,
+  totalCount,
   itemsPerPage,
   onPageChange,
   onItemsPerPageChange,
@@ -116,7 +117,7 @@ export default function SchoolTableView({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedSchools.map((school) => {
+            {(paginatedSchools || schools || []).map((school) => {
               const statusCfg = SCHOOL_STATUS[school.status] || SCHOOL_STATUS.active;
               const stageLabel = EDUCATIONAL_STAGES.find(s => s.value === school.stage)?.label || school.stage;
 
@@ -297,8 +298,8 @@ export default function SchoolTableView({
         <div className="flex items-center gap-3 text-xs font-medium text-slate-500 dark:text-slate-400">
           <span>
             {isRTL
-              ? `عرض ${(currentPage - 1) * itemsPerPage + 1} إلى ${Math.min(currentPage * itemsPerPage, schools.length)} من أصل ${schools.length} مدرسة`
-              : `Showing ${(currentPage - 1) * itemsPerPage + 1} to ${Math.min(currentPage * itemsPerPage, schools.length)} of ${schools.length} schools`}
+              ? `عرض ${(currentPage - 1) * itemsPerPage + 1} إلى ${Math.min(currentPage * itemsPerPage, totalCount !== undefined ? totalCount : schools.length)} من أصل ${totalCount !== undefined ? totalCount : schools.length} مدرسة`
+              : `Showing ${(currentPage - 1) * itemsPerPage + 1} to ${Math.min(currentPage * itemsPerPage, totalCount !== undefined ? totalCount : schools.length)} of ${totalCount !== undefined ? totalCount : schools.length} schools`}
           </span>
 
           {/* Items Per Page */}
