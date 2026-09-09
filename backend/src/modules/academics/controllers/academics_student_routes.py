@@ -24,7 +24,14 @@ from dependencies import (
     require_recent_mfa_403_if_independent_teacher,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_inc, _gd_pull, _gd_push, _gd_addtoset
-from engines.entity_counts import reconcile_school_counts, reconcile_class_counts, enforce_class_capacity
+from engines.entity_counts import (
+    reconcile_school_counts,
+    reconcile_class_counts,
+    enforce_class_capacity,
+    resolve_class_capacity,
+    live_class_student_count,
+    CLASS_CAPACITY_REACHED_CODE,
+)
 from src.core.guards.tenant_guard import require_request_school_id
 from src.common.utils.it_parent_link import link_workspace_parent_to_student
 from config import PublicUrlConfigError
@@ -980,6 +987,188 @@ async def delete_student(
     )
 
     return {"message": "تم إلغاء تفعيل الطالب وإخفاؤه من جميع القوائم مع الحفاظ على سجلاته", "success": True}
+
+
+class BulkClassAssignRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    student_ids: List[str] = Field(..., min_length=1)
+    target_class_id: str = Field(..., min_length=1, max_length=64)
+
+
+class BulkDeleteStudentsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    student_ids: List[str] = Field(..., min_length=1)
+
+
+@router.post("/students/bulk-assign")
+async def bulk_assign_students_class(
+    payload: BulkClassAssignRequest,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """إسناد أو نقل مجموعة طلاب إلى فصل دراسي محدد دفعة واحدة"""
+    student_ids = list(dict.fromkeys(payload.student_ids))
+    if not student_ids:
+        raise HTTPException(status_code=400, detail="قائمة معرفات الطلاب مطلوبة")
+    target_class_id = payload.target_class_id
+
+    school_id = current_user.get("tenant_id") or current_user.get("school_id")
+    if not school_id and current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        raise HTTPException(status_code=403, detail="سياق المدرسة مطلوب")
+
+    # Find target class
+    class_query = {"id": target_class_id}
+    if school_id:
+        class_query["school_id"] = school_id
+    target_class = await gd_find_one(db.session, "classes", class_query)
+    if not target_class:
+        raise HTTPException(status_code=404, detail="الفصل المستهدف غير موجود")
+
+    target_school_id = target_class.get("school_id") or school_id
+
+    from sqlalchemy import select
+    from src.modules.academics.entities.academics_entity import Student
+
+    query = select(Student).where(
+        Student.id.in_(student_ids),
+        Student.is_active == True,
+    )
+    if target_school_id:
+        query = query.where(Student.school_id == target_school_id)
+
+    res = await db.session.execute(query)
+    matched_students = res.scalars().all()
+    if not matched_students:
+        raise HTTPException(status_code=404, detail="لم يتم العثور على أي طلاب مطابقين للإسناد")
+
+    target_name = target_class.get("name_ar") or target_class.get("name", "")
+
+    # Capacity gate: net new students to target class
+    net_new_students = [s for s in matched_students if s.class_id != target_class_id]
+    net_new_count = len(net_new_students)
+
+    if net_new_count > 0:
+        capacity = resolve_class_capacity(target_class)
+        current_count = await live_class_student_count(db.session, target_class_id, target_school_id)
+        if (current_count + net_new_count) > capacity:
+            remaining_seats = max(0, capacity - current_count)
+            if remaining_seats == 0:
+                msg = f"الفصل {target_name} ممتلئ بالكامل (السعة القصوى {capacity} طالب)."
+            else:
+                msg = f"الفصل {target_name} لا يتسع لجميع الطلاب المحددين ({net_new_count} طالب). المقاعد المتبقية: {remaining_seats} فقط من أصل {capacity}."
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": CLASS_CAPACITY_REACHED_CODE,
+                    "message": msg,
+                    "capacity": capacity,
+                    "current_students": current_count,
+                    "remaining_seats": remaining_seats,
+                    "requested_students": net_new_count,
+                },
+            )
+
+    affected_old_class_ids = set()
+    now_dt = datetime.now(timezone.utc)
+    updated_ids = []
+
+    for s in matched_students:
+        if s.class_id and s.class_id != target_class_id:
+            affected_old_class_ids.add(s.class_id)
+        s.class_id = target_class_id
+        s.updated_at = now_dt
+        updated_ids.append(s.id)
+
+    await db.session.flush()
+
+    for cid in affected_old_class_ids:
+        await reconcile_class_counts(db.session, cid, target_school_id)
+    await reconcile_class_counts(db.session, target_class_id, target_school_id)
+
+    target_name = target_class.get("name_ar") or target_class.get("name", "")
+
+    return {
+        "success": True,
+        "message": f"تم إسناد {len(updated_ids)} طالب إلى الفصل {target_name} بنجاح",
+        "assigned_count": len(updated_ids),
+        "target_class_id": target_class_id,
+        "student_ids": updated_ids,
+    }
+
+
+@router.post("/students/bulk-delete")
+async def bulk_delete_students(
+    payload: BulkDeleteStudentsRequest,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """حذف ناعم لمجموعة طلاب دفعة واحدة مع تحديث العدادات"""
+    student_ids = list(dict.fromkeys(payload.student_ids))
+    if not student_ids:
+        raise HTTPException(status_code=400, detail="قائمة معرفات الطلاب مطلوبة")
+
+    school_id = current_user.get("tenant_id") or current_user.get("school_id")
+    if not school_id and current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        raise HTTPException(status_code=403, detail="سياق المدرسة مطلوب")
+
+    from sqlalchemy import select
+    from src.modules.academics.entities.academics_entity import Student
+
+    query = select(Student).where(
+        Student.id.in_(student_ids),
+        Student.is_active == True,
+    )
+    if school_id:
+        query = query.where(Student.school_id == school_id)
+
+    res = await db.session.execute(query)
+    matched_students = res.scalars().all()
+    if not matched_students:
+        raise HTTPException(status_code=404, detail="لم يتم العثور على أي طلاب مطابقين للحذف")
+
+    affected_class_ids = set()
+    affected_school_ids = set()
+    now_dt = datetime.now(timezone.utc)
+    deleted_ids = []
+
+    for s in matched_students:
+        s.is_active = False
+        s.updated_at = now_dt
+        if s.class_id:
+            affected_class_ids.add(s.class_id)
+        if s.school_id:
+            affected_school_ids.add(s.school_id)
+        deleted_ids.append(s.id)
+
+    await db.session.flush()
+
+    for sid in affected_school_ids:
+        await reconcile_school_counts(db.session, sid)
+
+    for cid in affected_class_ids:
+        await reconcile_class_counts(db.session, cid)
+
+    await audit_engine.log(
+        action=AuditAction.USER_DELETED.value,
+        performed_by=current_user.get("id"),
+        tenant_id=school_id,
+        entity_type="student",
+        entity_id="bulk_batch",
+        details={
+            "count": len(deleted_ids),
+            "student_ids": deleted_ids[:20],
+            "soft_delete": True,
+        },
+        actor_name=current_user.get("full_name"),
+        actor_role=current_user.get("role"),
+        actor_email=current_user.get("email"),
+    )
+
+    return {
+        "success": True,
+        "message": f"تم حذف {len(deleted_ids)} طالب بنجاح",
+        "deleted_count": len(deleted_ids),
+        "student_ids": deleted_ids,
+    }
+
 
 
 

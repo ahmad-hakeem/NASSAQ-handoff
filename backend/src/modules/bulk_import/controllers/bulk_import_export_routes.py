@@ -522,22 +522,86 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
     # Pass 2: Commit all valid records
     classes_list = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": True}, limit=1000)
     classes_map = {}
+    class_capacity_map = {}
+    class_occupancy_map = {}
     for c in classes_list:
+        cid = c['id']
+        class_capacity_map[cid] = c.get('capacity') or 30
+        class_occupancy_map[cid] = c.get('current_students') or 0
         if c.get('name'):
-            classes_map[c['name'].strip()] = c['id']
+            classes_map[c['name'].strip()] = cid
         if c.get('grade_level') and c.get('section'):
-            classes_map[f"{c['grade_level'].strip()} {c['section'].strip()}"] = c['id']
-            classes_map[f"{c['grade_level'].strip()} - {c['section'].strip()}"] = c['id']
+            classes_map[f"{c['grade_level'].strip()} {c['section'].strip()}"] = cid
+            classes_map[f"{c['grade_level'].strip()} - {c['section'].strip()}"] = cid
 
     from services.parent_linking import link_or_update_real_school_guardian
     from dependencies import hash_password, generate_secure_password
 
+    assigned_class_ids = set()
     for item in valid_records:
         class_id = None
-        if item["class_name"]:
-            class_id = classes_map.get(item["class_name"])
-        if not class_id and item["grade"] and item["class_name"]:
-            class_id = classes_map.get(f"{item['grade']} {item['class_name']}")
+        raw_cname = (item.get("class_name") or "").strip()
+        raw_grade = (item.get("grade") or "").strip()
+
+        if raw_cname:
+            class_id = classes_map.get(raw_cname)
+        if not class_id and raw_grade and raw_cname:
+            class_id = classes_map.get(f"{raw_grade} {raw_cname}") or classes_map.get(f"{raw_grade} - {raw_cname}")
+        if not class_id and raw_grade:
+            class_id = classes_map.get(raw_grade)
+
+        # Auto-create class if referenced in file but does not exist yet
+        if not class_id and (raw_cname or raw_grade):
+            if raw_cname and raw_grade:
+                display_name = raw_cname if raw_grade in raw_cname else f"{raw_grade} - {raw_cname}"
+            elif raw_cname:
+                display_name = raw_cname
+            else:
+                display_name = f"فصل {raw_grade}"
+
+            new_class_id = str(uuid.uuid4())
+            now_iso = datetime.now(timezone.utc).isoformat()
+            new_class_doc = {
+                "id": new_class_id,
+                "school_id": school_id,
+                "name": display_name,
+                "name_ar": display_name,
+                "grade_level": raw_grade or None,
+                "grade": raw_grade or None,
+                "section": raw_cname or None,
+                "capacity": 30,
+                "current_students": 0,
+                "is_active": True,
+                "created_at": now_iso,
+                "updated_at": now_iso,
+                "created_by": user.get("id"),
+                "import_source": "auto_provisioned_student_import",
+            }
+            try:
+                await gd_insert(db.session, "classes", new_class_doc)
+                class_id = new_class_id
+                if raw_cname:
+                    classes_map[raw_cname] = new_class_id
+                if raw_grade and raw_cname:
+                    classes_map[f"{raw_grade} {raw_cname}"] = new_class_id
+                    classes_map[f"{raw_grade} - {raw_cname}"] = new_class_id
+                if raw_grade:
+                    classes_map[raw_grade] = new_class_id
+                classes_map[display_name] = new_class_id
+                class_capacity_map[new_class_id] = 30
+                class_occupancy_map[new_class_id] = 0
+            except Exception as ex:
+                logger.warning(f"Failed to auto-create class {display_name}: {ex}")
+
+        if class_id:
+            cap = class_capacity_map.get(class_id, 30)
+            occ = class_occupancy_map.get(class_id, 0)
+            if occ < cap:
+                class_occupancy_map[class_id] = occ + 1
+                assigned_class_ids.add(class_id)
+            else:
+                # Class reached capacity — leave student unassigned so the class is never overfilled
+                class_id = None
 
         health_info = {}
         if item["health_status"]:
@@ -592,9 +656,14 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
             logger.exception(f"Failed to insert student row {item['row_num']}: {ex}")
             errors.append({"row": item["row_num"], "field": "عام", "message": f"فشل حفظ الطالب: {str(ex)}"})
 
-    from engines.entity_counts import reconcile_school_counts
+    from engines.entity_counts import reconcile_school_counts, reconcile_class_counts
     if imported > 0:
         await reconcile_school_counts(db.session, school_id)
+        for cid in assigned_class_ids:
+            try:
+                await reconcile_class_counts(db.session, cid, school_id)
+            except Exception as ex:
+                logger.warning(f"Failed to reconcile count for class {cid}: {ex}")
 
     failed_rows_count = len(set(e['row'] for e in errors))
     return {"imported": imported, "failed": failed_rows_count}

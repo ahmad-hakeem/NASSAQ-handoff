@@ -34,7 +34,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { CANONICAL_GRADES } from '@/shared/models/utils/stageGrade';
 import StudentClassGrid from '@/features/platform/components/management/StudentClassGrid';
-import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+import { getApiErrorMessage, getLocalizedApiError } from '@/shared/models/utils/apiError';
 import { executeStudentTransfer } from '@/shared/models/utils/studentTransfer';
 import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
 
@@ -1347,6 +1347,54 @@ export default function UsersClassesManagement() {
     });
   };
 
+  const handleBulkAssign = async (studentIds, targetClassId) => {
+    try {
+      const headers = {};
+      if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
+      const res = await api.post('/students/bulk-assign', {
+        student_ids: studentIds,
+        target_class_id: targetClassId,
+      }, { headers });
+      toast.success(res.data?.message || `تم إسناد ${studentIds.length} طالب بنجاح`);
+      fetchAllData();
+      return true;
+    } catch (error) {
+      const msg = getLocalizedApiError(error, { t, fallback: 'تعذر إسناد الطلاب' }) || getApiErrorMessage(error) || 'تعذر إسناد الطلاب';
+      nassaqError(typeof msg === 'string' ? msg : 'تعذر إسناد الطلاب');
+      return false;
+    }
+  };
+
+  const handleBulkDelete = (studentIds) => {
+    const count = studentIds.length;
+    const msg = isRTL
+      ? `هل أنت متأكد من حذف ${count} طالب بشكل دائم؟ سيتم إخفاء سجلاتهم من كافة القوائم وتحديث عدادات الفصول والمدرسة.`
+      : `Are you sure you want to delete ${count} students? Their records will be deactivated.`;
+
+    nassaqConfirm(
+      msg,
+      async () => {
+        try {
+          const headers = {};
+          if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
+          const res = await api.post('/students/bulk-delete', {
+            student_ids: studentIds,
+          }, { headers });
+          toast.success(res.data?.message || `تم حذف ${count} طالب بنجاح`);
+          fetchAllData();
+        } catch (error) {
+          const errMsg = getApiErrorMessage(error) || t('deleteFailed') || 'تعذر حذف الطلاب';
+          nassaqError(typeof errMsg === 'string' ? errMsg : 'تعذر حذف الطلاب');
+        }
+      },
+      {
+        title: isRTL ? 'تأكيد الحذف الجماعي للطلاب' : 'Confirm Bulk Delete',
+        confirmText: isRTL ? 'نعم، احذف المحددين' : 'Yes, delete selected',
+        cancelText: t('cancel') || 'إلغاء',
+      }
+    );
+  };
+
   const clearFilter = () => setActiveFilter(null);
 
   const handleHakimAction = (action, data) => {
@@ -1568,6 +1616,8 @@ export default function UsersClassesManagement() {
           onDelete={(s) => handleDelete(s, 'student')}
           onAction={(s, a) => handleAccountAction(s, a, 'student')}
           onTransferStudent={handleTransferStudent}
+          onBulkAssign={handleBulkAssign}
+          onBulkDelete={handleBulkDelete}
           canDrag={isSchoolAdmin}
         />
       </div>

@@ -45,6 +45,14 @@ let webpackConfig = {
           __dirname,
           'node_modules/react-router-dom/dist/index.js',
         ),
+        '^http-proxy-agent(.*)$': path.resolve(
+          __dirname,
+          'src/testUtils/httpProxyAgentMock.js',
+        ),
+        '^@tootallnate/once(.*)$': path.resolve(
+          __dirname,
+          'src/testUtils/onceMock.js',
+        ),
         '.*http-proxy-agent.*': path.resolve(
           __dirname,
           'src/testUtils/httpProxyAgentMock.js',

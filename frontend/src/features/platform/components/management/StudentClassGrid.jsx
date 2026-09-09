@@ -42,7 +42,10 @@ const FEMALE_AVATAR = (
   </svg>
 );
 
-const DraggableStudentChip = ({ student, isRTL, onView, onEdit, onDelete, onAction, canDrag }) => {
+const DraggableStudentChip = ({
+  student, isRTL, onView, onEdit, onDelete, onAction, canDrag,
+  isSelected = false, onToggleSelect
+}) => {
   const { t } = useTranslation();
   const canViewInternalIds = useCanViewInternalIds();
   const [isDragging, setIsDragging] = useState(false);
@@ -69,9 +72,25 @@ const DraggableStudentChip = ({ student, isRTL, onView, onEdit, onDelete, onActi
       data-student-id={student.id}
       data-class-id={student.class_id || ''}
       className={`group flex items-center gap-2 p-2 rounded-xl border transition-all duration-200
+        ${isSelected ? 'ring-2 ring-brand-turquoise/70 border-brand-turquoise bg-brand-turquoise/5' : ''}
         ${isDragging ? 'opacity-30 scale-95 border-dashed border-brand-turquoise/50 bg-brand-turquoise/5' : 'border-border/50 bg-white dark:bg-gray-900 hover:shadow-md hover:border-brand-navy/20'}
         ${canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
     >
+      {onToggleSelect && (
+        <input
+          type="checkbox"
+          aria-label={`تحديد ${student.full_name}`}
+          data-testid={`select-student-${student.id}`}
+          checked={!!isSelected}
+          onChange={(e) => {
+            e.stopPropagation();
+            onToggleSelect(student.id);
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="h-4 w-4 rounded border-gray-300 text-brand-turquoise focus:ring-brand-turquoise/50 cursor-pointer shrink-0"
+        />
+      )}
       {canDrag && (
         <GripVertical className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-muted-foreground/60 shrink-0 transition-colors" />
       )}
@@ -125,9 +144,14 @@ const DraggableStudentChip = ({ student, isRTL, onView, onEdit, onDelete, onActi
 
 const ClassColumn = ({
   classItem, students, isRTL, canDrag, onTransfer,
-  onView, onEdit, onDelete, onAction, searchQuery
+  onView, onEdit, onDelete, onAction, searchQuery,
+  selectedStudentIds, onToggleSelect
 }) => {
   const { t } = useTranslation();
+  const gradeLabel = classItem.name_ar || classItem.name || '';
+  const capacity = classItem.capacity || 30;
+  const isFull = students.length >= capacity;
+
   const [collapsed, setCollapsed] = useState(false);
   const [isDropTarget, setIsDropTarget] = useState(false);
   const dragCounterRef = useRef(0);
@@ -143,16 +167,20 @@ const ClassColumn = ({
 
   const handleDragOver = useCallback((e) => {
     if (!canDrag) return;
+    if (isFull) {
+      e.dataTransfer.dropEffect = 'none';
+      return;
+    }
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-  }, [canDrag]);
+  }, [canDrag, isFull]);
 
   const handleDragEnter = useCallback((e) => {
-    if (!canDrag) return;
+    if (!canDrag || isFull) return;
     e.preventDefault();
     dragCounterRef.current++;
     setIsDropTarget(true);
-  }, [canDrag]);
+  }, [canDrag, isFull]);
 
   const handleDragLeave = useCallback((e) => {
     e.preventDefault();
@@ -169,6 +197,15 @@ const ClassColumn = ({
     setIsDropTarget(false);
     if (!canDrag) return;
 
+    if (isFull) {
+      toast.error(
+        isRTL
+          ? `الفصل ${gradeLabel} ممتلئ بالكامل (${students.length}/${capacity}) ولا يمكن إضافة المزيد من الطلاب إليه.`
+          : `Class ${gradeLabel} is full (${students.length}/${capacity})`
+      );
+      return;
+    }
+
     try {
       const raw = e.dataTransfer.getData('application/nassaq-student');
       if (!raw) return;
@@ -178,9 +215,7 @@ const ClassColumn = ({
     } catch (err) {
       console.error('Drop error:', err);
     }
-  }, [canDrag, classItem, onTransfer]);
-
-  const gradeLabel = classItem.name_ar || classItem.name || '';
+  }, [canDrag, isFull, isRTL, gradeLabel, students.length, capacity, classItem, onTransfer]);
 
   return (
     <div
@@ -192,6 +227,7 @@ const ClassColumn = ({
       data-class-id={classItem.id}
       data-student-count={students.length}
       className={`flex flex-col rounded-2xl border-2 transition-all duration-300 overflow-hidden h-fit
+        ${isFull ? 'border-border/30 opacity-95' : ''}
         ${isDropTarget
           ? 'border-brand-turquoise bg-brand-turquoise/5 shadow-lg shadow-brand-turquoise/10 scale-[1.01]'
           : 'border-border/40 bg-card hover:border-border/60'}`}
@@ -201,17 +237,19 @@ const ClassColumn = ({
         style={{
           background: isDropTarget
             ? 'linear-gradient(135deg, rgba(70,193,190,0.12) 0%, rgba(28,61,116,0.08) 100%)'
+            : isFull
+            ? 'linear-gradient(135deg, rgba(239,68,68,0.05) 0%, rgba(28,61,116,0.03) 100%)'
             : 'linear-gradient(135deg, rgba(28,61,116,0.06) 0%, rgba(70,193,190,0.04) 100%)',
         }}
         onClick={() => setCollapsed(!collapsed)}
       >
-        <div className="w-9 h-9 rounded-xl bg-brand-navy/10 flex items-center justify-center shrink-0">
-          <Building2 className="h-4.5 w-4.5 text-brand-navy" />
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isFull ? 'bg-red-500/10' : 'bg-brand-navy/10'}`}>
+          <Building2 className={`h-4.5 w-4.5 ${isFull ? 'text-red-500' : 'text-brand-navy'}`} />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-bold text-sm truncate">{gradeLabel}</h3>
           <p className="text-[10px] text-muted-foreground">
-            {isRTL ? `${students.length} طالب` : `${students.length} students`}
+            {isRTL ? `${students.length} من ${capacity} طالب` : `${students.length} of ${capacity} students`}
             {searchQuery && filteredStudents.length !== students.length && (
               <span className="text-brand-turquoise ms-1">
                 ({isRTL ? `${filteredStudents.length} ظاهر` : `${filteredStudents.length} shown`})
@@ -219,8 +257,15 @@ const ClassColumn = ({
             )}
           </p>
         </div>
-        <Badge variant="outline" className="text-[10px] h-5 rounded-full font-bold shrink-0 bg-brand-navy/5 text-brand-navy border-brand-navy/20">
-          {students.length}
+        <Badge
+          variant={isFull ? 'destructive' : 'outline'}
+          className={`text-[10px] h-5 rounded-full font-bold shrink-0 ${
+            isFull
+              ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900'
+              : 'bg-brand-navy/5 text-brand-navy border-brand-navy/20'
+          }`}
+        >
+          {isFull ? (isRTL ? `مكتمل (${students.length}/${capacity})` : `Full (${students.length}/${capacity})`) : `${students.length}/${capacity}`}
         </Badge>
         {collapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />}
       </div>
@@ -253,6 +298,8 @@ const ClassColumn = ({
                 onEdit={onEdit}
                 onDelete={onDelete}
                 onAction={onAction}
+                isSelected={selectedStudentIds?.has(student.id)}
+                onToggleSelect={onToggleSelect}
               />
             ))
           )}
@@ -264,7 +311,8 @@ const ClassColumn = ({
 
 const UnassignedColumn = ({
   students, isRTL, canDrag, classes, onTransfer,
-  onView, onEdit, onDelete, onAction, searchQuery
+  onView, onEdit, onDelete, onAction, searchQuery,
+  selectedStudentIds, onToggleSelect, onSelectMultiple, onClearMultiple
 }) => {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
@@ -279,6 +327,26 @@ const UnassignedColumn = ({
       (s.student_number || '').toLowerCase().includes(q)
     );
   }, [students, searchQuery]);
+
+  const allUnassignedSelected = useMemo(() => {
+    if (filteredStudents.length === 0) return false;
+    return filteredStudents.every(s => selectedStudentIds?.has(s.id));
+  }, [filteredStudents, selectedStudentIds]);
+
+  const someUnassignedSelected = useMemo(() => {
+    if (!selectedStudentIds || selectedStudentIds.size === 0) return false;
+    return filteredStudents.some(s => selectedStudentIds.has(s.id));
+  }, [filteredStudents, selectedStudentIds]);
+
+  const handleToggleSelectAll = (e) => {
+    e.stopPropagation();
+    const ids = filteredStudents.map(s => s.id);
+    if (allUnassignedSelected) {
+      if (onClearMultiple) onClearMultiple(ids);
+    } else {
+      if (onSelectMultiple) onSelectMultiple(ids);
+    }
+  };
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -328,7 +396,32 @@ const UnassignedColumn = ({
           <AlertTriangle className="h-4.5 w-4.5 text-amber-600" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-sm text-amber-800 truncate">{t('unassigned')}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-bold text-sm text-amber-800 truncate">{t('unassigned')}</h3>
+            {onSelectMultiple && filteredStudents.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-[11px] font-bold border-amber-300 bg-white/80 hover:bg-white text-amber-900 shadow-xs"
+                onClick={handleToggleSelectAll}
+              >
+                <input
+                  type="checkbox"
+                  aria-label={isRTL ? "تحديد جميع الطلاب بدون فصل" : "Select all unassigned"}
+                  checked={allUnassignedSelected}
+                  ref={el => {
+                    if (el) el.indeterminate = !allUnassignedSelected && someUnassignedSelected;
+                  }}
+                  onChange={() => {}}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-3 w-3 me-1 rounded border-amber-400 text-amber-600 focus:ring-amber-500 pointer-events-none"
+                />
+                {allUnassignedSelected
+                  ? (isRTL ? 'إلغاء تحديد الكل' : 'Deselect all')
+                  : (isRTL ? `تحديد الكل (${filteredStudents.length})` : `Select all (${filteredStudents.length})`)}
+              </Button>
+            )}
+          </div>
           <p className="text-[10px] text-amber-600/70">{isRTL ? `${students.length} طالب بدون فصل` : `${students.length} unassigned students`}</p>
         </div>
         <Badge variant="outline" className="text-[10px] h-5 rounded-full font-bold shrink-0 bg-amber-100 text-amber-700 border-amber-300">
@@ -349,6 +442,8 @@ const UnassignedColumn = ({
               onEdit={onEdit}
               onDelete={onDelete}
               onAction={onAction}
+              isSelected={selectedStudentIds?.has(student.id)}
+              onToggleSelect={onToggleSelect}
             />
           ))}
         </div>
@@ -360,9 +455,93 @@ const UnassignedColumn = ({
 export default function StudentClassGrid({
   students, classes, isRTL, searchQuery,
   onView, onEdit, onDelete, onAction,
-  onTransferStudent, canDrag = false
+  onTransferStudent, onBulkAssign, onBulkDelete, canDrag = false
 }) {
   const { t } = useTranslation();
+  const [selectedStudentIds, setSelectedStudentIds] = useState(new Set());
+  const [bulkTargetClassId, setBulkTargetClassId] = useState('');
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  const handleToggleSelect = useCallback((studentId) => {
+    setSelectedStudentIds(prev => {
+      const next = new Set(prev);
+      if (next.has(studentId)) {
+        next.delete(studentId);
+      } else {
+        next.add(studentId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectMultiple = useCallback((ids) => {
+    setSelectedStudentIds(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => next.add(id));
+      return next;
+    });
+  }, []);
+
+  const handleClearMultiple = useCallback((ids) => {
+    setSelectedStudentIds(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => next.delete(id));
+      return next;
+    });
+  }, []);
+
+  const handleClearAllSelection = useCallback(() => {
+    setSelectedStudentIds(new Set());
+  }, []);
+
+  const handleExecuteBulkAssign = async () => {
+    if (!bulkTargetClassId || selectedStudentIds.size === 0) return;
+
+    const targetClass = (classes || []).find(c => c.id === bulkTargetClassId);
+    const classCount = classStudentMap.map[bulkTargetClassId]?.students?.length ?? (targetClass?.student_count || 0);
+    const cap = targetClass?.capacity || 30;
+    const remaining = Math.max(0, cap - classCount);
+
+    if (remaining === 0) {
+      toast.error(
+        isRTL
+          ? `الفصل ${targetClass?.name_ar || targetClass?.name || ''} ممتلئ بالكامل (${classCount}/${cap}). الرجاء اختيار فصل آخر.`
+          : `Class ${targetClass?.name_ar || targetClass?.name || ''} is full (${classCount}/${cap}). Please choose another class.`
+      );
+      return;
+    }
+
+    if (selectedStudentIds.size > remaining) {
+      toast.error(
+        isRTL
+          ? `عدد الطلاب المحددين (${selectedStudentIds.size}) يتجاوز المقاعد المتاحة في هذا الفصل (${remaining} فقط من أصل ${cap}).`
+          : `Selected students (${selectedStudentIds.size}) exceed available seats (${remaining} of ${cap}).`
+      );
+      return;
+    }
+
+    setBulkLoading(true);
+    try {
+      if (onBulkAssign) {
+        const ok = await onBulkAssign(Array.from(selectedStudentIds), bulkTargetClassId);
+        if (ok !== false) {
+          setSelectedStudentIds(new Set());
+          setBulkTargetClassId('');
+        }
+      }
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleExecuteBulkDelete = async () => {
+    if (selectedStudentIds.size === 0) return;
+    if (onBulkDelete) {
+      onBulkDelete(Array.from(selectedStudentIds));
+      setSelectedStudentIds(new Set());
+    }
+  };
+
   const classStudentMap = useMemo(() => {
     const map = {};
     const unassigned = [];
@@ -415,7 +594,7 @@ export default function StudentClassGrid({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative pb-16">
       {canDrag && (
         <div className="flex items-center gap-2 p-3 rounded-xl bg-brand-turquoise/5 border border-brand-turquoise/20">
           <ArrowRightLeft className="h-4 w-4 text-brand-turquoise shrink-0" />
@@ -436,6 +615,10 @@ export default function StudentClassGrid({
         onDelete={onDelete}
         onAction={onAction}
         searchQuery={searchQuery}
+        selectedStudentIds={selectedStudentIds}
+        onToggleSelect={handleToggleSelect}
+        onSelectMultiple={handleSelectMultiple}
+        onClearMultiple={handleClearMultiple}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
@@ -452,9 +635,80 @@ export default function StudentClassGrid({
             onDelete={onDelete}
             onAction={onAction}
             searchQuery={searchQuery}
+            selectedStudentIds={selectedStudentIds}
+            onToggleSelect={handleToggleSelect}
           />
         ))}
       </div>
+
+      {/* Floating Bulk Actions Bar */}
+      {selectedStudentIds.size > 0 && (
+        <div className="fixed bottom-6 inset-x-0 z-50 flex justify-center px-4 pointer-events-none animate-in fade-in slide-in-from-bottom-5 duration-200">
+          <div className="pointer-events-auto flex flex-wrap items-center gap-3 px-5 py-3 rounded-2xl bg-white/95 dark:bg-gray-900/95 backdrop-blur-md shadow-2xl border border-border/80 text-foreground max-w-3xl w-full justify-between">
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="px-3 py-1 font-bold text-xs bg-brand-turquoise/10 text-brand-turquoise border-brand-turquoise/30">
+                {isRTL ? `تم تحديد ${selectedStudentIds.size} طالب` : `${selectedStudentIds.size} students selected`}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                onClick={handleClearAllSelection}
+              >
+                {isRTL ? 'إلغاء التحديد' : 'Clear selection'}
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {classes && classes.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={bulkTargetClassId}
+                    onChange={(e) => setBulkTargetClassId(e.target.value)}
+                    aria-label={isRTL ? "اختر فصلاً للإسناد" : "Select class"}
+                    className="h-9 text-xs rounded-xl border border-input bg-background px-3 py-1 text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-turquoise cursor-pointer"
+                  >
+                    <option value="">{isRTL ? '— اختر فصلاً للإسناد —' : '— Select target class —'}</option>
+                    {classes.map((c) => {
+                      const classCount = classStudentMap.map[c.id]?.students?.length ?? (c.student_count || 0);
+                      const cap = c.capacity || 30;
+                      const remaining = Math.max(0, cap - classCount);
+                      const isClassFull = remaining === 0;
+                      const label = c.name_ar || c.name || `${c.grade_level || ''} ${c.section || ''}`;
+                      return (
+                        <option key={c.id} value={c.id} disabled={isClassFull}>
+                          {label} ({classCount}/{cap}) {isClassFull ? (isRTL ? '[ممتلئ]' : '[Full]') : (isRTL ? `[متاح ${remaining}]` : `[${remaining} left]`)}
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  <Button
+                    size="sm"
+                    disabled={!bulkTargetClassId || bulkLoading}
+                    className="h-9 px-3 text-xs bg-brand-turquoise hover:bg-brand-turquoise/90 text-white font-medium gap-1.5 shadow-sm cursor-pointer"
+                    onClick={handleExecuteBulkAssign}
+                  >
+                    <ArrowRightLeft className="h-3.5 w-3.5" />
+                    {isRTL ? 'إسناد إلى الفصل' : 'Assign to class'}
+                  </Button>
+                </div>
+              )}
+
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={bulkLoading}
+                className="h-9 px-3 text-xs gap-1.5 shadow-sm cursor-pointer"
+                onClick={handleExecuteBulkDelete}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {isRTL ? 'حذف المحددين' : 'Delete selected'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
