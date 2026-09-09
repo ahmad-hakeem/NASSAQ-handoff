@@ -9,7 +9,7 @@ import {
 import {
   GraduationCap, MoreHorizontal, Eye, Edit, Key, UserX, UserCheck,
   Trash2, Users, ChevronDown, ChevronUp, GripVertical, ArrowRightLeft,
-  BookOpen, Building2, AlertTriangle, Star
+  BookOpen, Building2, AlertTriangle, Star, Sparkles, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -312,7 +312,8 @@ const ClassColumn = ({
 const UnassignedColumn = ({
   students, isRTL, canDrag, classes, onTransfer,
   onView, onEdit, onDelete, onAction, searchQuery,
-  selectedStudentIds, onToggleSelect, onSelectMultiple, onClearMultiple
+  selectedStudentIds, onToggleSelect, onSelectMultiple, onClearMultiple,
+  onAutoDistribute, isAutoDistributing = false
 }) => {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
@@ -421,6 +422,21 @@ const UnassignedColumn = ({
                   : (isRTL ? `تحديد الكل (${filteredStudents.length})` : `Select all (${filteredStudents.length})`)}
               </Button>
             )}
+            {onAutoDistribute && (
+              <Button
+                variant="default"
+                size="sm"
+                disabled={isAutoDistributing}
+                className="h-6 px-2.5 text-[11px] font-bold bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-xs gap-1 cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAutoDistribute();
+                }}
+              >
+                {isAutoDistributing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                {isRTL ? 'تسكين وتوزيع ذكي' : 'Auto Distribute'}
+              </Button>
+            )}
           </div>
           <p className="text-[10px] text-amber-600/70">{isRTL ? `${students.length} طالب بدون فصل` : `${students.length} unassigned students`}</p>
         </div>
@@ -455,7 +471,9 @@ const UnassignedColumn = ({
 export default function StudentClassGrid({
   students, classes, isRTL, searchQuery,
   onView, onEdit, onDelete, onAction,
-  onTransferStudent, onBulkAssign, onBulkDelete, canDrag = false
+  onTransferStudent, onBulkAssign, onBulkDelete,
+  onAutoDistribute, isAutoDistributing = false,
+  canDrag = false
 }) {
   const { t } = useTranslation();
   const [selectedStudentIds, setSelectedStudentIds] = useState(new Set());
@@ -619,6 +637,8 @@ export default function StudentClassGrid({
         onToggleSelect={handleToggleSelect}
         onSelectMultiple={handleSelectMultiple}
         onClearMultiple={handleClearMultiple}
+        onAutoDistribute={onAutoDistribute}
+        isAutoDistributing={isAutoDistributing}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">

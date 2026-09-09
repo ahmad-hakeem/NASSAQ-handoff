@@ -80,6 +80,7 @@ def _get_orm_model(collection: str):
         NotificationPreference,
         ParentInvitation, WorkspaceCollaborator, WorkspaceQuota,
         IssueVersion,
+        BulkImportBatch,
     )
     _ORM_REGISTRY = {
         "users": User,
@@ -147,6 +148,7 @@ def _get_orm_model(collection: str):
         "workspace_collaborators": WorkspaceCollaborator,
         "workspace_quota": WorkspaceQuota,
         "issue_versions": IssueVersion,
+        "bulk_import_batches": BulkImportBatch,
     }
     return _ORM_REGISTRY.get(collection)
 

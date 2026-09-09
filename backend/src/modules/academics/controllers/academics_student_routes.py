@@ -1000,6 +1000,12 @@ class BulkDeleteStudentsRequest(BaseModel):
     student_ids: List[str] = Field(..., min_length=1)
 
 
+class AutoDistributeStudentsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    student_ids: Optional[List[str]] = Field(default=None)
+    default_capacity: int = Field(default=30, ge=1, le=100)
+
+
 @router.post("/students/bulk-assign")
 async def bulk_assign_students_class(
     payload: BulkClassAssignRequest,
@@ -1167,6 +1173,176 @@ async def bulk_delete_students(
         "message": f"تم حذف {len(deleted_ids)} طالب بنجاح",
         "deleted_count": len(deleted_ids),
         "student_ids": deleted_ids,
+    }
+
+
+@router.post("/students/auto-distribute")
+async def auto_distribute_students_endpoint(
+    payload: AutoDistributeStudentsRequest,
+    current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+):
+    """توزيع ذكي وتسكين آلي للطلاب غير المسندين في الفصول المتاحة مع إنشاء فصول جديدة عند الحاجة"""
+    school_id = current_user.get("tenant_id") or current_user.get("school_id")
+    if not school_id and current_user.get("role") != UserRole.PLATFORM_ADMIN.value:
+        raise HTTPException(status_code=403, detail="سياق المدرسة مطلوب")
+
+    from sqlalchemy import select
+    from src.modules.academics.entities.academics_entity import Student, Class
+    from collections import defaultdict
+
+    query = select(Student).where(
+        Student.is_active == True,
+    )
+    if school_id:
+        query = query.where(Student.school_id == school_id)
+
+    if payload.student_ids:
+        query = query.where(Student.id.in_(payload.student_ids))
+    else:
+        query = query.where(Student.class_id.is_(None))
+
+    res = await db.session.execute(query)
+    target_students = res.scalars().all()
+    if not target_students:
+        return {
+            "success": True,
+            "message": "لا يوجد طلاب بحاجة للتوزيع",
+            "total_assigned": 0,
+            "classes_created_count": 0,
+            "classes_created": [],
+            "affected_class_ids": [],
+        }
+
+    students_by_grade = defaultdict(list)
+    for s in target_students:
+        g = (s.grade or "").strip() or "عام"
+        students_by_grade[g].append(s)
+
+    existing_classes_query = select(Class).where(Class.is_active == True)
+    if school_id:
+        existing_classes_query = existing_classes_query.where(Class.school_id == school_id)
+    all_classes_res = await db.session.execute(existing_classes_query)
+    existing_classes = all_classes_res.scalars().all()
+
+    classes_by_grade = defaultdict(list)
+    for c in existing_classes:
+        cg = (c.grade_level or c.grade or "").strip() or "عام"
+        classes_by_grade[cg].append(c)
+        if c.name:
+            classes_by_grade[c.name.strip()].append(c)
+
+    ARABIC_SECTIONS = ["أ", "ب", "ج", "د", "هـ", "و", "ز", "ح", "ط", "ي", "ك", "ل", "م", "ن"]
+    now_dt = datetime.now(timezone.utc)
+    now_iso = now_dt.isoformat()
+
+    created_classes = []
+    affected_class_ids = set()
+    total_assigned = 0
+
+    for grade_name, grade_students in students_by_grade.items():
+        matched_classes = classes_by_grade.get(grade_name, [])
+        seen_cids = set()
+        unique_classes = []
+        for mc in matched_classes:
+            if mc.id not in seen_cids:
+                seen_cids.add(mc.id)
+                unique_classes.append(mc)
+
+        unplaced = list(grade_students)
+        # 1. Fill available seats in existing classes
+        for ec in unique_classes:
+            if not unplaced:
+                break
+            cap = ec.capacity or payload.default_capacity or 30
+            live_count = await live_class_student_count(db.session, ec.id, school_id)
+            available = max(0, cap - live_count)
+            if available > 0:
+                to_assign = unplaced[:available]
+                unplaced = unplaced[available:]
+                for st in to_assign:
+                    st.class_id = ec.id
+                    st.updated_at = now_dt
+                    total_assigned += 1
+                affected_class_ids.add(ec.id)
+
+        # 2. For remaining unplaced students, auto-provision new classes
+        if unplaced:
+            existing_section_names = {
+                (c.section or "").strip() for c in unique_classes if c.section
+            }
+            existing_full_names = {
+                (getattr(c, "name", "") or "").strip() for c in existing_classes
+            }
+
+            sec_idx = 0
+            while unplaced:
+                while sec_idx < len(ARABIC_SECTIONS) and ARABIC_SECTIONS[sec_idx] in existing_section_names:
+                    sec_idx += 1
+
+                if sec_idx < len(ARABIC_SECTIONS):
+                    sec_letter = ARABIC_SECTIONS[sec_idx]
+                    sec_idx += 1
+                else:
+                    sec_letter = f"فصل {sec_idx + 1}"
+                    sec_idx += 1
+
+                existing_section_names.add(sec_letter)
+                prefix = grade_name if "صف" in grade_name.lower() or "الصف" in grade_name else f"الصف {grade_name}"
+                new_class_name = f"{prefix} - {sec_letter}"
+                if new_class_name in existing_full_names:
+                    new_class_name = f"{new_class_name} ({str(uuid.uuid4())[:4]})"
+                existing_full_names.add(new_class_name)
+
+                new_cid = str(uuid.uuid4())
+                class_cap = payload.default_capacity or 30
+                new_class_doc = {
+                    "id": new_cid,
+                    "school_id": school_id,
+                    "name": new_class_name,
+                    "grade_level": grade_name,
+                    "section": sec_letter,
+                    "capacity": class_cap,
+                    "current_students": 0,
+                    "is_active": True,
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                }
+                await gd_insert(db.session, "classes", new_class_doc)
+                created_classes.append({
+                    "id": new_cid,
+                    "name": new_class_name,
+                    "grade": grade_name,
+                    "section": sec_letter,
+                    "capacity": class_cap,
+                })
+                affected_class_ids.add(new_cid)
+
+                batch_for_class = unplaced[:class_cap]
+                unplaced = unplaced[class_cap:]
+                for st in batch_for_class:
+                    st.class_id = new_cid
+                    st.updated_at = now_dt
+                    total_assigned += 1
+
+    await db.session.flush()
+
+    for cid in affected_class_ids:
+        await reconcile_class_counts(db.session, cid, school_id)
+
+    if school_id:
+        await reconcile_school_counts(db.session, school_id)
+
+    msg = f"تم بنجاح توزيع {total_assigned} طالب على {len(affected_class_ids)} فصل"
+    if created_classes:
+        msg += f" (تم إنشاء {len(created_classes)} فصل جديد)"
+
+    return {
+        "success": True,
+        "message": msg,
+        "total_assigned": total_assigned,
+        "classes_created_count": len(created_classes),
+        "classes_created": created_classes,
+        "affected_class_ids": list(affected_class_ids),
     }
 
 

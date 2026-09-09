@@ -42,6 +42,7 @@ class ImportResult(BaseModel):
     failed: int
     errors: List[dict]
     warnings: List[dict]
+    batch_id: Optional[str] = None
 
 
 def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
@@ -204,10 +205,12 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
             errors = []
             warnings = []
             
+            batch_id = None
             if import_type == ImportType.STUDENTS:
-                result = await _import_students(db, df, school_id, current_user, errors, warnings)
+                result = await _import_students(db, df, school_id, current_user, errors, warnings, filename=file.filename)
                 imported = result['imported']
                 failed = result['failed']
+                batch_id = result.get('batch_id')
             elif import_type == ImportType.TEACHERS:
                 result = await _import_teachers(db, df, school_id, current_user, errors, warnings)
                 imported = result['imported']
@@ -233,7 +236,8 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
                     "total_rows": total_rows,
                     "imported": imported,
                     "failed": failed,
-                    "filename": file.filename
+                    "filename": file.filename,
+                    "batch_id": batch_id
                 }
             })
             
@@ -243,7 +247,8 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
                 imported=imported,
                 failed=failed,
                 errors=errors[:50],  # Limit errors to 50
-                warnings=warnings[:50]
+                warnings=warnings[:50],
+                batch_id=batch_id
             )
             
         except HTTPException:
@@ -347,7 +352,7 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
 
 # ============= HELPER FUNCTIONS =============
 
-async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):
+async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list, filename: Optional[str] = None):
     """استيراد الطلاب مع التحقق المسبق والمعاملات المتكاملة (All-or-Nothing Atomic Import)"""
     imported = 0
     
@@ -538,6 +543,8 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
     from dependencies import hash_password, generate_secure_password
 
     assigned_class_ids = set()
+    created_class_ids = []
+    imported_student_ids = []
     for item in valid_records:
         class_id = None
         raw_cname = (item.get("class_name") or "").strip()
@@ -579,6 +586,7 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
             }
             try:
                 await gd_insert(db.session, "classes", new_class_doc)
+                created_class_ids.append(new_class_id)
                 class_id = new_class_id
                 if raw_cname:
                     classes_map[raw_cname] = new_class_id
@@ -651,12 +659,14 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
 
         try:
             await gd_insert(db.session, "students", student_doc)
+            imported_student_ids.append(student_doc["id"])
             imported += 1
         except Exception as ex:
             logger.exception(f"Failed to insert student row {item['row_num']}: {ex}")
             errors.append({"row": item["row_num"], "field": "عام", "message": f"فشل حفظ الطالب: {str(ex)}"})
 
     from engines.entity_counts import reconcile_school_counts, reconcile_class_counts
+    batch_id = None
     if imported > 0:
         await reconcile_school_counts(db.session, school_id)
         for cid in assigned_class_ids:
@@ -665,8 +675,35 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
             except Exception as ex:
                 logger.warning(f"Failed to reconcile count for class {cid}: {ex}")
 
+        batch_id = str(uuid.uuid4())
+        now_dt = datetime.now(timezone.utc)
+        batch_doc = {
+            "id": batch_id,
+            "school_id": school_id,
+            "actor_id": user.get("id"),
+            "actor_name": user.get("full_name") or user.get("name"),
+            "import_type": "students",
+            "file_name": filename or "students.xlsx",
+            "imported_count": imported,
+            "student_ids": imported_student_ids,
+            "created_class_ids": created_class_ids,
+            "status": "active",
+            "created_at": now_dt,
+            "updated_at": now_dt,
+        }
+        try:
+            await gd_insert(db.session, "bulk_import_batches", batch_doc)
+        except Exception as ex:
+            logger.warning(f"Failed to record bulk_import_batch: {ex}")
+
     failed_rows_count = len(set(e['row'] for e in errors))
-    return {"imported": imported, "failed": failed_rows_count}
+    return {
+        "imported": imported,
+        "failed": failed_rows_count,
+        "batch_id": batch_id,
+        "student_ids": imported_student_ids,
+        "created_class_ids": created_class_ids,
+    }
 
 
 async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):
@@ -1257,5 +1294,124 @@ def setup_import_tracking_routes(db, get_current_user, require_roles, UserRole):
         logs = await gd_find(db.session, "audit_logs", {"action": "data_exported", "details.school_id": school_id}, order_by="timestamp", desc_order=True, limit=limit)
 
         return {"history": logs, "total": len(logs)}
+
+    @router.get("/batches/latest")
+    async def get_latest_batch(
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+    ):
+        """الحصول على أحدث دفعة استيراد نشطة للمدرسة"""
+        school_id = current_user.get("tenant_id") or current_user.get("school_id")
+        batches = await gd_find(
+            db.session,
+            "bulk_import_batches",
+            {"school_id": school_id, "status": "active"},
+            order_by="created_at",
+            desc_order=True,
+            limit=1
+        )
+        batch = batches[0] if batches else None
+        return {"batch": batch}
+
+    @router.post("/batches/{batch_id}/rollback")
+    async def rollback_import_batch(
+        batch_id: str,
+        current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
+    ):
+        """التراجع الذري عن دفعة استيراد: إلغاء الطلاب، وحذف الفصول التلقائية الفارغة، وإعادة احتساب الأعداد"""
+        school_id = current_user.get("tenant_id") or current_user.get("school_id")
+        batches = await gd_find(
+            db.session,
+            "bulk_import_batches",
+            {"id": batch_id}
+        )
+        if not batches:
+            raise HTTPException(status_code=404, detail="دفعة الاستيراد غير موجودة")
+
+        batch = batches[0]
+        if batch.get("school_id") != school_id and current_user.get("role") != "platform_admin":
+            raise HTTPException(status_code=403, detail="غير مصرح لك بالتراجع عن هذه الدفعة")
+
+        if batch.get("status") == "rolled_back":
+            raise HTTPException(status_code=400, detail="تم التراجع عن هذه الدفعة مسبقاً")
+
+        student_ids = batch.get("student_ids") or []
+        created_class_ids = batch.get("created_class_ids") or []
+        affected_class_ids = set()
+
+        if student_ids:
+            students = await gd_find(
+                db.session,
+                "students",
+                {"id": {"$in": student_ids}, "school_id": school_id, "is_active": True},
+                limit=len(student_ids) + 100
+            )
+            for s in students:
+                if s.get("class_id"):
+                    affected_class_ids.add(s["class_id"])
+
+            now_iso = datetime.now(timezone.utc).isoformat()
+            await gd_update_many(
+                db.session,
+                "students",
+                {"id": {"$in": student_ids}, "school_id": school_id},
+                {"$set": {"is_active": False, "class_id": None, "updated_at": now_iso}}
+            )
+
+        rolled_back_classes_count = 0
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for cid in created_class_ids:
+            remaining = await gd_count(
+                db.session,
+                "students",
+                {"class_id": cid, "school_id": school_id, "is_active": True}
+            )
+            if remaining == 0:
+                await gd_update_one(
+                    db.session,
+                    "classes",
+                    {"id": cid, "school_id": school_id},
+                    {"$set": {"is_active": False, "updated_at": now_iso}}
+                )
+                rolled_back_classes_count += 1
+            else:
+                affected_class_ids.add(cid)
+
+        from engines.entity_counts import reconcile_school_counts, reconcile_class_counts
+        await reconcile_school_counts(db.session, school_id)
+        for cid in affected_class_ids:
+            try:
+                await reconcile_class_counts(db.session, cid, school_id)
+            except Exception as ex:
+                logger.warning(f"Failed to reconcile class count {cid}: {ex}")
+
+        now_dt = datetime.now(timezone.utc)
+        await gd_update_one(
+            db.session,
+            "bulk_import_batches",
+            {"id": batch_id},
+            {"$set": {"status": "rolled_back", "updated_at": now_dt}}
+        )
+
+        await gd_insert(db.session, "audit_logs", {
+            "id": str(uuid.uuid4()),
+            "action": "bulk_import_rollback",
+            "performed_by": current_user.get("id"),
+            "performed_by_name": current_user.get("full_name") or current_user.get("name"),
+            "timestamp": now_dt.isoformat(),
+            "details": {
+                "school_id": school_id,
+                "batch_id": batch_id,
+                "rolled_back_students": len(student_ids),
+                "rolled_back_classes": rolled_back_classes_count
+            }
+        })
+
+        return {
+            "success": True,
+            "message": f"تم التراجع بنجاح عن استيراد {len(student_ids)} طالب وحذف {rolled_back_classes_count} فصل مُنشأ تلقائياً",
+            "batch_id": batch_id,
+            "rolled_back_students": len(student_ids),
+            "rolled_back_classes": rolled_back_classes_count,
+        }
 
     return router

@@ -747,19 +747,30 @@ const HakimInsightsCard = ({ insights, onAction }) => {
                       )}
                     </div>
                   </div>
-                  {insight.action && (
-                    <Button size="sm" variant="outline"
-                      className={`shrink-0 h-7 text-[10px] rounded-lg ${
-                        insight.severity === 'high' ? 'border-red-300 text-red-700 hover:bg-red-100 hover:text-red-700' :
-                        insight.severity === 'medium' ? 'border-amber-300 text-amber-700 hover:bg-amber-100 hover:text-amber-700' :
-                        'border-violet-300 text-violet-700 hover:bg-violet-100 hover:text-violet-700'
-                      }`}
-                      data-testid={`hakim-insight-action-${i}`}
-                      onClick={() => onAction(insight.action, insight.data)}>
-                      <ArrowRight className="h-3 w-3 me-1" aria-hidden="true" />
-                      {t('view2')}
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {insight.extraAction && (
+                      <Button size="sm"
+                        className="shrink-0 h-7 text-[10px] rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-bold gap-1 shadow-xs cursor-pointer"
+                        data-testid={`hakim-insight-extra-${i}`}
+                        onClick={() => onAction(insight.extraAction.action, insight.extraAction.data)}>
+                        <Sparkles className="h-3 w-3" aria-hidden="true" />
+                        {insight.extraAction.label}
+                      </Button>
+                    )}
+                    {insight.action && (
+                      <Button size="sm" variant="outline"
+                        className={`shrink-0 h-7 text-[10px] rounded-lg ${
+                          insight.severity === 'high' ? 'border-red-300 text-red-700 hover:bg-red-100 hover:text-red-700' :
+                          insight.severity === 'medium' ? 'border-amber-300 text-amber-700 hover:bg-amber-100 hover:text-amber-700' :
+                          'border-violet-300 text-violet-700 hover:bg-violet-100 hover:text-violet-700'
+                        }`}
+                        data-testid={`hakim-insight-action-${i}`}
+                        onClick={() => onAction(insight.action, insight.data)}>
+                        <ArrowRight className="h-3 w-3 me-1" aria-hidden="true" />
+                        {t('view2')}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -852,6 +863,9 @@ export default function UsersClassesManagement() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedItemType, setSelectedItemType] = useState(null);
   const [editLoading, setEditLoading] = useState(false);
+  const [latestBatch, setLatestBatch] = useState(null);
+  const [isRollingBack, setIsRollingBack] = useState(false);
+  const [isAutoDistributing, setIsAutoDistributing] = useState(false);
   const [editFormData, setEditFormData] = useState({});
   const [viewClassEditing, setViewClassEditing] = useState(false);
   const [viewClassForm, setViewClassForm] = useState({});
@@ -896,7 +910,12 @@ export default function UsersClassesManagement() {
       ins.push({
         message: t('studentsNoClassMsg', { count: studentsNoClass.length }),
         suggestion: t('assignClassesToEnsureScheduleWorksProperly'),
-        severity: 'high', action: 'show_students_no_class', data: studentsNoClass
+        severity: 'high', action: 'show_students_no_class', data: studentsNoClass,
+        extraAction: {
+          label: isRTL ? 'تسكين وتوزيع ذكي' : 'Auto Distribute',
+          action: 'auto_distribute_students',
+          data: studentsNoClass,
+        }
       });
     }
     if (teachersNoSubject.length > 0) {
@@ -996,6 +1015,15 @@ export default function UsersClassesManagement() {
       setClasses(dataByKey.classes);
       setGrades(dataByKey.grades);
       setParents(dataByKey.parents);
+
+      // Fetch latest bulk import batch
+      try {
+        const batchRes = await api.get('/bulk/batches/latest', { headers });
+        setLatestBatch(batchRes.data?.batch || null);
+      } catch {
+        setLatestBatch(null);
+      }
+
       if (failed.length === endpoints.length) {
         nassaqError(t('errorLoadingData'));
       } else if (failed.length > 0) {
@@ -1395,6 +1423,82 @@ export default function UsersClassesManagement() {
     );
   };
 
+  const handleAutoDistribute = (studentIds = null) => {
+    const isSubset = Array.isArray(studentIds) && studentIds.length > 0;
+    const count = isSubset ? studentIds.length : studentsNoClass.length;
+    if (count === 0) {
+      toast.info(isRTL ? 'لا يوجد طلاب غير مسندين للتوزيع' : 'No unassigned students to distribute');
+      return;
+    }
+
+    const confirmMsg = isRTL
+      ? `يقوم التسكين الذكي بتوزيع الطلاب (${count} طالب) تلقائياً على المقاعد الشاغرة بالفصول الحالية، وإنشاء فصول جديدة نموذجية (سعة 30) لأي عدد متبقٍ. هل ترغب في المتابعة؟`
+      : `Smart distribution will auto-assign ${count} unassigned students to available seats in existing classes and create new standard classes for overflow. Proceed?`;
+
+    nassaqConfirm(
+      confirmMsg,
+      async () => {
+        setIsAutoDistributing(true);
+        try {
+          const headers = {};
+          if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
+          const res = await api.post('/students/auto-distribute', {
+            student_ids: isSubset ? studentIds : undefined,
+          }, { headers });
+
+          const data = res.data || {};
+          const msg = data.message || `تم تسكين ${data.total_assigned || 0} طالب بنجاح (تم إنشاء ${data.classes_created_count || 0} فصل جديد)`;
+          toast.success(msg);
+          fetchAllData();
+        } catch (error) {
+          const errMsg = getLocalizedApiError(error, { t, fallback: 'تعذر التوزيع الآلي للطلاب' }) || getApiErrorMessage(error) || 'تعذر التوزيع الآلي للطلاب';
+          nassaqError(typeof errMsg === 'string' ? errMsg : 'تعذر التوزيع الآلي للطلاب');
+        } finally {
+          setIsAutoDistributing(false);
+        }
+      },
+      {
+        title: isRTL ? 'التوزيع والتسكين الذكي للفصول' : 'Smart Class Distribution',
+        confirmText: isRTL ? 'تسكين آلي الآن' : 'Auto Distribute Now',
+        cancelText: t('cancel') || 'إلغاء',
+      }
+    );
+  };
+
+  const handleRollbackBatch = (batch) => {
+    if (!batch || !batch.id) return;
+    const count = batch.imported_count || 0;
+    const fileName = batch.file_name || (isRTL ? 'ملف الطلاب' : 'students file');
+    const msg = isRTL
+      ? `هل أنت متأكد من التراجع عن دفعة الاستيراد الأخيرة (${count} طالب من "${fileName}")؟ سيتم إزالة هؤلاء الطلاب وحذف الفصول التلقائية الفارغة التي أُنشئت لهم.`
+      : `Are you sure you want to rollback the last import batch (${count} students from "${fileName}")?`;
+
+    nassaqConfirm(
+      msg,
+      async () => {
+        setIsRollingBack(true);
+        try {
+          const headers = {};
+          if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
+          const res = await api.post(`/bulk/batches/${batch.id}/rollback`, {}, { headers });
+          toast.success(res.data?.message || 'تم التراجع عن دفعة الاستيراد بنجاح');
+          setLatestBatch(null);
+          fetchAllData();
+        } catch (error) {
+          const errMsg = getLocalizedApiError(error, { t, fallback: 'تعذر التراجع عن الدفعة' }) || getApiErrorMessage(error) || 'تعذر التراجع عن الدفعة';
+          nassaqError(typeof errMsg === 'string' ? errMsg : 'تعذر التراجع عن الدفعة');
+        } finally {
+          setIsRollingBack(false);
+        }
+      },
+      {
+        title: isRTL ? 'تأكيد التراجع عن دفعة الاستيراد' : 'Confirm Import Rollback',
+        confirmText: isRTL ? 'نعم، تراجع عن الاستيراد' : 'Yes, Rollback Import',
+        cancelText: t('cancel') || 'إلغاء',
+      }
+    );
+  };
+
   const clearFilter = () => setActiveFilter(null);
 
   const handleHakimAction = (action, data) => {
@@ -1406,6 +1510,9 @@ export default function UsersClassesManagement() {
       case 'show_students_no_class':
         setActiveTab('students'); setSearchQuery(''); setActiveFilter('noClass');
         toast.info(t('showingNoClass', { count: data.length }));
+        break;
+      case 'auto_distribute_students':
+        handleAutoDistribute();
         break;
       case 'show_teachers_no_subject':
         setActiveTab('teachers'); setSearchQuery(''); setActiveFilter('noSubject');
@@ -1606,6 +1713,35 @@ export default function UsersClassesManagement() {
   const renderStudentsSection = () => {
     return (
       <div className="space-y-4">
+        {latestBatch && latestBatch.status === 'active' && (
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 px-4 rounded-2xl border border-amber-200/80 dark:border-amber-800/60 bg-amber-50/70 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200 shadow-sm transition-all animate-in fade-in duration-300">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0">
+                <RotateCcw className="h-4 w-4 text-amber-700 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="text-xs font-bold font-cairo">
+                  {isRTL ? 'دفعة استيراد سابقة قيد الإجراء' : 'Recent Import Batch Available'}
+                </p>
+                <p className="text-[11px] text-amber-700 dark:text-amber-400 font-tajawal">
+                  {isRTL
+                    ? `تم استيراد ${latestBatch.imported_count} طالب مؤخراً (${latestBatch.file_name || 'ملف الطلاب'}). يمكنك التراجع الذري وإعادة ضبط الفصول بنقرة واحدة.`
+                    : `Imported ${latestBatch.imported_count} students recently (${latestBatch.file_name || 'students file'}). You can rollback atomically.`}
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isRollingBack}
+              onClick={() => handleRollbackBatch(latestBatch)}
+              className="shrink-0 h-8 px-3 text-xs font-cairo font-bold border-amber-300 hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/40 text-amber-800 dark:text-amber-300 rounded-xl gap-1.5 cursor-pointer"
+            >
+              {isRollingBack ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+              {isRTL ? 'تراجع عن الاستيراد' : 'Rollback Batch'}
+            </Button>
+          </div>
+        )}
         <StudentClassGrid
           students={displayedStudents}
           classes={classes}
@@ -1618,6 +1754,8 @@ export default function UsersClassesManagement() {
           onTransferStudent={handleTransferStudent}
           onBulkAssign={handleBulkAssign}
           onBulkDelete={handleBulkDelete}
+          onAutoDistribute={handleAutoDistribute}
+          isAutoDistributing={isAutoDistributing}
           canDrag={isSchoolAdmin}
         />
       </div>

@@ -332,3 +332,160 @@ async def test_bulk_assign_rejects_when_exceeding_capacity(
     assert s1["class_id"] is None
     assert s2["class_id"] is None
 
+
+@pytest.mark.asyncio
+async def test_auto_distribute_students_flow(
+    client, school_principal_headers, tenant_a, _db_session
+):
+    # Existing class in Grade 1 with capacity 2 and 1 existing student (1 seat open)
+    c1_id = str(uuid.uuid4())
+    await gd_insert(_db_session, "classes", {
+        "id": c1_id,
+        "school_id": tenant_a,
+        "name": "الصف 1 - أ",
+        "name_ar": "الصف 1 - أ",
+        "grade_level": "1",
+        "grade": "1",
+        "section": "أ",
+        "capacity": 2,
+        "current_students": 1,
+        "is_active": True,
+    })
+
+    now = datetime.now(timezone.utc).isoformat()
+    # 1 student in class c1
+    s_existing = str(uuid.uuid4())
+    await gd_insert(_db_session, "students", {
+        "id": s_existing,
+        "school_id": tenant_a,
+        "class_id": c1_id,
+        "full_name": "طالب قديم",
+        "national_id": f"40{s_existing[:8]}",
+        "grade": "1",
+        "is_active": True,
+        "created_at": now,
+        "updated_at": now,
+    })
+
+    # 3 unassigned students in Grade 1
+    unassigned_ids = []
+    for i in range(3):
+        sid = str(uuid.uuid4())
+        unassigned_ids.append(sid)
+        await gd_insert(_db_session, "students", {
+            "id": sid,
+            "school_id": tenant_a,
+            "class_id": None,
+            "full_name": f"طالب غير مسند {i}",
+            "national_id": f"41{sid[:8]}",
+            "grade": "1",
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        })
+    await _db_session.flush()
+
+    # Call auto-distribute
+    res = await client.post(
+        "/students/auto-distribute",
+        json={"default_capacity": 2},
+        headers=school_principal_headers,
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["success"] is True
+    assert data["total_assigned"] == 3
+    assert data["classes_created_count"] == 1
+
+    # Verify database: all 3 students are now assigned
+    for sid in unassigned_ids:
+        st = await gd_find_one(_db_session, "students", {"id": sid})
+        assert st["class_id"] is not None
+
+
+@pytest.mark.asyncio
+async def test_bulk_import_batches_tracking_and_rollback(
+    client, school_principal_headers, tenant_a, _db_session
+):
+    now_iso = datetime.now(timezone.utc).isoformat()
+    now_dt = datetime.now(timezone.utc)
+
+    # 1 auto-created class
+    new_cid = str(uuid.uuid4())
+    await gd_insert(_db_session, "classes", {
+        "id": new_cid,
+        "school_id": tenant_a,
+        "name": "الصف الأول - أ",
+        "name_ar": "الصف الأول - أ",
+        "grade_level": "1",
+        "section": "أ",
+        "capacity": 30,
+        "current_students": 2,
+        "is_active": True,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    })
+
+    # 2 students imported
+    s1_id = str(uuid.uuid4())
+    s2_id = str(uuid.uuid4())
+    for sid, name in [(s1_id, "طالب استيراد 1"), (s2_id, "طالب استيراد 2")]:
+        await gd_insert(_db_session, "students", {
+            "id": sid,
+            "school_id": tenant_a,
+            "class_id": new_cid,
+            "full_name": name,
+            "national_id": f"50{sid[:8]}",
+            "is_active": True,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        })
+
+    # Batch record
+    batch_id = str(uuid.uuid4())
+    await gd_insert(_db_session, "bulk_import_batches", {
+        "id": batch_id,
+        "school_id": tenant_a,
+        "actor_id": "test-user",
+        "actor_name": "مدير النظام",
+        "import_type": "students",
+        "file_name": "test_students.xlsx",
+        "imported_count": 2,
+        "student_ids": [s1_id, s2_id],
+        "created_class_ids": [new_cid],
+        "status": "active",
+        "created_at": now_dt,
+        "updated_at": now_dt,
+    })
+    await _db_session.flush()
+
+    # 1. Test GET /bulk/batches/latest
+    latest_res = await client.get("/bulk/batches/latest", headers=school_principal_headers)
+    assert latest_res.status_code == 200, latest_res.text
+    latest_data = latest_res.json()
+    assert latest_data.get("batch") is not None
+    assert latest_data["batch"]["id"] == batch_id
+
+    # 2. Test POST /bulk/batches/{batch_id}/rollback
+    rb_res = await client.post(f"/bulk/batches/{batch_id}/rollback", headers=school_principal_headers)
+    assert rb_res.status_code == 200, rb_res.text
+    rb_data = rb_res.json()
+    assert rb_data["success"] is True
+    assert rb_data["rolled_back_students"] == 2
+    assert rb_data["rolled_back_classes"] == 1
+
+    # Verify students are soft-deleted
+    s1 = await gd_find_one(_db_session, "students", {"id": s1_id})
+    s2 = await gd_find_one(_db_session, "students", {"id": s2_id})
+    assert s1["is_active"] is False
+    assert s2["is_active"] is False
+
+    # Verify class was soft-deleted because it became empty
+    c = await gd_find_one(_db_session, "classes", {"id": new_cid})
+    assert c["is_active"] is False
+
+    # 3. Test rolling back again returns 400
+    rb_again = await client.post(f"/bulk/batches/{batch_id}/rollback", headers=school_principal_headers)
+    assert rb_again.status_code == 400
+
+
