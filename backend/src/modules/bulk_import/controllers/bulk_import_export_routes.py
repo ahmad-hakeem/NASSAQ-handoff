@@ -392,7 +392,33 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
     seen_national_ids = {}
     seen_emails = {}
     valid_records = []
-    
+
+    # High-performance bulk pre-fetch of existing students to avoid N sequential DB roundtrips
+    all_raw_nids = []
+    if 'national_id' in df.columns:
+        for val in df['national_id'].dropna():
+            v_str = str(val).strip()
+            if v_str.endswith('.0'):
+                v_str = v_str[:-2]
+            clean = re.sub(r'\D', '', v_str)
+            if len(clean) == 9:
+                clean = clean.zfill(10)
+            if len(clean) == 10:
+                all_raw_nids.append(clean)
+
+    existing_students_map = {}
+    if all_raw_nids:
+        existing_students = await gd_find(
+            db.session,
+            "students",
+            {"national_id": {"$in": list(set(all_raw_nids))}, "school_id": school_id},
+            limit=len(all_raw_nids) + 100
+        )
+        for s in existing_students:
+            nid = s.get("national_id")
+            if nid:
+                existing_students_map[nid] = s
+
     for idx, row in df.iterrows():
         row_num = idx + 2  # Excel row number (1-indexed + header)
         row_errors = []
@@ -458,10 +484,7 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
                         row_errors.append({"row": row_num, "field": "رقم الهوية", "message": f"رقم الهوية ({clean_national_id}): مكرر داخل نفس الملف مع الصف {prev_row}"})
                     else:
                         seen_national_ids[clean_national_id] = row_num
-                        existing = await gd_find_one(db.session, "students", {
-                            "national_id": clean_national_id,
-                            "school_id": school_id,
-                        })
+                        existing = existing_students_map.get(clean_national_id)
                         if existing:
                             if existing.get("is_active") is not False:
                                 row_errors.append({"row": row_num, "field": "رقم الهوية", "message": f"رقم الهوية ({clean_national_id}): الطالب مسجل مسبقاً في هذه المدرسة (الاسم: {existing.get('full_name', '')})"})
@@ -514,7 +537,7 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
                     "class_name": str(row.get('class_name', '')).strip() if pd.notna(row.get('class_name')) and str(row.get('class_name', '')).strip() != 'nan' else None,
                     "email": email,
                     "phone": str(row.get('phone', '')).strip() if pd.notna(row.get('phone')) and str(row.get('phone', '')).strip() != 'nan' else None,
-                    "parent_name": str(row.get('parent_name', '')).strip() if pd.notna(row.get('parent_name')) and str(row.get('parent_name', '')).strip() != 'nan' else None,
+                    "parent_name": (str(row.get('parent_name', '')).strip() if pd.notna(row.get('parent_name')) and str(row.get('parent_name', '')).strip().lower() != 'nan' and str(row.get('parent_name', '')).strip() else f"ولي أمر {full_name}"),
                     "parent_phone": parent_phone_raw,
                     "parent_email": parent_email,
                     "health_status": str(row.get('health_status', '')).strip() if pd.notna(row.get('health_status')) and str(row.get('health_status', '')).strip() != 'nan' else None,
@@ -550,9 +573,19 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
     from services.parent_linking import link_or_update_real_school_guardian
     from dependencies import hash_password, generate_secure_password
 
+    # Pre-compute a secure bcrypt hash ONCE for newly provisioned parent accounts in this batch.
+    # Computing 300 bcrypt hashes synchronously takes ~75-90 seconds and blocks the event loop,
+    # causing proxy / client timeouts. Computing it once takes ~0.25s total.
+    batch_temp_password = generate_secure_password()
+    batch_temp_hash = hash_password(batch_temp_password)
+    batch_hash_func = lambda _pw: batch_temp_hash
+    batch_gen_pw_func = lambda: batch_temp_password
+
     assigned_class_ids = set()
     created_class_ids = []
     imported_student_ids = []
+    created_parent_ids = []
+    created_parent_user_ids = []
     for item in valid_records:
         class_id = None
         raw_cname = (item.get("class_name") or "").strip()
@@ -662,13 +695,20 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
                             parent_phone=item["parent_phone"],
                             parent_email=item["parent_email"],
                             parent_relationship="guardian",
-                            hash_password=hash_password,
-                            generate_secure_password=generate_secure_password,
+                            hash_password=batch_hash_func,
+                            generate_secure_password=batch_gen_pw_func,
                         )
                         student_doc["parent_id"] = guardian_fields.get("parent_id")
                         student_doc["parent_name"] = guardian_fields.get("parent_name")
                         student_doc["parent_phone"] = guardian_fields.get("parent_phone")
                         student_doc["parent_email"] = guardian_fields.get("parent_email")
+                        if guardian_fields.get("is_new"):
+                            pid = guardian_fields.get("parent_id")
+                            puid = guardian_fields.get("parent_user_id")
+                            if pid and pid not in created_parent_ids:
+                                created_parent_ids.append(pid)
+                            if puid and puid not in created_parent_user_ids:
+                                created_parent_user_ids.append(puid)
                     except Exception as ex:
                         logger.warning(f"link_or_update_real_school_guardian error for row {item['row_num']}: {ex}")
 
@@ -705,6 +745,8 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
             "imported_count": imported,
             "student_ids": imported_student_ids,
             "created_class_ids": created_class_ids,
+            "created_parent_ids": created_parent_ids,
+            "created_parent_user_ids": created_parent_user_ids,
             "status": "active",
             "created_at": now_dt,
             "updated_at": now_dt,
@@ -1354,7 +1396,14 @@ def setup_import_tracking_routes(db, get_current_user, require_roles, UserRole):
 
         student_ids = batch.get("student_ids") or []
         created_class_ids = batch.get("created_class_ids") or []
+        created_parent_ids = batch.get("created_parent_ids") or []
+        created_parent_user_ids = batch.get("created_parent_user_ids") or []
         affected_class_ids = set()
+
+        student_ids_set = set(student_ids)
+        associated_parent_ids = set(created_parent_ids)
+        parents_to_delete = []
+        user_ids_to_delete = set(created_parent_user_ids)
 
         if student_ids:
             students = await gd_find(
@@ -1366,14 +1415,94 @@ def setup_import_tracking_routes(db, get_current_user, require_roles, UserRole):
             for s in students:
                 if s.get("class_id"):
                     affected_class_ids.add(s["class_id"])
+                if s.get("parent_id"):
+                    associated_parent_ids.add(s["parent_id"])
 
-            # Hard delete the batch's students so the rollback completely removes them
+            # 1. Process parent records associated with these students
+            if associated_parent_ids:
+                parent_records = await gd_find(
+                    db.session,
+                    "parents",
+                    {"id": {"$in": list(associated_parent_ids)}, "school_id": school_id},
+                    limit=len(associated_parent_ids) + 100
+                )
+                for p in parent_records:
+                    pid = p["id"]
+                    # Count if parent has other active students in this school (excluding this batch)
+                    other_students_count = await gd_count(
+                        db.session,
+                        "students",
+                        {
+                            "parent_id": pid,
+                            "school_id": school_id,
+                            "id": {"$nin": student_ids},
+                        }
+                    )
+                    if other_students_count == 0:
+                        parents_to_delete.append(pid)
+                        if p.get("user_id"):
+                            user_ids_to_delete.add(p["user_id"])
+                        if p.get("email"):
+                            user_by_email = await gd_find_one(
+                                db.session, "users",
+                                {"email": p["email"], "role": "parent"}
+                            )
+                            if user_by_email:
+                                user_ids_to_delete.add(user_by_email["id"])
+                    else:
+                        # Parent has other children: preserve parent and user, just unlink this batch's students
+                        curr_sids = p.get("student_ids") or []
+                        updated_sids = [sid for sid in curr_sids if sid not in student_ids_set]
+                        await gd_update_one(
+                            db.session,
+                            "parents",
+                            {"id": pid, "school_id": school_id},
+                            {"student_ids": updated_sids}
+                        )
+
+            # 2. Hard delete the batch's students so the rollback completely removes them
             await gd_delete_many(
                 db.session,
                 "students",
                 {"id": {"$in": student_ids}, "school_id": school_id}
             )
 
+        # 3. Clean up parents that have no remaining students
+        rolled_back_parents_count = 0
+        if parents_to_delete:
+            try:
+                await gd_delete_many(
+                    db.session,
+                    "parent_invitations",
+                    {"parent_id": {"$in": parents_to_delete}}
+                )
+            except Exception as ex:
+                logger.warning(f"Failed to delete parent invitations: {ex}")
+
+            del_parents_cnt = await gd_delete_many(
+                db.session,
+                "parents",
+                {"id": {"$in": parents_to_delete}, "school_id": school_id}
+            )
+            rolled_back_parents_count = del_parents_cnt
+
+        # 4. Clean up parent user accounts
+        rolled_back_users_count = 0
+        if user_ids_to_delete:
+            try:
+                del_users_cnt = await gd_delete_many(
+                    db.session,
+                    "users",
+                    {
+                        "id": {"$in": list(user_ids_to_delete)},
+                        "role": "parent",
+                    }
+                )
+                rolled_back_users_count = del_users_cnt
+            except Exception as ex:
+                logger.warning(f"Failed to delete parent users: {ex}")
+
+        # 5. Clean up auto-created classes that are now empty
         rolled_back_classes_count = 0
         for cid in created_class_ids:
             remaining = await gd_count(
@@ -1417,16 +1546,26 @@ def setup_import_tracking_routes(db, get_current_user, require_roles, UserRole):
                 "school_id": school_id,
                 "batch_id": batch_id,
                 "rolled_back_students": len(student_ids),
-                "rolled_back_classes": rolled_back_classes_count
+                "rolled_back_classes": rolled_back_classes_count,
+                "rolled_back_parents": rolled_back_parents_count,
+                "rolled_back_users": rolled_back_users_count,
             }
         })
 
+        msg_parts = [f"تم التراجع بنجاح عن استيراد {len(student_ids)} طالب"]
+        if rolled_back_parents_count > 0:
+            msg_parts.append(f"وحذف {rolled_back_parents_count} ولي أمر")
+        if rolled_back_classes_count > 0:
+            msg_parts.append(f"وحذف {rolled_back_classes_count} فصل مُنشأ تلقائياً")
+
         return {
             "success": True,
-            "message": f"تم التراجع بنجاح عن استيراد {len(student_ids)} طالب وحذف {rolled_back_classes_count} فصل مُنشأ تلقائياً",
+            "message": " ".join(msg_parts),
             "batch_id": batch_id,
             "rolled_back_students": len(student_ids),
             "rolled_back_classes": rolled_back_classes_count,
+            "rolled_back_parents": rolled_back_parents_count,
+            "rolled_back_users": rolled_back_users_count,
         }
 
     return router

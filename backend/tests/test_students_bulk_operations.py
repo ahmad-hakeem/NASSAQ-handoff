@@ -429,17 +429,78 @@ async def test_bulk_import_batches_tracking_and_rollback(
     # 2 students imported
     s1_id = str(uuid.uuid4())
     s2_id = str(uuid.uuid4())
-    for sid, name in [(s1_id, "طالب استيراد 1"), (s2_id, "طالب استيراد 2")]:
+
+    # Parent 1: only has s1 -> should be deleted on rollback
+    p1_id = str(uuid.uuid4())
+    u1_id = str(uuid.uuid4())
+    await gd_insert(_db_session, "users", {
+        "id": u1_id,
+        "email": f"parent_{p1_id[:8]}@nassaq.local",
+        "password_hash": "mock_hash",
+        "role": "parent",
+        "tenant_id": tenant_a,
+        "full_name": "ولي أمر 1",
+        "is_active": True,
+        "created_at": now_iso,
+    })
+    await gd_insert(_db_session, "parents", {
+        "id": p1_id,
+        "school_id": tenant_a,
+        "user_id": u1_id,
+        "full_name": "ولي أمر 1",
+        "student_ids": [s1_id],
+        "is_active": True,
+        "created_at": now_iso,
+    })
+
+    # Parent 2: has s2 AND another student other_sid -> should be preserved with s2 removed
+    p2_id = str(uuid.uuid4())
+    u2_id = str(uuid.uuid4())
+    other_sid = str(uuid.uuid4())
+    await gd_insert(_db_session, "users", {
+        "id": u2_id,
+        "email": f"parent_{p2_id[:8]}@nassaq.local",
+        "password_hash": "mock_hash",
+        "role": "parent",
+        "tenant_id": tenant_a,
+        "full_name": "ولي أمر 2",
+        "is_active": True,
+        "created_at": now_iso,
+    })
+    await gd_insert(_db_session, "parents", {
+        "id": p2_id,
+        "school_id": tenant_a,
+        "user_id": u2_id,
+        "full_name": "ولي أمر 2",
+        "student_ids": [s2_id, other_sid],
+        "is_active": True,
+        "created_at": now_iso,
+    })
+    await gd_insert(_db_session, "students", {
+        "id": other_sid,
+        "school_id": tenant_a,
+        "full_name": "طالب مستقل",
+        "national_id": f"60{other_sid[:8]}",
+        "parent_id": p2_id,
+        "is_active": True,
+        "created_at": now_iso,
+    })
+
+    for sid, name, pid in [(s1_id, "طالب استيراد 1", p1_id), (s2_id, "طالب استيراد 2", p2_id)]:
         await gd_insert(_db_session, "students", {
             "id": sid,
             "school_id": tenant_a,
             "class_id": new_cid,
+            "parent_id": pid,
             "full_name": name,
             "national_id": f"50{sid[:8]}",
             "is_active": True,
             "created_at": now_iso,
             "updated_at": now_iso,
         })
+    # Update p1 and p2 student_ids with new IDs
+    await gd_update_one(_db_session, "parents", {"id": p1_id}, {"student_ids": [s1_id]})
+    await gd_update_one(_db_session, "parents", {"id": p2_id}, {"student_ids": [s2_id, other_sid]})
 
     # Batch record
     batch_id = str(uuid.uuid4())
@@ -453,6 +514,8 @@ async def test_bulk_import_batches_tracking_and_rollback(
         "imported_count": 2,
         "student_ids": [s1_id, s2_id],
         "created_class_ids": [new_cid],
+        "created_parent_ids": [p1_id],
+        "created_parent_user_ids": [u1_id],
         "status": "active",
         "created_at": now_dt,
         "updated_at": now_dt,
@@ -473,12 +536,28 @@ async def test_bulk_import_batches_tracking_and_rollback(
     assert rb_data["success"] is True
     assert rb_data["rolled_back_students"] == 2
     assert rb_data["rolled_back_classes"] == 1
+    assert rb_data["rolled_back_parents"] == 1
+    assert rb_data["rolled_back_users"] == 1
 
     # Verify students are removed completely so they can be re-imported cleanly
     s1 = await gd_find_one(_db_session, "students", {"id": s1_id})
     s2 = await gd_find_one(_db_session, "students", {"id": s2_id})
     assert s1 is None
     assert s2 is None
+
+    # Verify parent 1 and user 1 were deleted (had no other children)
+    deleted_p1 = await gd_find_one(_db_session, "parents", {"id": p1_id})
+    deleted_u1 = await gd_find_one(_db_session, "users", {"id": u1_id})
+    assert deleted_p1 is None
+    assert deleted_u1 is None
+
+    # Verify parent 2 was PRESERVED because they have other_sid
+    preserved_p2 = await gd_find_one(_db_session, "parents", {"id": p2_id})
+    preserved_u2 = await gd_find_one(_db_session, "users", {"id": u2_id})
+    assert preserved_p2 is not None
+    assert preserved_u2 is not None
+    assert s2_id not in preserved_p2.get("student_ids", [])
+    assert other_sid in preserved_p2.get("student_ids", [])
 
     # Verify class was deleted because it became empty
     c = await gd_find_one(_db_session, "classes", {"id": new_cid})
@@ -553,5 +632,62 @@ async def test_bulk_import_batches_tracking_and_rollback(
     assert reactivated_student is not None
     assert reactivated_student["is_active"] is True
     assert "محدث" in reactivated_student["full_name"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_import_300_students_performance(
+    client, school_principal_headers, tenant_a, _db_session
+):
+    """Ensure importing 300 students completes quickly and does not trigger proxy/client timeouts."""
+    import time
+    import pandas as pd
+    import io
+
+    rows = []
+    base_nid = 2000000000
+    for i in range(300):
+        rows.append({
+            "الاسم الأول": f"طالب{i}",
+            "اسم العائلة": f"العائلة{i}",
+            "رقم الهوية": str(base_nid + i),
+            "جوال ولي الأمر": f"050000{i:04d}",
+            "الصف": "الأول",
+            "الفصل": "أ",
+        })
+
+    df = pd.DataFrame(rows)
+    buf = io.BytesIO()
+    df.to_excel(buf, index=False)
+    buf.seek(0)
+
+    start_time = time.time()
+    res = await client.post(
+        "/bulk/import/students",
+        files={"file": ("perf_300_students.xlsx", buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=school_principal_headers
+    )
+    elapsed = time.time() - start_time
+
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["success"] is True
+    assert data["imported"] == 300
+    assert data["failed"] == 0
+    # Must complete in under 10 seconds (previously took 80+ seconds)
+    assert elapsed < 10.0, f"Import took too long: {elapsed:.2f}s"
+
+    # Also test rollback of the 300 students and their parents
+    batch_id = data["batch_id"]
+    rb_start = time.time()
+    rb_res = await client.post(f"/bulk/batches/{batch_id}/rollback", headers=school_principal_headers)
+    rb_elapsed = time.time() - rb_start
+
+    assert rb_res.status_code == 200, rb_res.text
+    rb_data = rb_res.json()
+    assert rb_data["success"] is True
+    assert rb_data["rolled_back_students"] == 300
+    assert rb_data["rolled_back_parents"] == 300
+    assert rb_elapsed < 5.0, f"Rollback took too long: {rb_elapsed:.2f}s"
+
 
 

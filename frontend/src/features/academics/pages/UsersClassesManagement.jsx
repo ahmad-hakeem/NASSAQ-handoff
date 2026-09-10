@@ -1470,8 +1470,8 @@ export default function UsersClassesManagement() {
     const count = batch.imported_count || 0;
     const fileName = batch.file_name || (isRTL ? 'ملف الطلاب' : 'students file');
     const msg = isRTL
-      ? `هل أنت متأكد من التراجع عن دفعة الاستيراد الأخيرة (${count} طالب من "${fileName}")؟ سيتم إزالة هؤلاء الطلاب وحذف الفصول التلقائية الفارغة التي أُنشئت لهم.`
-      : `Are you sure you want to rollback the last import batch (${count} students from "${fileName}")?`;
+      ? `هل أنت متأكد من التراجع عن دفعة الاستيراد الأخيرة (${count} طالب من "${fileName}")؟ سيتم حذف هؤلاء الطلاب، وحسابات أولياء أمورهم، والفصول التلقائية الفارغة التي أُنشئت لهم.`
+      : `Are you sure you want to rollback the last import batch (${count} students from "${fileName}")? This will remove these students, their parent accounts, and any empty auto-created classes.`;
 
     nassaqConfirm(
       msg,

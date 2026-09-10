@@ -437,6 +437,8 @@ async def link_or_update_real_school_guardian(
             "parent_phone": target_parent.get("phone") or merged_phone,
             "parent_email": mirror_email,
             "parent_relationship": relationship,
+            "is_new": False,
+            "parent_user_id": parent_user_id,
         }
 
     # 3. Student did NOT have a linked parent: find or create
@@ -521,6 +523,8 @@ async def link_or_update_real_school_guardian(
         "parent_phone": parent.get("phone") or merged_phone,
         "parent_email": mirror_email,
         "parent_relationship": relationship,
+        "is_new": is_new,
+        "parent_user_id": parent_user_id,
     }
 
 

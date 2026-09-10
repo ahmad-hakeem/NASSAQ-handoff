@@ -13,8 +13,8 @@ module.exports = function (app) {
       target: backendTarget,
       changeOrigin: true,
       ws: true,
-      timeout: 30000,
-      proxyTimeout: 30000,
+      timeout: 300000,
+      proxyTimeout: 300000,
       on: {
         error: (err, req, res) => {
           console.error('[Proxy Error]', err.message);

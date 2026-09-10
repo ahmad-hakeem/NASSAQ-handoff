@@ -28,6 +28,8 @@ class BulkImportBatch(Base):
     imported_count = Column(Integer, nullable=False, default=0)
     student_ids = Column(JSONB, nullable=True, default=list)
     created_class_ids = Column(JSONB, nullable=True, default=list)
+    created_parent_ids = Column(JSONB, nullable=True, default=list)
+    created_parent_user_ids = Column(JSONB, nullable=True, default=list)
     status = Column(String, nullable=False, default="active")
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
