@@ -7,7 +7,7 @@ Tests for student bulk operations:
 import uuid
 from datetime import datetime, timezone
 import pytest
-from engines.sql_utils import gd_find, gd_find_one, gd_insert
+from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_update_one
 
 
 @pytest.mark.asyncio
@@ -474,18 +474,84 @@ async def test_bulk_import_batches_tracking_and_rollback(
     assert rb_data["rolled_back_students"] == 2
     assert rb_data["rolled_back_classes"] == 1
 
-    # Verify students are soft-deleted
+    # Verify students are removed completely so they can be re-imported cleanly
     s1 = await gd_find_one(_db_session, "students", {"id": s1_id})
     s2 = await gd_find_one(_db_session, "students", {"id": s2_id})
-    assert s1["is_active"] is False
-    assert s2["is_active"] is False
+    assert s1 is None
+    assert s2 is None
 
-    # Verify class was soft-deleted because it became empty
+    # Verify class was deleted because it became empty
     c = await gd_find_one(_db_session, "classes", {"id": new_cid})
-    assert c["is_active"] is False
+    assert c is None
 
     # 3. Test rolling back again returns 400
     rb_again = await client.post(f"/bulk/batches/{batch_id}/rollback", headers=school_principal_headers)
     assert rb_again.status_code == 400
+
+    # 4. Test re-import after rollback: importing again with the same national IDs must succeed without constraint errors
+    import io
+    import random
+    import pandas as pd
+    unique_nid = f"19{random.randint(10000000, 99999999)}"
+    df_reimport = pd.DataFrame([{
+        "الاسم الأول": "طالب",
+        "اسم العائلة": "معاد",
+        "رقم الهوية": unique_nid,
+        "جوال ولي الأمر": "0501234567",
+        "الصف": "الأول",
+        "الفصل": "أ",
+    }])
+    output_buf = io.BytesIO()
+    df_reimport.to_excel(output_buf, index=False)
+    output_buf.seek(0)
+
+    re_res = await client.post(
+        "/bulk/import/students",
+        files={"file": ("reimport_students.xlsx", output_buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=school_principal_headers
+    )
+    assert re_res.status_code == 200, re_res.text
+    re_data = re_res.json()
+    assert re_data["imported"] == 1, f"re_data={re_data}"
+    assert re_data["failed"] == 0
+
+    # 5. Test reactivation: when an existing student was soft-deleted (is_active=False),
+    # importing the same national_id reactivates the record without uq_students_national_id_school error
+    s_to_delete = await gd_find_one(_db_session, "students", {"national_id": unique_nid, "school_id": tenant_a})
+    assert s_to_delete is not None
+    del_res = await client.post(
+        "/students/bulk-delete",
+        json={"student_ids": [s_to_delete["id"]]},
+        headers=school_principal_headers
+    )
+    assert del_res.status_code == 200, del_res.text
+
+    df_reactivate = pd.DataFrame([{
+        "الاسم الأول": "طالب",
+        "اسم العائلة": "محدث",
+        "رقم الهوية": unique_nid,
+        "جوال ولي الأمر": "0501234567",
+        "الصف": "الأول",
+        "الفصل": "أ",
+    }])
+    buf_reactivate = io.BytesIO()
+    df_reactivate.to_excel(buf_reactivate, index=False)
+    buf_reactivate.seek(0)
+
+    react_res = await client.post(
+        "/bulk/import/students",
+        files={"file": ("reactivate_students.xlsx", buf_reactivate.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=school_principal_headers
+    )
+    assert react_res.status_code == 200, react_res.text
+    react_data = react_res.json()
+    assert react_data["imported"] == 1, f"Expected 1 imported, got: {react_data}"
+    assert react_data["failed"] == 0
+
+    # Verify student is now reactivated and name updated
+    reactivated_student = await gd_find_one(_db_session, "students", {"national_id": unique_nid, "school_id": tenant_a})
+    assert reactivated_student is not None
+    assert reactivated_student["is_active"] is True
+    assert "محدث" in reactivated_student["full_name"]
 
 

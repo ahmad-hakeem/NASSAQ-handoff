@@ -445,8 +445,8 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
             if not parent_phone_raw:
                 row_errors.append({"row": row_num, "field": "جوال ولي الأمر", "message": "جوال ولي الأمر: حقل مطلوب ولا يمكن تركه فارغاً"})
 
-            # 2. National ID format & duplication validation
             clean_national_id = re.sub(r'\D', '', national_id_raw)
+            existing_student_id = None
             if national_id_raw:
                 if len(clean_national_id) == 9:
                     clean_national_id = clean_national_id.zfill(10)
@@ -461,10 +461,13 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
                         existing = await gd_find_one(db.session, "students", {
                             "national_id": clean_national_id,
                             "school_id": school_id,
-                            "is_active": True
                         })
                         if existing:
-                            row_errors.append({"row": row_num, "field": "رقم الهوية", "message": f"رقم الهوية ({clean_national_id}): الطالب مسجل مسبقاً في هذه المدرسة (الاسم: {existing.get('full_name', '')})"})
+                            if existing.get("is_active") is not False:
+                                row_errors.append({"row": row_num, "field": "رقم الهوية", "message": f"رقم الهوية ({clean_national_id}): الطالب مسجل مسبقاً في هذه المدرسة (الاسم: {existing.get('full_name', '')})"})
+                            else:
+                                # Row was previously soft-deleted/rolled back; route to restore/update
+                                existing_student_id = existing.get("id")
 
             # 3. Parent phone format validation
             if parent_phone_raw:
@@ -499,6 +502,7 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
 
                 valid_records.append({
                     "row_num": row_num,
+                    "existing_student_id": existing_student_id,
                     "first_name": first_name,
                     "father_name": father_name,
                     "last_name": last_name,
@@ -525,12 +529,16 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
         return {"imported": 0, "failed": failed_rows_count}
 
     # Pass 2: Commit all valid records
-    classes_list = await gd_find(db.session, "classes", {"school_id": school_id, "is_active": True}, limit=1000)
+    classes_list = await gd_find(db.session, "classes", {"school_id": school_id}, limit=1000)
     classes_map = {}
     class_capacity_map = {}
     class_occupancy_map = {}
     for c in classes_list:
         cid = c['id']
+        # If class was inactive, reactivate it since students are being imported into it
+        if c.get('is_active') is False:
+            await gd_update_one(db.session, "classes", {"id": cid, "school_id": school_id}, {"$set": {"is_active": True}})
+            c['is_active'] = True
         class_capacity_map[cid] = c.get('capacity') or 30
         class_occupancy_map[cid] = c.get('current_students') or 0
         if c.get('name'):
@@ -611,12 +619,16 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
                 # Class reached capacity — leave student unassigned so the class is never overfilled
                 class_id = None
 
+        existing_sid = item.get("existing_student_id")
+        student_id = existing_sid or str(uuid.uuid4())
+        now_iso = datetime.now(timezone.utc).isoformat()
+
         health_info = {}
         if item["health_status"]:
             health_info["general_condition"] = item["health_status"]
 
         student_doc = {
-            "id": str(uuid.uuid4()),
+            "id": student_id,
             "school_id": school_id,
             "full_name": item["full_name"],
             "national_id": item["national_id"],
@@ -632,34 +644,40 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
             "parent_email": item["parent_email"],
             "health_info": health_info,
             "is_active": True,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": now_iso,
         }
-
-        if item["parent_phone"]:
-            try:
-                guardian_fields = await link_or_update_real_school_guardian(
-                    db.session,
-                    student=student_doc,
-                    school_id=school_id,
-                    created_by=user.get("id"),
-                    parent_name=item["parent_name"],
-                    parent_phone=item["parent_phone"],
-                    parent_email=item["parent_email"],
-                    parent_relationship="guardian",
-                    hash_password=hash_password,
-                    generate_secure_password=generate_secure_password,
-                )
-                student_doc["parent_id"] = guardian_fields.get("parent_id")
-                student_doc["parent_name"] = guardian_fields.get("parent_name")
-                student_doc["parent_phone"] = guardian_fields.get("parent_phone")
-                student_doc["parent_email"] = guardian_fields.get("parent_email")
-            except Exception as ex:
-                logger.warning(f"link_or_update_real_school_guardian error for row {item['row_num']}: {ex}")
+        if not existing_sid:
+            student_doc["created_at"] = now_iso
 
         try:
-            await gd_insert(db.session, "students", student_doc)
-            imported_student_ids.append(student_doc["id"])
+            async with db.session.begin_nested():
+                if item["parent_phone"]:
+                    try:
+                        guardian_fields = await link_or_update_real_school_guardian(
+                            db.session,
+                            student=student_doc,
+                            school_id=school_id,
+                            created_by=user.get("id"),
+                            parent_name=item["parent_name"],
+                            parent_phone=item["parent_phone"],
+                            parent_email=item["parent_email"],
+                            parent_relationship="guardian",
+                            hash_password=hash_password,
+                            generate_secure_password=generate_secure_password,
+                        )
+                        student_doc["parent_id"] = guardian_fields.get("parent_id")
+                        student_doc["parent_name"] = guardian_fields.get("parent_name")
+                        student_doc["parent_phone"] = guardian_fields.get("parent_phone")
+                        student_doc["parent_email"] = guardian_fields.get("parent_email")
+                    except Exception as ex:
+                        logger.warning(f"link_or_update_real_school_guardian error for row {item['row_num']}: {ex}")
+
+                if existing_sid:
+                    await gd_update_one(db.session, "students", {"id": existing_sid, "school_id": school_id}, {"$set": student_doc})
+                else:
+                    await gd_insert(db.session, "students", student_doc)
+
+            imported_student_ids.append(student_id)
             imported += 1
         except Exception as ex:
             logger.exception(f"Failed to insert student row {item['row_num']}: {ex}")
@@ -1342,23 +1360,21 @@ def setup_import_tracking_routes(db, get_current_user, require_roles, UserRole):
             students = await gd_find(
                 db.session,
                 "students",
-                {"id": {"$in": student_ids}, "school_id": school_id, "is_active": True},
+                {"id": {"$in": student_ids}, "school_id": school_id},
                 limit=len(student_ids) + 100
             )
             for s in students:
                 if s.get("class_id"):
                     affected_class_ids.add(s["class_id"])
 
-            now_iso = datetime.now(timezone.utc).isoformat()
-            await gd_update_many(
+            # Hard delete the batch's students so the rollback completely removes them
+            await gd_delete_many(
                 db.session,
                 "students",
-                {"id": {"$in": student_ids}, "school_id": school_id},
-                {"$set": {"is_active": False, "class_id": None, "updated_at": now_iso}}
+                {"id": {"$in": student_ids}, "school_id": school_id}
             )
 
         rolled_back_classes_count = 0
-        now_iso = datetime.now(timezone.utc).isoformat()
         for cid in created_class_ids:
             remaining = await gd_count(
                 db.session,
@@ -1366,11 +1382,10 @@ def setup_import_tracking_routes(db, get_current_user, require_roles, UserRole):
                 {"class_id": cid, "school_id": school_id, "is_active": True}
             )
             if remaining == 0:
-                await gd_update_one(
+                await gd_delete_one(
                     db.session,
                     "classes",
-                    {"id": cid, "school_id": school_id},
-                    {"$set": {"is_active": False, "updated_at": now_iso}}
+                    {"id": cid, "school_id": school_id}
                 )
                 rolled_back_classes_count += 1
             else:
