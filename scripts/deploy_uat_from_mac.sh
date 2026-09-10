@@ -7,7 +7,7 @@
 
 set -e
 
-TAG="${1:-1.0.6}"
+TAG="${1:-1.1.1}"
 REGISTRY="registry.nassaqapp.com"
 PROJECT="uat-nassaq"
 IMAGE_NAME="nassaq-app"
@@ -29,6 +29,6 @@ docker push "${FULL_IMAGE}"
 docker push "${LATEST_IMAGE}"
 
 echo "⛵ Triggering Kubernetes Rollout Restart in uat-nassaq..."
-ssh root@2.24.0.169 "kubectl rollout restart deployment/nassaq-app -n uat-nassaq && kubectl rollout status deployment/nassaq-app -n uat-nassaq --timeout=120s"
+ssh root@2.24.0.169 "kubectl set image deployment/nassaq-app nassaq-app=${FULL_IMAGE} -n uat-nassaq && kubectl rollout restart deployment/nassaq-app -n uat-nassaq && kubectl rollout status deployment/nassaq-app -n uat-nassaq --timeout=180s"
 
 echo "✅ Deployment to UAT finished successfully!"
