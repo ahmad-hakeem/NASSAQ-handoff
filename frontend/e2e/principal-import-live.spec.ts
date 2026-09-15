@@ -147,7 +147,7 @@ test('imports the synthetic ten-row workbook through the principal UI and surviv
   // roster counters each show one imported student.
   await page.getByTestId('filter-classes').click();
   await expect(page.locator('h3').filter({ hasText: /^الصف/ })).toHaveCount(10);
-  await expect(page.getByText(/1 \/ 30/)).toHaveCount(10);
+  await expect(page.getByText(/1\s+طالب/)).toHaveCount(10);
 
   // Student profile deep-link is reached through the rendered student card,
   // not by calling its API.  The profile header must show the imported

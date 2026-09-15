@@ -811,3 +811,161 @@ async def test_legacy_principal_import_live_development_regression():
                 )
             finally:
                 await engine.dispose()
+
+
+@pytest.mark.parametrize("student_count", [31, 50, 100, 300])
+async def test_legacy_principal_import_single_class_open_ended(student_count: int):
+    """Every requested row stays in one class, including batches over 30.
+
+    This route-level regression deliberately seeds a class whose legacy
+    capacity is one.  It proves that import assignment, parent links, live
+    counters, and exact-number re-imports remain correct at the requested
+    31/50/100/300-row thresholds.
+    """
+    engine = create_async_engine(_get_async_url(), poolclass=NullPool)
+    school_id = _id()
+    principal_id = _id()
+    grade_id = _id()
+    class_id = _id()
+    academic_year_id = _id()
+    nids = [_national_id(1000 + index) for index in range(student_count)]
+    rows = pd.DataFrame(
+        [
+            _import_row(
+                f"Batch{index}",
+                "Student",
+                nids[index],
+                _GRADE_1,
+                "أ",
+                f"Batch Parent {index}",
+                f"050{student_count:02d}{index:05d}",
+                f"live-batch-{student_count}-{index}@example.test",
+            )
+            for index in range(student_count)
+        ]
+    )
+
+    connection = await engine.connect()
+    outer_transaction = await connection.begin()
+    session = AsyncSession(bind=connection, expire_on_commit=False)
+    db = Repos(session)
+
+    try:
+        await gd_insert(session, "schools", _school_doc(school_id, principal_id))
+        await gd_insert(
+            session,
+            "users",
+            _user_doc(
+                principal_id,
+                school_id,
+                role="school_principal",
+                email=f"live-batch-principal-{school_id[:8]}@example.test",
+                full_name="Live Batch Principal",
+            ),
+        )
+        await gd_insert(
+            session,
+            "academic_years",
+            {
+                "id": academic_year_id,
+                "school_id": school_id,
+                "name": "2026-2027",
+                "name_en": "2026-2027",
+                "is_current": True,
+                "status": "active",
+            },
+        )
+        await gd_insert(
+            session,
+            "grade_levels",
+            _grade_doc(school_id, grade_id, _GRADE_1, 1),
+        )
+        await gd_insert(
+            session,
+            "classes",
+            _class_doc(
+                school_id,
+                class_id,
+                grade_id,
+                _GRADE_1,
+                "أ",
+                capacity=1,
+            ),
+        )
+
+        errors: list[dict] = []
+        result = await _import_students(
+            db,
+            rows,
+            school_id,
+            {
+                "id": principal_id,
+                "full_name": "Live Batch Principal",
+                "role": "school_principal",
+                "tenant_id": school_id,
+            },
+            errors,
+            [],
+            filename=f"live-principal-{student_count}.xlsx",
+        )
+        await session.flush()
+
+        assert result["imported"] == student_count, (result, errors)
+        assert result["failed"] == 0, (result, errors)
+        assert result["assigned"] == student_count, result
+        assert not errors
+
+        imported_students = await gd_find(
+            session,
+            "students",
+            {"school_id": school_id},
+            limit=student_count + 5,
+        )
+        assert len(imported_students) == student_count
+        assert {student["class_id"] for student in imported_students} == {class_id}
+        assert await gd_count(
+            session, "parents", {"school_id": school_id}
+        ) == student_count
+        assert await gd_count(
+            session, "guardian_links", {"tenant_id": school_id}
+        ) == student_count
+
+        class_row = await gd_find_one(session, "classes", {"id": class_id})
+        school_row = await gd_find_one(session, "schools", {"id": school_id})
+        assert class_row["current_students"] == student_count
+        assert school_row["current_students"] == student_count
+
+        before_retry = await _snapshot(session, school_id)
+        retry_errors: list[dict] = []
+        retry_result = await _import_students(
+            db,
+            rows,
+            school_id,
+            {"id": principal_id, "full_name": "Live Batch Principal"},
+            retry_errors,
+            [],
+            filename=f"live-principal-{student_count}-retry.xlsx",
+        )
+        await session.flush()
+        after_retry = await _snapshot(session, school_id)
+
+        assert retry_result["imported"] == student_count, retry_result
+        assert retry_result["updated"] == student_count, retry_result
+        assert retry_result["created"] == 0, retry_result
+        assert retry_result["failed"] == 0, retry_result
+        assert not retry_errors
+        for key in ("students", "parents", "classes", "links"):
+            assert after_retry[key] == before_retry[key]
+        assert after_retry["batches"] == before_retry["batches"] + 1
+    finally:
+        try:
+            await session.rollback()
+        finally:
+            if outer_transaction.is_active:
+                await outer_transaction.rollback()
+            await session.close()
+            await connection.close()
+            try:
+                await _assert_transaction_cleanup(engine, [school_id])
+            finally:
+                await engine.dispose()

@@ -40,6 +40,7 @@ import { maskInternalId } from '@/shared/models/utils/internalId';
 import { useTranslation } from '@/shared/contexts/ThemeContext';
 import { formatHijriDate, getHijriDate } from '@/shared/models/utils/hijriDate';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
 
 const DEFAULT_RANGE_DAYS = 30;
 
@@ -110,8 +111,10 @@ export default function TeacherAnalyticsPanel() {
 
   const loadStudents = useCallback(async () => {
     try {
-      const resp = await api.get('/classes/options/students');
-      const list = Array.isArray(resp?.data?.students) ? resp.data.students : [];
+      const resp = await fetchStudentRoster(api, '/classes/options/students');
+      const list = Array.isArray(resp?.data)
+        ? resp.data
+        : (Array.isArray(resp?.data?.students) ? resp.data.students : []);
       setStudents(list);
     } catch {
       setStudents([]);

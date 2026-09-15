@@ -61,7 +61,6 @@ export default function IndependentTeacherOnboardingWizard() {
   const [firstClassName, setFirstClassName] = useState('');
   const [firstClassGrade, setFirstClassGrade] = useState('');
   const [firstClassSubject, setFirstClassSubject] = useState('');
-  const [firstClassCapacity, setFirstClassCapacity] = useState(30);
 
   // Guardrail — wrong role / already materialised: bounce out.
   useEffect(() => {
@@ -105,10 +104,6 @@ export default function IndependentTeacherOnboardingWizard() {
     if (which === 3 && createFirstClass) {
       if (!firstClassName.trim()) {
         nassaqWarning('اسم الفصل مطلوب.');
-        return false;
-      }
-      if (firstClassCapacity < 1 || firstClassCapacity > 200) {
-        nassaqWarning('سعة الفصل يجب أن تكون بين ١ و٢٠٠.');
         return false;
       }
     }
@@ -173,7 +168,6 @@ export default function IndependentTeacherOnboardingWizard() {
               name: firstClassName.trim(),
               grade_level: firstClassGrade.trim() || null,
               subject: firstClassSubject.trim() || null,
-              capacity: Number(firstClassCapacity) || 30,
             }
           : null,
       };
@@ -458,17 +452,6 @@ export default function IndependentTeacherOnboardingWizard() {
                           placeholder="مثال: الرياضيات"
                         />
                       </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="cls-capacity">السعة</Label>
-                      <Input
-                        id="cls-capacity"
-                        type="number"
-                        min={1}
-                        max={200}
-                        value={firstClassCapacity}
-                        onChange={(e) => setFirstClassCapacity(Number(e.target.value || 0))}
-                      />
                     </div>
                   </div>
                 )}

@@ -640,7 +640,7 @@ def create_noor_import_routes(db, get_current_user):
             raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
 
         # Optional per-pair overrides — `{overrides: [{grade_code,
-        # section_code, capacity?, homeroom_teacher_id?, classroom_id?}]}`.
+        # section_code, homeroom_teacher_id?, classroom_id?}]}`.
         # The body is OPTIONAL (a bare POST keeps the old hardcoded-defaults
         # behaviour). Anything malformed is rejected with a safe
         # Arabic 400 — zero writes, zero draft mutation.
@@ -734,15 +734,10 @@ def create_noor_import_routes(db, get_current_user):
                         if len(sv) > 32:
                             raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
                         s_ov = sv or None
-                    cap_raw = item.get("capacity")
-                    cap_val: Optional[int] = None
-                    if cap_raw is not None and cap_raw != "":
-                        try:
-                            cap_val = int(cap_raw)
-                        except (TypeError, ValueError):
-                            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
-                        if cap_val < 1 or cap_val > 500:
-                            raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
+                    # Capacity is intentionally not an import concern. Keep
+                    # accepting the legacy key for older clients, but ignore
+                    # it completely (including malformed/out-of-range
+                    # values) rather than turning it into a class policy.
                     tid = item.get("homeroom_teacher_id")
                     tid_resolved: Optional[str] = None
                     tname_resolved: Optional[str] = None
@@ -765,7 +760,6 @@ def create_noor_import_routes(db, get_current_user):
                             raise HTTPException(status_code=400, detail=_SAFE_COMMIT_FAIL)
                         cid_resolved = cid_str
                     override_by_raw[f"{g}||{s}"] = {
-                        "capacity": cap_val,
                         "homeroom_teacher_id": tid_resolved,
                         "homeroom_teacher_name": tname_resolved,
                         "classroom_id": cid_resolved,
@@ -813,7 +807,6 @@ def create_noor_import_routes(db, get_current_user):
                 "section_norm": ns,
                 "grade_label": eff_grade or ng,
                 "section_label": eff_section or ns,
-                "capacity": ov.get("capacity"),
                 "homeroom_teacher_id": ov.get("homeroom_teacher_id"),
                 "homeroom_teacher_name": ov.get("homeroom_teacher_name"),
                 "classroom_id": ov.get("classroom_id"),
@@ -843,7 +836,6 @@ def create_noor_import_routes(db, get_current_user):
                 })
                 continue
             new_id = str(_uuid.uuid4())
-            cap_value = p.get("capacity") if p.get("capacity") is not None else 30
             hr_id = p.get("homeroom_teacher_id")
             hr_name = p.get("homeroom_teacher_name")
             cr_id = p.get("classroom_id")
@@ -860,7 +852,7 @@ def create_noor_import_routes(db, get_current_user):
                                  is_active, created_at, updated_at)
                             VALUES
                                 (:id, :name, :sid, :grade, :section,
-                                 :cap, 0,
+                                  NULL, 0,
                                  :hr_id, :hr_name,
                                  :cr_id,
                                  TRUE, :now, :now)
@@ -872,7 +864,6 @@ def create_noor_import_routes(db, get_current_user):
                             "sid": school_id,
                             "grade": p["grade_norm"],
                             "section": p["section_norm"],
-                            "cap": cap_value,
                             "hr_id": hr_id,
                             "hr_name": hr_name,
                             "cr_id": cr_id,
@@ -884,7 +875,7 @@ def create_noor_import_routes(db, get_current_user):
                     "class_id": new_id,
                     "grade_code": p["grade_label"],
                     "section_code": p["section_label"],
-                    "capacity": cap_value,
+                    "capacity": None,
                     "homeroom_teacher_id": hr_id,
                     "homeroom_teacher_name": hr_name,
                     "classroom_id": cr_id,
@@ -2085,27 +2076,6 @@ async def _commit_students(
     # mapping and commit falls back to deterministic resolution (and so the
     # row is counted unclassified) instead of writing a dangling class_id.
     valid_class_ids = {c.get("id") for c in classes if c.get("id")}
-    classes_by_id = {c.get("id"): c for c in classes if c.get("id")}
-
-    # Bulk capacity policy (leave-without-class): when a target class is full,
-    # the student is still imported/updated but left UNASSIGNED, so no student
-    # is dropped and no class is ever overfilled. Occupancy uses the canonical
-    # live ACTIVE-student count, which grows as this batch inserts, so back-to-
-    # back rows targeting the same class still respect the cap.
-    from engines.entity_counts import (
-        class_has_room,
-        CLASS_FULL_NO_ASSIGN_WARNING,
-        CLASS_FULL_KEPT_CURRENT_WARNING,
-    )
-
-    async def _has_room(_cid: Optional[str]) -> bool:
-        if not _cid:
-            return True
-        _cdoc = classes_by_id.get(_cid)
-        if not _cdoc:
-            return True
-        return await class_has_room(session, _cdoc, school_id)
-
     # Soft-match index from ACTIVE students only — soft-deleted rows are
     # revivable solely via their exact number (the RESTORE path), never via
     # fuzzy name matching (mirrors _annotate_student_rows).
@@ -2223,28 +2193,19 @@ async def _commit_students(
                     # restore ALWAYS writes (even if cached fields look
                     # unchanged) — reviving the row is the meaningful change.
                     if existing.get("is_active") is False:
-                        # Reactivation is a net +1 to the effective target (the
-                        # row's class, or the pre-deletion class). If that class
-                        # is full, revive the student WITHOUT a class so the
-                        # class is never overfilled.
-                        restore_target = class_id if class_id is not None else existing_class
-                        restore_full = bool(restore_target) and not await _has_room(restore_target)
-                        if restore_full:
-                            warnings.append({"row": row_idx, "message": CLASS_FULL_NO_ASSIGN_WARNING})
                         await update_student_mutable_fields(
                             session,
                             student_id=existing["id"],
                             school_id=school_id,
                             full_name=full_name or None,
                             grade_code=grade_code,
-                            class_id=None if restore_full else class_id,
+                            class_id=class_id,
                             mobile=mobile,
                             reactivate=True,
-                            clear_class=restore_full,
                         )
                         updated_ids.append(str(existing["id"]))
                         restored += 1
-                        effective_class = None if restore_full else (class_id if class_id is not None else existing_class)
+                        effective_class = class_id if class_id is not None else existing_class
                         if effective_class is None and (grade_code or section_code):
                             unclassified += 1
                         continue
@@ -2260,13 +2221,6 @@ async def _commit_students(
                     name_changed = bool(incoming_name) and incoming_name != existing_name
                     grade_changed = bool(incoming_grade) and incoming_grade != existing_grade
                     class_changed = class_id is not None and class_id != existing_class
-                    # Capacity policy: a move into a FULL class is suppressed so
-                    # the target is never overfilled — the student keeps their
-                    # current class and we emit a per-row warning.
-                    if class_changed and not await _has_room(class_id):
-                        warnings.append({"row": row_idx, "message": CLASS_FULL_KEPT_CURRENT_WARNING})
-                        class_id = None
-                        class_changed = False
                     mobile_changed = bool(mobile)
                     if not (name_changed or grade_changed or class_changed or mobile_changed):
                         # No effective change — count as updated for
@@ -2295,10 +2249,6 @@ async def _commit_students(
                         unclassified += 1
                     continue
 
-                if class_id and not await _has_room(class_id):
-                    # Target class full — import the student UNASSIGNED.
-                    warnings.append({"row": row_idx, "message": CLASS_FULL_NO_ASSIGN_WARNING})
-                    class_id = None
                 new_id = await insert_student_record_only(
                     session,
                     school_id=school_id,

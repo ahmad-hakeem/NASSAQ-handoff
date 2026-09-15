@@ -83,7 +83,6 @@ const CLASS_DATA = {
   school_id: 'tenant1',
   grade_id: '1',
   grade_name: 'الصف الأول',
-  capacity: 20,
   current_students: 1,
   is_active: true,
 };

@@ -254,10 +254,10 @@ export default function TeacherClassesPage() {
   const [showAddClassDialog, setShowAddClassDialog] = useState(false);
   const [addClassForm, setAddClassForm] = useState({ name: '', grade: '', section: '', weekly_count: 5 });
   // Workspace-mode (Independent-Teacher) form state. Mirrors spec
-  // §5.3: Arabic name + free-text grade label + subject (from
-  // workspace's existing subjects) + capacity (≤ 50, default 30).
+  // §5.3: Arabic name + canonical grade label + subject (from the
+  // workspace's existing subjects). Class rosters are unlimited.
   const [workspaceClassForm, setWorkspaceClassForm] = useState({
-    name_ar: '', grade_label: '', subject_id: '', capacity: 30,
+    name_ar: '', grade_label: '', subject_id: '',
   });
   const [addingClass, setAddingClass] = useState(false);
   const [gradeOptions, setGradeOptions] = useState([]);
@@ -282,7 +282,7 @@ export default function TeacherClassesPage() {
 
   const { t } = useTranslation();
   const { nassaqError, nassaqWarning, nassaqConfirm, nassaqInfo } = useNassaqAlert();
-  const [editClassDialog, setEditClassDialog] = useState(null); // { id, name, capacity }
+  const [editClassDialog, setEditClassDialog] = useState(null); // { id, name, grade_label }
   const [editClassSaving, setEditClassSaving] = useState(false);
   // Verified against _resolve_teacher_record (role_dashboards_mod.py):
   // the backend accepts (1) teachers.id via user.teacher_id — populated at
@@ -658,7 +658,7 @@ export default function TeacherClassesPage() {
     // non-IT teachers, classes are still provisioned by the school admin so
     // we keep the friendly toast explanation.
     if (isIndependentTeacher) {
-      setWorkspaceClassForm({ name_ar: '', grade_label: '', subject_id: '', capacity: 30 });
+      setWorkspaceClassForm({ name_ar: '', grade_label: '', subject_id: '' });
       fetchWorkspaceSubjects();
       fetchGradeOptions();
       setShowAddClassDialog(true);
@@ -672,11 +672,6 @@ export default function TeacherClassesPage() {
     if (isIndependentTeacher) {
       const f = workspaceClassForm;
       if (!f.name_ar?.trim() || !f.grade_label?.trim() || !f.subject_id) {
-        nassaqError(t('pleaseFillAllFields'));
-        return;
-      }
-      const cap = parseInt(f.capacity, 10);
-      if (!Number.isFinite(cap) || cap < 1 || cap > 50) {
         nassaqError(t('pleaseFillAllFields'));
         return;
       }
@@ -696,11 +691,10 @@ export default function TeacherClassesPage() {
           name_ar: f.name_ar.trim(),
           grade_id: gradeId,
           subject_id: f.subject_id,
-          capacity: cap,
         });
         toast.success(t('classAddedSuccessfully'));
         setShowAddClassDialog(false);
-        setWorkspaceClassForm({ name_ar: '', grade_label: '', subject_id: '', capacity: 30 });
+        setWorkspaceClassForm({ name_ar: '', grade_label: '', subject_id: '' });
         // Fetch workspace classes directly — more reliable than the
         // assignment-scoped /teacher/classes endpoint which may lag behind
         // newly created workspace classes (IT §5.3 stale-list fix).
@@ -752,7 +746,6 @@ export default function TeacherClassesPage() {
         name_ar: addClassForm.name,
         grade_id: addClassForm.grade,
         section: addClassForm.section,
-        capacity: 30,
       });
       toast.success(t('classAddedSuccessfully'));
       setShowAddClassDialog(false);
@@ -907,7 +900,6 @@ export default function TeacherClassesPage() {
     setEditClassDialog({
       id: cls.id,
       name: cls.name || '',
-      capacity: cls.capacity || 30,
       grade_label: currentGradeLabel,
     });
   };
@@ -942,7 +934,6 @@ export default function TeacherClassesPage() {
     try {
       const payload = {
         name,
-        capacity: Number(editClassDialog.capacity) || 30,
       };
       // Stage edit uses the same controlled canonical dropdown as create.
       // Resolve the selected label to a normalized grade-row id and send
@@ -1345,8 +1336,8 @@ export default function TeacherClassesPage() {
         </DialogHeader>
         {isIndependentTeacher ? (
           // Workspace-mode dialog body (spec §5.3): minimal fields only —
-          // Arabic name, free-text grade label, subject from workspace,
-          // capacity. NO section / weekly_count — those are not part of
+          // Arabic name, canonical grade label, subject from workspace.
+          // NO section / weekly_count / roster limit — those are not part of
           // the IT v1 contract.
           <div className="space-y-4">
             <div className="space-y-2">
@@ -1432,16 +1423,6 @@ export default function TeacherClassesPage() {
                   )}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="font-cairo text-sm">{t('capacity') || 'السعة'}</Label>
-              <Input
-                type="number"
-                min={1}
-                max={50}
-                value={workspaceClassForm.capacity}
-                onChange={(e) => setWorkspaceClassForm(p => ({ ...p, capacity: parseInt(e.target.value) || 30 }))}
-              />
             </div>
           </div>
         ) : (
@@ -2074,16 +2055,6 @@ export default function TeacherClassesPage() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="font-cairo text-sm">{isRTL ? 'السعة' : 'Capacity'}</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={200}
-                  value={editClassDialog.capacity}
-                  onChange={(e) => setEditClassDialog((p) => ({ ...p, capacity: e.target.value }))}
-                />
               </div>
             </div>
           )}

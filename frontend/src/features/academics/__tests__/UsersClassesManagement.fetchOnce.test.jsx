@@ -118,9 +118,6 @@ jest.mock('@/shared/components/ui/badge', () => ({
 jest.mock('@/shared/components/ui/label', () => ({
   Label: ({ children, ...rest }) => <label {...rest}>{children}</label>,
 }));
-jest.mock('@/shared/components/ui/progress', () => ({
-  Progress: () => <div />,
-}));
 jest.mock('@/shared/components/ui/switch', () => ({
   Switch: ({ checked, onCheckedChange, ...rest }) => (
     <input
@@ -187,7 +184,9 @@ describe('UsersClassesManagement — single fetch per endpoint on mount', () => 
     for (const url of DIRECTORY_URLS) {
       expect(countsByUrl[url] || 0).toBe(1);
     }
-    // No other unexpected GET storms from this page's mount.
-    expect(mockApiGet.mock.calls.length).toBe(DIRECTORY_URLS.length);
+    // The latest import-batch status is a legitimate secondary read made
+    // after the directory settles; it must also remain a single request.
+    expect(countsByUrl['/bulk/batches/latest'] || 0).toBe(1);
+    expect(mockApiGet.mock.calls.length).toBe(DIRECTORY_URLS.length + 1);
   });
 });

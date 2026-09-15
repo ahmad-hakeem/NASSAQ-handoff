@@ -8,7 +8,11 @@ from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import uuid
 from pydantic import BaseModel, Field, ConfigDict
-from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
+from engines.sql_utils import (
+    gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one,
+    gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct,
+    gd_iter_rows,
+)
 # FIX (D8): Use the canonical UserRole enum for the seed-account role string
 # instead of a hardcoded "student" literal.
 from dependencies import UserRole
@@ -29,6 +33,26 @@ class StudentMessageRequest(BaseModel):
 # schools using other lifecycle states ("active", "current") to see an empty
 # schedule. Centralize the accepted "live" states so all schedule lookups agree.
 LIVE_TIMETABLE_STATUSES = ["published", "active", "current"]
+
+# Keep aggregate IN clauses bounded without limiting the class itself.  The
+# profile endpoint uses COUNT, while the points endpoint only materialises
+# these IDs to calculate a rank.
+CLASSMATE_ID_BATCH_SIZE = 500
+
+
+def _class_student_filter(class_id, school_id):
+    """Return the tenant- and active-scoped student filter for one class."""
+    return {
+        "class_id": class_id,
+        "school_id": school_id,
+        "is_active": {"$ne": False},
+    }
+
+
+def _batched_ids(ids, size=CLASSMATE_ID_BATCH_SIZE):
+    """Yield bounded ID batches; this is not a limit on the class size."""
+    for start in range(0, len(ids), size):
+        yield ids[start:start + size]
 
 import logging
 
@@ -553,9 +577,13 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         points_from_behaviour = behaviour_pos * 10
         total_score = total_points + points_from_grades + points_from_attendance + points_from_behaviour
         
-        class_students = []
+        class_size = 0
         if student and student.get("class_id"):
-            class_students = await gd_find(db.session, "students", {"class_id": student.get("class_id"), "school_id": school_id}, limit=100)
+            class_size = await gd_count(
+                db.session,
+                "students",
+                _class_student_filter(student.get("class_id"), school_id),
+            )
         
         profile_school_name = current_user.get("school_name")
         if not profile_school_name and school_id:
@@ -584,7 +612,7 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
                 "attendance_rate": attendance_rate,
                 "average_score": avg_score,
                 "total_grades": len(all_grades),
-                "class_size": len(class_students)
+                "class_size": class_size
             }
         }
     
@@ -667,38 +695,64 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
         rank = 1
         class_size = 1
         if student and student.get("class_id"):
-            classmates = await gd_find(db.session, "students", {"class_id": student.get("class_id"), "school_id": school_id}, limit=100)
-            class_size = len(classmates)
-            cm_ids = [cm.get("id") for cm in classmates]
+            class_filter = _class_student_filter(student.get("class_id"), school_id)
+            class_size = await gd_count(db.session, "students", class_filter)
+            # Only IDs are needed for ranking.  DISTINCT avoids loading full
+            # student rows, and batching below keeps every aggregate query's
+            # IN list bounded without imposing a class-size ceiling.
+            cm_ids = [
+                cm_id for cm_id in await gd_distinct(
+                    db.session, "students", "id", class_filter
+                ) if cm_id
+            ]
 
             from collections import defaultdict
             part_map = defaultdict(int)
-            __doc_list = await _gd_aggregate(db.session, "participation_records", [                {"$match": {"student_id": {"$in": cm_ids}}},
-                {"$group": {"_id": "$student_id", "total": {"$sum": "$points"}}}
-            ])
-            for doc in __doc_list:
-                part_map[doc["_id"]] = doc["total"]
-
             grade_map = defaultdict(int)
-            __doc_list = await _gd_aggregate(db.session, "grades", [                {"$match": {"student_id": {"$in": cm_ids}, "percentage": {"$gte": 80}}},
-                {"$group": {"_id": "$student_id", "count": {"$sum": 1}}}
-            ])
-            for doc in __doc_list:
-                grade_map[doc["_id"]] = doc["count"] * 5
-
             attend_map = defaultdict(int)
-            __doc_list = await _gd_aggregate(db.session, "attendance", [                {"$match": {"student_id": {"$in": cm_ids}, "status": "present"}},
-                {"$group": {"_id": "$student_id", "count": {"$sum": 1}}}
-            ])
-            for doc in __doc_list:
-                attend_map[doc["_id"]] = doc["count"]
-
             beh_map = defaultdict(int)
-            __doc_list = await _gd_aggregate(db.session, "behaviour_records", [                {"$match": {"student_id": {"$in": cm_ids}, "type": "positive"}},
-                {"$group": {"_id": "$student_id", "count": {"$sum": 1}}}
-            ])
-            for doc in __doc_list:
-                beh_map[doc["_id"]] = doc["count"]
+            for id_batch in _batched_ids(cm_ids):
+                # _gd_aggregate materialises at most 50,000 matching rows
+                # before grouping.  A high-activity class can exceed that
+                # cap within one ID batch, so stream each collection through
+                # keyset-paged reads and accumulate by student instead.
+                async for record in gd_iter_rows(
+                    db.session,
+                    "participation_records",
+                    {"student_id": {"$in": id_batch}},
+                ):
+                    sid = record.get("student_id")
+                    part_map[sid] += record.get("points") or 0
+
+                async for record in gd_iter_rows(
+                    db.session,
+                    "grades",
+                    {
+                        "student_id": {"$in": id_batch},
+                        "percentage": {"$gte": 80},
+                    },
+                ):
+                    grade_map[record.get("student_id")] += 5
+
+                async for record in gd_iter_rows(
+                    db.session,
+                    "attendance",
+                    {
+                        "student_id": {"$in": id_batch},
+                        "status": "present",
+                    },
+                ):
+                    attend_map[record.get("student_id")] += 1
+
+                async for record in gd_iter_rows(
+                    db.session,
+                    "behaviour_records",
+                    {
+                        "student_id": {"$in": id_batch},
+                        "type": "positive",
+                    },
+                ):
+                    beh_map[record.get("student_id")] += 1
 
             classmate_scores = []
             for cm_id in cm_ids:

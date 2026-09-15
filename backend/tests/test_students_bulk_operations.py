@@ -200,10 +200,11 @@ async def test_auto_provision_classes_during_student_import(
 
 
 @pytest.mark.asyncio
-async def test_bulk_assign_rejects_when_class_full(
+async def test_bulk_assign_allows_students_beyond_legacy_capacity(
     client, school_principal_headers, tenant_a, _db_session
 ):
-    # Target class with capacity 2 and already 2 students
+    # Legacy capacity metadata is 2, but rosters are open-ended and already
+    # contain two students.
     target_class_id = str(uuid.uuid4())
     await gd_insert(_db_session, "classes", {
         "id": target_class_id,
@@ -253,22 +254,22 @@ async def test_bulk_assign_rejects_when_class_full(
         headers=school_principal_headers,
     )
 
-    assert res.status_code == 409
-    body = res.json()
-    err = body.get("error") or {}
-    assert err.get("code") == "CLASS_CAPACITY_REACHED"
-    assert "ممتلئ" in err.get("message", "")
+    assert res.status_code == 200, res.text
+    assert res.json()["assigned_count"] == 1
 
-    # Verify student was not assigned
+    # Verify the student was assigned beyond the legacy value.
     st = await gd_find_one(_db_session, "students", {"id": new_sid})
-    assert st["class_id"] is None
+    assert st["class_id"] == target_class_id
+    target = await gd_find_one(_db_session, "classes", {"id": target_class_id})
+    assert target["current_students"] == 3
 
 
 @pytest.mark.asyncio
-async def test_bulk_assign_rejects_when_exceeding_capacity(
+async def test_bulk_assign_allows_multiple_students_beyond_legacy_capacity(
     client, school_principal_headers, tenant_a, _db_session
 ):
-    # Target class with capacity 3 and 2 existing students (1 seat left)
+    # Target class with legacy capacity 3 and 2 existing students. Both new
+    # students must be accepted despite the old one-seat remainder.
     target_class_id = str(uuid.uuid4())
     await gd_insert(_db_session, "classes", {
         "id": target_class_id,
@@ -295,7 +296,7 @@ async def test_bulk_assign_rejects_when_exceeding_capacity(
             "updated_at": now,
         })
 
-    # 2 unassigned students trying to fit into 1 seat
+    # 2 unassigned students, both accepted into the open-ended roster.
     s1_id = str(uuid.uuid4())
     s2_id = str(uuid.uuid4())
     for sid, name in [(s1_id, "طالب أ"), (s2_id, "طالب ب")]:
@@ -320,24 +321,73 @@ async def test_bulk_assign_rejects_when_exceeding_capacity(
         headers=school_principal_headers,
     )
 
-    assert res.status_code == 409
-    body = res.json()
-    err = body.get("error") or {}
-    assert err.get("code") == "CLASS_CAPACITY_REACHED"
-    assert "لا يتسع" in err.get("message", "")
+    assert res.status_code == 200, res.text
+    assert res.json()["assigned_count"] == 2
 
-    # Verify students were not assigned
+    # Verify both students were assigned.
     s1 = await gd_find_one(_db_session, "students", {"id": s1_id})
     s2 = await gd_find_one(_db_session, "students", {"id": s2_id})
-    assert s1["class_id"] is None
-    assert s2["class_id"] is None
+    assert s1["class_id"] == target_class_id
+    assert s2["class_id"] == target_class_id
+    target = await gd_find_one(_db_session, "classes", {"id": target_class_id})
+    assert target["current_students"] == 4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("student_count", [31, 32, 50])
+async def test_bulk_assign_accepts_large_roster_beyond_30(
+    student_count, client, school_principal_headers, tenant_a, _db_session
+):
+    """The 31st, 32nd, and 50th student are valid roster assignments."""
+    target_class_id = str(uuid.uuid4())
+    await gd_insert(_db_session, "classes", {
+        "id": target_class_id,
+        "school_id": tenant_a,
+        "name": f"فصل مفتوح {student_count}",
+        "capacity": 30,
+        "current_students": 0,
+        "is_active": True,
+    })
+
+    now = datetime.now(timezone.utc).isoformat()
+    student_ids = []
+    for index in range(student_count):
+        sid = str(uuid.uuid4())
+        student_ids.append(sid)
+        await gd_insert(_db_session, "students", {
+            "id": sid,
+            "school_id": tenant_a,
+            "class_id": None,
+            "full_name": f"طالب {index}",
+            "national_id": f"9{sid.replace('-', '')[:9]}",
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        })
+    await _db_session.flush()
+
+    res = await client.post(
+        "/students/bulk-assign",
+        json={"student_ids": student_ids, "target_class_id": target_class_id},
+        headers=school_principal_headers,
+    )
+
+    assert res.status_code == 200, res.text
+    assert res.json()["assigned_count"] == student_count
+    assigned = await gd_find(
+        _db_session, "students", {"school_id": tenant_a, "class_id": target_class_id}
+    )
+    assert len(assigned) == student_count
+    target = await gd_find_one(_db_session, "classes", {"id": target_class_id})
+    assert target["current_students"] == student_count
 
 
 @pytest.mark.asyncio
 async def test_auto_distribute_students_flow(
     client, school_principal_headers, tenant_a, _db_session
 ):
-    # Existing class in Grade 1 with capacity 2 and 1 existing student (1 seat open)
+    # Existing class in Grade 1 with legacy capacity metadata and one existing
+    # student. Auto-distribution must not create a second class for that value.
     c1_id = str(uuid.uuid4())
     await gd_insert(_db_session, "classes", {
         "id": c1_id,
@@ -395,12 +445,12 @@ async def test_auto_distribute_students_flow(
     data = res.json()
     assert data["success"] is True
     assert data["total_assigned"] == 3
-    assert data["classes_created_count"] == 1
+    assert data["classes_created_count"] == 0
 
     # Verify database: all 3 students are now assigned
     for sid in unassigned_ids:
         st = await gd_find_one(_db_session, "students", {"id": sid})
-        assert st["class_id"] is not None
+        assert st["class_id"] == c1_id
 
 
 @pytest.mark.asyncio

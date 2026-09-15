@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/sha
 import { Input } from '@/shared/components/ui/input';
 import { Badge } from '@/shared/components/ui/badge';
 import { Label } from '@/shared/components/ui/label';
-import { Progress } from '@/shared/components/ui/progress';
 import { toast } from 'sonner';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import {
@@ -37,6 +36,7 @@ import StudentClassGrid from '@/features/platform/components/management/StudentC
 import { getApiErrorMessage, getLocalizedApiError } from '@/shared/models/utils/apiError';
 import { executeStudentTransfer } from '@/shared/models/utils/studentTransfer';
 import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
+import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
 
 const AddStudentWizard = lazy(() => import('@/features/teachers/components/wizards/AddStudentWizard'));
 const AddTeacherWizard = lazy(() => import('@/features/teachers/components/wizards/AddTeacherWizard').then(m => ({ default: m.AddTeacherWizard })));
@@ -190,28 +190,21 @@ const THEME_COLORS = {
 // Optional destination picker shown inside the class-delete confirmation when
 // the class still has students. Defaults to "remove from class" (unassign);
 // choosing a destination moves every student there instead. Self-contained:
-// holds its own selection and reports it up via onChange so the confirm
-// callback can read the latest value. Classes already at/over capacity for the
-// incoming students are disabled so an impossible move can't be requested.
-const ClassMovePicker = ({ classes = [], excludeId, studentCount = 0, onChange }) => {
+// holds its own selection and reports it up via onChange. Assignment validity
+// is authoritative on the backend, so this picker must not apply a stale
+// client-side roster limit.
+const ClassMovePicker = ({ classes = [], excludeId, onChange }) => {
   const { t } = useTranslation();
   const [value, setValue] = useState('__unassign__');
   const options = useMemo(() => (
     (classes || [])
       .filter(c => c && c.is_active !== false && c.id !== excludeId)
-      .map(c => {
-        const capacity = c.capacity || 30;
-        const current = c.student_count || 0;
-        const room = capacity - current;
-        return {
-          id: c.id,
-          name: c.name_ar || c.name || c.id,
-          current,
-          capacity,
-          full: studentCount > 0 && room < studentCount,
-        };
-      })
-  ), [classes, excludeId, studentCount]);
+      .map(c => ({
+        id: c.id,
+        name: c.name_ar || c.name || c.id,
+        current: c.student_count || 0,
+      }))
+  ), [classes, excludeId]);
 
   const handleChange = (v) => {
     setValue(v);
@@ -230,8 +223,8 @@ const ClassMovePicker = ({ classes = [], excludeId, studentCount = 0, onChange }
         <SelectContent dir="rtl">
           <SelectItem value="__unassign__">{t('classDeleteMoveOptionUnassign')}</SelectItem>
           {options.map(o => (
-            <SelectItem key={o.id} value={o.id} disabled={o.full}>
-              {o.name} ({o.current}/{o.capacity}){o.full ? ` — ${t('classDeleteMoveOptionFull')}` : ''}
+            <SelectItem key={o.id} value={o.id}>
+              {o.name} ({o.current} {t('studentsLower')})
             </SelectItem>
           ))}
         </SelectContent>
@@ -658,9 +651,8 @@ const ParentCard = ({ parent, isRTL, onView, onAction, onDelete, viewMode = 'gri
   );
 };
 
-const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, onReactivate, viewMode = 'grid' }) => {
+const ClassCard = ({ classItem, isRTL, actualStudentCount = 0, onEdit, onDelete, onView, onReactivate, viewMode = 'grid' }) => {
   const { t } = useTranslation();
-  const pct = Math.min(100, ((classItem.student_count || 0) / (classItem.capacity || 30)) * 100);
   const tc = THEME_COLORS.class;
 
   const isInactive = classItem.is_active === false;
@@ -676,17 +668,14 @@ const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, onReactivate, v
           <div className="flex-1 min-w-0 flex items-center gap-4">
             <h3 className="font-semibold text-sm truncate w-[140px]">{classItem.name}</h3>
             <span className="text-xs text-muted-foreground truncate hidden sm:inline">{classItem.grade} - {classItem.section}</span>
-            <span className="text-xs text-muted-foreground hidden md:inline">{classItem.student_count || 0}/{classItem.capacity || 30}</span>
+            <span className="text-xs text-muted-foreground hidden md:inline">
+              {actualStudentCount} {isRTL ? 'طالب' : t('studentsLower')}
+            </span>
             {isInactive && (
               <Badge variant="outline" className="text-[10px] h-5 rounded-full border-red-300 text-red-700 bg-red-50">
                 {t('inactive')}
               </Badge>
             )}
-          </div>
-          <div className="w-20 hidden sm:block">
-            <div className="w-full bg-muted rounded-full h-1.5">
-              <div className={`h-1.5 rounded-full ${pct > 90 ? 'bg-red-500' : pct > 70 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
-            </div>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -748,22 +737,11 @@ const ClassCard = ({ classItem, isRTL, onEdit, onDelete, onView, onReactivate, v
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
           <Users className="h-3 w-3 shrink-0" />
-          <span>{classItem.student_count || 0} / {classItem.capacity || 30} {t('studentsLower')}</span>
+          <span>{actualStudentCount} {isRTL ? 'طالب' : t('studentsLower')}</span>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
           <UserCheck className="h-3 w-3 shrink-0" />
           <span className="truncate">{classItem.homeroom_teacher_name || (t('notAssigned'))}</span>
-        </div>
-        <div className="mb-2">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-medium text-muted-foreground">{Math.round(pct)}% {t('full')}</span>
-            <span className={`text-[10px] font-bold ${pct > 90 ? 'text-red-500' : pct > 70 ? 'text-amber-500' : 'text-emerald-500'}`}>
-              {classItem.student_count || 0}/{classItem.capacity || 30}
-            </span>
-          </div>
-          <div className="w-full bg-muted rounded-full h-2">
-            <div className={`h-2 rounded-full transition-all duration-500 ${pct > 90 ? 'bg-gradient-to-r from-red-400 to-red-500' : pct > 70 ? 'bg-gradient-to-r from-amber-400 to-orange-500' : 'bg-gradient-to-r from-emerald-400 to-green-500'}`} style={{ width: `${pct}%` }} />
-          </div>
         </div>
         <div className="flex items-center justify-end pt-1">
           <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-purple-500 group-hover:translate-x-0.5 transition-all" />
@@ -970,7 +948,23 @@ export default function UsersClassesManagement() {
     return students.filter(s => !s.parent_id && !parentStudentIds.has(s.id));
   }, [students, parents]);
   const suspendedStudents = useMemo(() => students.filter(s => s.is_active === false), [students]);
-  const overCapClasses = useMemo(() => classes.filter(c => (c.student_count || 0) > (c.capacity || 30)), [classes]);
+  // Build roster counts once from the already-loaded student directory. Class
+  // metadata can contain stale counters, so cards use this map as their sole
+  // source of truth instead of scanning the full student list per card.
+  const studentCountsByClass = useMemo(() => {
+    const counts = new Map();
+    students.forEach((student) => {
+      if (!student.class_id) return;
+      counts.set(student.class_id, (counts.get(student.class_id) || 0) + 1);
+    });
+    return counts;
+  }, [students]);
+  const classesWithActualCounts = useMemo(() => (
+    classes.map((classItem) => ({
+      ...classItem,
+      student_count: studentCountsByClass.get(classItem.id) || 0,
+    }))
+  ), [classes, studentCountsByClass]);
 
   const stats = useMemo(() => ({
     totalStudents: students.length,
@@ -1023,13 +1017,6 @@ export default function UsersClassesManagement() {
         severity: 'medium', action: 'show_suspended', data: suspendedStudents
       });
     }
-    if (overCapClasses.length > 0) {
-      ins.push({
-        message: t('overCapClassesMsg', { count: overCapClasses.length }),
-        suggestion: t('redistributeStudentsOrIncreaseClassCapacity'),
-        severity: 'high', action: 'show_over_capacity', data: overCapClasses
-      });
-    }
     if (ins.length === 0) {
       ins.push({
         message: t('allDataIsCompleteAndOrganizedGreatJob'),
@@ -1037,7 +1024,7 @@ export default function UsersClassesManagement() {
       });
     }
     return ins;
-  }, [studentsNoParent, studentsNoClass, teachersNoSubject, accountsNoEmail, suspendedStudents, overCapClasses, isRTL]);
+  }, [studentsNoParent, studentsNoClass, teachersNoSubject, accountsNoEmail, suspendedStudents, isRTL]);
 
   // Single load effect: two separate effects here (one for [user, schoolContext],
   // one for [showInactiveClasses]) both fired on the initial mount, so every
@@ -1081,7 +1068,12 @@ export default function UsersClassesManagement() {
         { key: 'parents', url: '/parents' },
       ];
       const results = await Promise.allSettled(
-        endpoints.map(e => api.get(e.url, { headers, ...(e.params ? { params: e.params } : {}) }))
+        endpoints.map(e => {
+          const requestConfig = { headers, ...(e.params ? { params: e.params } : {}) };
+          return e.key === 'students'
+            ? fetchStudentRoster(api, e.url, requestConfig)
+            : api.get(e.url, requestConfig);
+        })
       );
       const failed = [];
       const dataByKey = {};
@@ -1151,7 +1143,7 @@ export default function UsersClassesManagement() {
         valB = b.grade_level || '';
         return asc ? valA.localeCompare(valB, 'ar') : valB.localeCompare(valA, 'ar');
       }
-      if (field === 'capacity') {
+       if (field === 'students') {
         valA = a.student_count || 0;
         valB = b.student_count || 0;
         return asc ? valA - valB : valB - valA;
@@ -1197,14 +1189,13 @@ export default function UsersClassesManagement() {
   }, [parents, searchQuery, applySorting]);
 
   const filteredClasses = useMemo(() => {
-    let list = showInactiveClasses ? classes : classes.filter(c => c.is_active !== false);
-    if (activeFilter === 'overCapacity') list = list.filter(c => (c.student_count || 0) > (c.capacity || 30));
+    let list = showInactiveClasses ? classesWithActualCounts : classesWithActualCounts.filter(c => c.is_active !== false);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       list = list.filter(c => c.name?.toLowerCase().includes(q));
     }
     return applySorting(list, 'class');
-  }, [classes, searchQuery, activeFilter, applySorting, showInactiveClasses]);
+  }, [classesWithActualCounts, searchQuery, applySorting, showInactiveClasses]);
 
   const handleReactivateClass = async (classItem) => {
     try {
@@ -1300,9 +1291,8 @@ export default function UsersClassesManagement() {
             cancelText: t('cancel'),
             extraContent: studentCount > 0 ? (
               <ClassMovePicker
-                classes={classes}
+                classes={classesWithActualCounts}
                 excludeId={classId}
-                studentCount={studentCount}
                 onChange={(v) => { moveTargetRef.current = v; }}
               />
             ) : null,
@@ -1452,9 +1442,8 @@ export default function UsersClassesManagement() {
       onToast: (msg) => toast.success(msg),
       onSuccess: (outcome) => applyTransferSuccess(studentId, targetClassId, studentName, className, outcome),
       onError: (msg) => nassaqError(msg),
-      // Localize coded backend rejections (e.g. CLASS_CAPACITY_REACHED) off the
-      // error code so the popup shows one clean Arabic message — never the raw
-      // mixed-language backend string.
+       // Localize coded backend rejections off the error code so the popup
+       // shows one clean Arabic message — never the raw mixed-language string.
       t,
     });
   };
@@ -1610,10 +1599,6 @@ export default function UsersClassesManagement() {
         setActiveTab('students'); setSearchQuery(''); setActiveFilter('suspended');
         toast.info(t('showingSuspended', { count: data.length }));
         break;
-      case 'show_over_capacity':
-        setActiveTab('classes'); setSearchQuery(''); setActiveFilter('overCapacity');
-        toast.info(t('showingOverCap', { count: data.length }));
-        break;
       default: break;
     }
   };
@@ -1646,7 +1631,6 @@ export default function UsersClassesManagement() {
         const grade = editFormData.grade_level || editFormData.grade;
         if (grade) updateData.grade_level = grade;
         if (editFormData.section) updateData.section = editFormData.section;
-        if (editFormData.capacity) updateData.capacity = editFormData.capacity;
         if (typeof editFormData.is_active === 'boolean') updateData.is_active = editFormData.is_active;
       }
       if (Object.keys(updateData).length === 0) {
@@ -1902,6 +1886,7 @@ export default function UsersClassesManagement() {
         <StudentClassGrid
           students={displayedStudents}
           classes={classes}
+           studentCounts={studentCountsByClass}
           isRTL={isRTL}
           searchQuery={searchQuery}
           onView={(s) => handleView(s, 'student')}
@@ -1955,6 +1940,7 @@ export default function UsersClassesManagement() {
                 onView={(p) => handleView(p, 'parent')} onAction={(p, a) => handleAccountAction(p, a, 'parent')} onDelete={(p) => handleDelete(p, 'parent')} />
             ) : (
               <ClassCard key={item.id} classItem={item} isRTL={isRTL} viewMode="list"
+                actualStudentCount={studentCountsByClass.get(item.id) || 0}
                 onEdit={(c) => handleEdit(c, 'class')} onDelete={(c) => handleDelete(c, 'class')}
                 onView={(c) => handleView(c, 'class')} onReactivate={handleReactivateClass} />
             )
@@ -1975,6 +1961,7 @@ export default function UsersClassesManagement() {
               onView={(p) => handleView(p, 'parent')} onAction={(p, a) => handleAccountAction(p, a, 'parent')} onDelete={(p) => handleDelete(p, 'parent')} />
           ) : (
             <ClassCard key={item.id} classItem={item} isRTL={isRTL}
+              actualStudentCount={studentCountsByClass.get(item.id) || 0}
               onEdit={(c) => handleEdit(c, 'class')} onDelete={(c) => handleDelete(c, 'class')}
               onView={(c) => handleView(c, 'class')} onReactivate={handleReactivateClass} />
           )
@@ -2129,7 +2116,7 @@ export default function UsersClassesManagement() {
                        sortBy === 'date_asc' ? (t('oldest')) :
                        sortBy === 'number_asc' ? (t('number2')) :
                        sortBy === 'grade_asc' ? (t('grade5')) :
-                       sortBy === 'capacity_desc' ? (t('mostStudents')) :
+                        sortBy === 'students_desc' ? (t('mostStudents')) :
                        (t('sort'))}
                     </span>
                   </Button>
@@ -2162,7 +2149,7 @@ export default function UsersClassesManagement() {
                       <DropdownMenuItem onClick={() => setSortBy('grade_asc')} className={sortBy === 'grade_asc' ? 'bg-accent' : ''}>
                         <GraduationCap className="h-3.5 w-3.5 me-2" />{t('byGradeLevel')}
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setSortBy('capacity_desc')} className={sortBy === 'capacity_desc' ? 'bg-accent' : ''}>
+                       <DropdownMenuItem onClick={() => setSortBy('students_desc')} className={sortBy === 'students_desc' ? 'bg-accent' : ''}>
                         <Users className="h-3.5 w-3.5 me-2" />{t('mostStudents')}
                       </DropdownMenuItem>
                     </>
@@ -2245,8 +2232,7 @@ export default function UsersClassesManagement() {
                  activeFilter === 'noClass' ? (t('showingStudentsWithoutAClass')) :
                  activeFilter === 'noSubject' ? (t('showingTeachersWithoutASubject')) :
                  activeFilter === 'noEmail' ? (t('showingAccountsWithoutEmail')) :
-                 activeFilter === 'suspended' ? (t('showingSuspendedAccounts')) :
-                 activeFilter === 'overCapacity' ? (t('showingOvercapacityClasses')) : ''}
+                  activeFilter === 'suspended' ? (t('showingSuspendedAccounts')) : ''}
               </span>
               <Button variant="ghost" size="sm" onClick={clearFilter} className="h-7 text-xs text-amber-700 hover:text-amber-900">
                 <X className="h-3.5 w-3.5 me-1" />{t('clearFilter')}
@@ -2726,7 +2712,7 @@ export default function UsersClassesManagement() {
                     </div>
                   </div>
                   {!viewClassEditing && (
-                    <Button size="sm" variant="outline" onClick={() => { setViewClassEditing(true); setViewClassForm({ name: selectedItem.name || '', grade_level: selectedItem.grade_level || selectedItem.grade || '', section: selectedItem.section || '', capacity: selectedItem.capacity || 30 }); }}>
+                    <Button size="sm" variant="outline" onClick={() => { setViewClassEditing(true); setViewClassForm({ name: selectedItem.name || '', grade_level: selectedItem.grade_level || selectedItem.grade || '', section: selectedItem.section || '' }); }}>
                       <Edit className="h-3.5 w-3.5 me-1" />{t('edit')}
                     </Button>
                   )}
@@ -2753,10 +2739,6 @@ export default function UsersClassesManagement() {
                         <Input value={viewClassForm.section} onChange={(e) => setViewClassForm({ ...viewClassForm, section: e.target.value })} />
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>{t('capacity2')}</Label>
-                      <Input type="number" value={viewClassForm.capacity} onChange={(e) => setViewClassForm({ ...viewClassForm, capacity: parseInt(e.target.value) || 30 })} />
-                    </div>
                     <div className="flex gap-2 justify-end">
                       <Button size="sm" variant="outline" onClick={() => setViewClassEditing(false)}><X className="h-3.5 w-3.5 me-1" />{t('cancel')}</Button>
                       <Button size="sm" disabled={viewClassSaving} onClick={async () => {
@@ -2766,7 +2748,6 @@ export default function UsersClassesManagement() {
                           if (viewClassForm.name) updateData.name = viewClassForm.name;
                           if (viewClassForm.grade_level) updateData.grade_level = viewClassForm.grade_level;
                           if (viewClassForm.section) updateData.section = viewClassForm.section;
-                          if (viewClassForm.capacity) updateData.capacity = viewClassForm.capacity;
                           await api.put(`/classes/${selectedItem.id}`, updateData);
                           toast.success(t('changesSaved2'));
                           setViewClassEditing(false);
@@ -2784,10 +2765,12 @@ export default function UsersClassesManagement() {
                 ) : (
                   <>
                     <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div><span className="text-muted-foreground">{t('capacity2')}:</span> <span className="font-medium">{selectedItem.student_count || 0} / {selectedItem.capacity || 30}</span></div>
+                      <div>
+                        <span className="text-muted-foreground">{isRTL ? 'عدد الطلاب' : t('students')}:</span>
+                        <span className="font-medium ms-1">{studentCountsByClass.get(selectedItem.id) || 0}</span>
+                      </div>
                       <div><span className="text-muted-foreground">{t('homeroomLabel')}:</span> <span className="font-medium">{selectedItem.homeroom_teacher_name || '-'}</span></div>
                     </div>
-                    <Progress value={((selectedItem.student_count || 0) / (selectedItem.capacity || 30)) * 100} className="h-2" />
                   </>
                 )}
 
@@ -2883,7 +2866,6 @@ export default function UsersClassesManagement() {
                       </div>
                       <div className="space-y-2"><Label>{t('section')}</Label><Input value={editFormData.section || ''} onChange={(e) => setEditFormData({ ...editFormData, section: e.target.value })} /></div>
                     </div>
-                    <div className="space-y-2"><Label>{t('capacity2')}</Label><Input type="number" value={editFormData.capacity || ''} onChange={(e) => setEditFormData({ ...editFormData, capacity: parseInt(e.target.value) || 30 })} /></div>
                   </>
                 )}
               </div>

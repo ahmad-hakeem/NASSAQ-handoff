@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تقرير إزالة الحد الأقصى لطلاب الفصل</title>
+<style>
+body{font:16px/1.8 system-ui,sans-serif;max-width:1000px;margin:32px auto;padding:0 24px;color:#17243b;background:#fff}h1,h2{line-height:1.4}h2{margin-top:32px}table{border-collapse:collapse;width:100%;margin:18px 0}th,td{border:1px solid #dce3eb;padding:10px;text-align:right}th{background:#f2f5f8}pre{direction:ltr;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7fa;padding:16px;font-size:13px;line-height:1.7}.note{border-right:4px solid #168779;padding:12px 18px;background:#eff9f7}
+</style>
+<h1>إزالة الحد الأقصى لطلاب الفصل</h1>
+<p>تقرير التغييرات والتحقق — 15 سبتمبر 2026.</p>
+<p class="note">التغييرات في بيئة التطوير. لم يُنشر تحديث التطبيق ولم تُعدّل بيانات المدارس في الإنتاج. بيانات الاختبارات اصطناعية، مع التراجع عن معاملات الاختبار وتنظيف بيانات اختبار المتصفح.</p>
+<h2>السبب والسياسة الجديدة</h2>
+<p>كان التطبيق يستخدم سعة الفصل المخزنة، أو القيمة الافتراضية 30، لمنع بعض عمليات الإضافة والنقل. وكانت مسارات الاستيراد إما ترفض الصف أو تترك الطالب دون فصل أو تبقيه في فصله السابق. أصبحت عضوية الفصل مفتوحة العدد؛ بيانات السعة القديمة ليست قيداً على عضوية الطلاب.</p>
+<p>لم تُلغَ صلاحيات المدرسة، أو التحقق من الفصل والصف الدراسي، أو منع التكرار، أو روابط أولياء الأمور. سعة الغرف الفعلية، وحدود حساب المدرسة، وأحمال المعلمين مفاهيم مستقلة لم تُلغَ.</p>
+<h2>مواضع فحوص السعة ومسارات الكتابة</h2>
+<pre>backend/engines/entity_counts.py
+backend/src/modules/academics/controllers/academics_student_routes.py
+backend/src/modules/academics/controllers/academics_class_routes.py
+backend/src/modules/student_management/controllers/student_creation_routes.py
+backend/src/modules/teacher_management/controllers/principal_management_routes.py
+backend/src/modules/registration/controllers/registration_routes_mod.py
+backend/src/modules/bulk_import/services/student_import_service.py
+backend/src/modules/noor_import/controllers/noor_import_routes.py</pre>
+<p>أزيلت فحوص السعة واستعلامات العد الخاصة بالمنع. بقيت وظائف التوافق القديمة غير مانعة ودون استعلامات إضافية. في الاستيراد، لا يُلغى تعيين الفصل بسبب عدد طلابه.</p>
+<h2>إنشاء الفصول ونماذج بيانات السعة</h2>
+<pre>backend/engines/academic_engine.py
+backend/engines/class_management_engine.py
+backend/engines/student_management_engine.py
+backend/shared_models.py
+backend/src/common/dto/foundation.py
+backend/src/modules/academics/controllers/class_management_routes.py
+backend/src/modules/academics/controllers/academics_structure_engine_routes.py
+backend/src/modules/academics/dto/academic_dto.py
+backend/src/modules/academics/entities/academics_entity.py
+backend/src/modules/independent_teacher/controllers/independent_teacher_bootstrap_routes.py
+backend/src/modules/independent_teacher/controllers/independent_teacher_bulk_extensions_routes.py</pre>
+<p>أزيلت افتراضات السعة المحدودة وحدود إدخالها للفصول المنطقية. بقي عمود السعة القديم للتوافق. فحص قاعدة التطوير أثبت أن عمود classes.capacity يقبل NULL ولا يحمل قيمة افتراضية على مستوى قاعدة البيانات، ولا توجد قيود CHECK على عدد الطلاب. المشغّل الموجود للطلاب يختص بتنظيف بيانات ولي الأمر المؤقتة، وليس السعة. لم تُحتج ترحيلات أو إسقاط أعمدة أو قيود علاقات.</p>
+<h2>الواجهة: العدد الفعلي بدلاً من الامتلاء</h2>
+<pre>frontend/src/features/academics/pages/UsersClassesManagement.jsx
+frontend/src/features/academics/pages/ClassesPage.jsx
+frontend/src/features/academics/pages/ClassDetailPage.jsx
+frontend/src/features/platform/components/management/StudentClassGrid.jsx
+frontend/src/features/platform/components/management/NoorImportPanel.jsx
+frontend/src/features/settings/components/school-settings/DynamicSettingsContent.jsx
+frontend/src/features/teachers/components/wizards/CreateClassWizard.jsx
+frontend/src/features/teachers/pages/IndependentTeacherOnboardingWizard.jsx
+frontend/src/features/teachers/pages/TeacherModule/TeacherClassesPage.jsx</pre>
+<p>أزيلت مؤشرات 30/30، والامتلاء، ونسب استخدام السعة، وفلاتر تجاوز السعة ومدخلاتها للفصول. تعرض البطاقات العدد الفعلي، وتعرض القوائم المعنية أول 50 طالباً مع إمكانية إظهار دفعات إضافية، دون فقد الطلاب من البحث والاختيار.</p>
+<h2>قراءة القوائم والتقارير</h2>
+<p>أضيفت صفحات إلى /students و/classes/{id}/students و/classes/options/students مع الحفاظ على شكل الاستجابات السابق وإضافة إجمالي العدد ومؤشر الصفحة التالية. يقرأ المساعد المشترك الصفحات المتبقية، ويتوقف بخطأ واضح عند استجابة صفحات غير متسقة بدلاً من عرض قائمة ناقصة بصمت.</p>
+<pre>frontend/src/shared/utils/fetchStudentRoster.js
+frontend/src/features/students/pages/StudentsPage.jsx
+frontend/src/features/teachers/pages/TeacherModule/TeacherStudentsPage.jsx
+frontend/src/features/teachers/pages/TeacherModule/TeacherClassDetailPage.jsx
+frontend/src/features/teachers/pages/TeacherModule/TeacherAttendanceManagePage.jsx
+frontend/src/features/teachers/pages/TeacherModule/TeacherBehaviorPage.jsx
+frontend/src/features/teachers/pages/TeacherModule/TeacherAssessmentsPage.jsx
+frontend/src/features/teachers/pages/TeacherModule/TeacherCommunicationPage.jsx
+frontend/src/features/teachers/pages/TeacherModule/TeacherMainDashboard.jsx
+frontend/src/features/teachers/pages/TeacherModule/TeacherAnalyticsPanel.jsx
+backend/engines/export_engine.py
+backend/engines/reporting_engine.py
+backend/src/modules/bulk_import/controllers/bulk_import_export_routes.py
+backend/src/modules/portals/controllers/student_portal_routes.py</pre>
+<p>أزيل قطع الطلاب عند 30 في PDF، وعند 200 في مصدر تقرير الفصل، وعند 10,000 في تصدير الطلاب. أصبح عدد طلاب الفصل في بوابة الطالب يعتمد على العد الفعلي، وحساب ترتيب الزملاء يقرأ بيانات النشاط على دفعات دون حدّ التجميع القديم. لم يُفعّل تسجيل دخول الطلاب المعطّل.</p>
+<h2>نتائج الاختبارات</h2>
+<ul>
+<li>اختبار فعلي لعمليات الإضافة والنقل والتعيين الجماعي والاستيراد وإعادة الاستيراد بأحجام 31 و50 و100 و300، مع سعة قديمة مقدارها 30 في بيانات الاختبار.</li>
+<li>اختبارات إضافية لاستيراد 31 و50 و100 و300 طالب في فصل سعته القديمة 1، مع صحة الروابط وإعادة الاستيراد دون تكرار.</li>
+<li>ظهور الطلاب في قائمة المدير وفصول المعلم والحضور والعدادات؛ تقرير وتصدير كاملان من 300 طالب.</li>
+<li>استمرار رفض مراجع الفصول غير الصالحة أو التابعة لمدرسة أخرى. العمليات الجماعية تحتفظ بعقدها السابق: تعالج المجموعة الصالحة المصرّح بها وتعيد أعدادها الفعلية، ولا تعدّل الطلاب الأجانب.</li>
+<li>اختبارات صفحات 501 و1001 و2300 عنصر، وتصدير 10,001 طالب، وقراءة أكثر من 50,000 سجل نشاط لترتيب الزملاء باستخدام بيانات اختبار اصطناعية.</li>
+<li>نجاح اختبار Chromium فعلي لاستيراد 300 طالب، وربطهم جميعاً بفصل واحد وبأولياء أمورهم، وعرض العداد 300، ثم إظهار كل دفعات الطلاب وتحديث الصفحة. لم توجد سجلات اختبار متبقية بعد التنظيف.</li>
+</ul>
+<h2>قياسات الأداء في التطوير</h2>
+<table><thead><tr><th>عدد الطلاب</th><th>قائمة الفصل: الزمن</th><th>استعلاماتها</th><th>الحضور: الزمن</th><th>استعلاماته</th></tr></thead><tbody>
+<tr><td>31</td><td>24.67 ms</td><td>5</td><td>33.28 ms</td><td>6</td></tr>
+<tr><td>50</td><td>28.34 ms</td><td>5</td><td>39.63 ms</td><td>6</td></tr>
+<tr><td>100</td><td>37.94 ms</td><td>5</td><td>54.97 ms</td><td>6</td></tr>
+<tr><td>300</td><td>475.65 ms</td><td>5</td><td>119.71 ms</td><td>6</td></tr>
+</tbody></table>
+<p>في قياس API مع تتبع الذاكرة، كانت ذروة tracemalloc المبلّغ عنها أثناء طلب قائمة 300 طالب نحو 15.7 MiB؛ تشمل ذاكرة عملية الاختبار وليست قياساً مستقلاً لكل طالب. استغرق استيراد 300 طالب نحو 22.2 ثانية وإعادة الاستيراد 20.7 ثانية تحت ذلك التتبع.</p>
+<p>في اختبار المتصفح دون تتبع الذاكرة: استجابة استيراد 300 طالب استغرقت 7.74 ثانية؛ الانتقال إلى صفحة الفصل حتى ظهور المحتوى نحو 2.01 ثانية؛ DOMContentLoaded نحو 490 ms وأول ظهور للمحتوى 144 ms، مع 50 بطاقة طالب في العرض الأول. هذه قياسات لبيانات اصطناعية في التطوير وليست ضمانات لزمن الإنتاج.</p>
+<h2>حدود التحقق</h2>
+<p>أُجريت اختبارات مركّزة، وليس اختباراً شاملاً لكل التطبيق أو لكل حساب على الإنتاج. لم تُغيّر قيود سعة الغرف أو حسابات المدارس، ولم تُضف سياسة سنة دراسية جديدة. قيود قديمة على طول سجل بعض الإحصاءات التاريخية منفصلة عن عدد طلاب الفصل، وقد اقتُرحت مراجعتها في متابعة مستقلة.</p>
+</html>

@@ -81,7 +81,8 @@ class ClassBase(BaseModel):
     school_id: str
     grade_level: str
     section: Optional[str] = None
-    capacity: int = 30
+    # Nullable legacy metadata; class rosters have no configurable maximum.
+    capacity: Optional[int] = None
     homeroom_teacher_id: Optional[str] = None
 
 
@@ -97,7 +98,7 @@ class ClassResponse(BaseModel):
     school_id: str
     grade_level: str
     section: Optional[str] = None
-    capacity: int
+    capacity: Optional[int] = None
     current_students: int = 0
     homeroom_teacher_id: Optional[str] = None
     homeroom_teacher_name: Optional[str] = None

@@ -40,6 +40,7 @@ import LessonPlanDetailsDialog from './LessonPlanDetailsDialog';
 import { useTranslation } from '@/shared/contexts/ThemeContext';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
 import { BEHAVIOURS, DEFAULT_EVALUATION_ITEMS, DEFAULT_EVAL_IDS } from '@/shared/models/config/sessionElements';
+import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
 
 const GRADE_COLORS = {
   '1': 'bg-sky-500 dark:bg-sky-600',
@@ -219,7 +220,7 @@ export default function TeacherClassDetailPage() {
     try {
       const [classRes, studentsRes, scheduleRes, statsRes] = await Promise.all([
         api.get(`/classes/${classId}`).catch(() => null),
-        api.get(`/classes/${classId}/students`).catch(() => null),
+        fetchStudentRoster(api, `/classes/${classId}/students`).catch(() => null),
         teacherId ? api.get(`/teacher/schedule/${teacherId}`).catch(() => null) : Promise.resolve(null),
         api.get(`/classes/${classId}/student-stats`).catch(() => null),
       ]);

@@ -26,7 +26,9 @@ class CreateClassRequest(BaseModel):
     name_en: Optional[str] = None
     grade_id: str
     class_type: ClassType = ClassType.regular
-    capacity: int = Field(default=30, ge=1, le=50)
+    # Accepted for legacy clients, but retained only as nullable metadata.
+    # Roster assignment is open-ended and never uses this value.
+    capacity: Optional[int] = None
     homeroom_teacher_id: Optional[str] = None
     room_number: Optional[str] = None
     floor: Optional[int] = None
@@ -184,10 +186,9 @@ class ClassManagementEngine:
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
 
-        # Aggregate live student counts per class for the current page so the
-        # UI cards display "{student_count} / {capacity} طلاب" and the fill
-        # progress instead of always rendering 0. Counts only active students
-        # actually assigned to a class within this tenant.
+        # Aggregate live student counts per class for the current page so UI
+        # cards can display the current open-ended roster size. Counts only
+        # active students actually assigned to a class within this tenant.
         class_ids = [r.id for r in rows]
         counts_map: Dict[str, int] = {}
         if class_ids:

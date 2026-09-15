@@ -595,7 +595,9 @@ async def commit_classes_csv(
                     "school_id": workspace_id,
                     "name": r.name,
                     "grade_level": r.grade_level,
-                    "capacity": 30,
+                    # Nullable legacy class metadata.  Workspace rosters are
+                    # open-ended and never use this as a placement cap.
+                    "capacity": None,
                     "current_students": 0,
                     "is_active": True,
                     "created_at": now_iso,

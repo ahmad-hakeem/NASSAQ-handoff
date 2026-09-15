@@ -525,6 +525,47 @@ async def test_students_list_student_403(client, student_user_headers):
 
 
 @pytest.mark.asyncio
+async def test_students_list_unassigned_teacher_count_is_scoped(
+    client, unrelated_teacher_headers, student_a
+):
+    """An unassigned teacher cannot learn school totals through pagination."""
+    r = await client.get(
+        "/students?offset=0&limit=1", headers=unrelated_teacher_headers
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == []
+    assert r.headers["X-Total-Count"] == "0"
+    assert r.headers["X-Has-More"] == "false"
+    assert r.headers["X-Next-Offset"] == ""
+
+
+@pytest.mark.asyncio
+async def test_students_list_teacher_count_matches_assigned_class_filter(
+    client, school_a, class_a, student_a
+):
+    teacher = await _mk_user(UserRole.TEACHER, school_a)
+    other_class = await _mk_class(school_a)
+    other_student = await _mk_student(school_a, class_id=other_class)
+    await gd_insert(db.session, "class_sessions", {
+        "id": str(uuid.uuid4()),
+        "teacher_id": teacher["id"],
+        "class_id": class_a,
+        "school_id": school_a,
+        "is_active": True,
+    })
+
+    r = await client.get(
+        "/students?offset=0&limit=1", headers=_tok(teacher)
+    )
+    assert r.status_code == 200, r.text
+    assert [row["id"] for row in r.json()] == [student_a]
+    assert other_student not in {row["id"] for row in r.json()}
+    assert r.headers["X-Total-Count"] == "1"
+    assert r.headers["X-Has-More"] == "false"
+    assert r.headers["X-Next-Offset"] == ""
+
+
+@pytest.mark.asyncio
 async def test_class_students_parent_403(client, parent_headers, class_a):
     r = await client.get(f"/classes/{class_a}/students", headers=parent_headers)
     assert r.status_code == 403, r.text

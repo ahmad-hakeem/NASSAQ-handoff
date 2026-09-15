@@ -56,6 +56,7 @@ function getStudentParentDisplay(student) {
 import { useTranslation } from '@/shared/contexts/ThemeContext';
 import { ResponsiveTable } from '@/shared/components/ui/ResponsiveTable';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
 
 // 2026-05-19 — Headless `TeacherStudentsPanel` wrapper. Mirrors the
 // `TeacherSubjectsPanel` / `BulkImportPanel` / `WorkspaceSchedulePanel`
@@ -163,7 +164,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
   const fetchWorkspaceStudentCount = useCallback(async () => {
     if (!isIndependentTeacher) return;
     try {
-      const res = await api.get('/students');
+      const res = await fetchStudentRoster(api, '/students');
       const list = Array.isArray(res.data) ? res.data : (res.data?.students || []);
       setWorkspaceStudentCount(list.length);
       setWorkspaceStudents(list);
@@ -315,7 +316,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
       let statsMap = {};
 
       if (isPool) {
-        const studentsRes = await api.get('/students');
+        const studentsRes = await fetchStudentRoster(api, '/students');
         const pool = Array.isArray(studentsRes.data) ? studentsRes.data : [];
         // Publish the pool from THIS response so the quota chip and the
         // inline-create wizard don't need their own GET /students.
@@ -326,7 +327,7 @@ export default function TeacherStudentsPage({ embedded = false } = {}) {
           : pool;
       } else {
         const [studentsRes, statsRes] = await Promise.all([
-          api.get(`/classes/${selectedClass}/students`),
+          fetchStudentRoster(api, `/classes/${selectedClass}/students`),
           api.get(`/classes/${selectedClass}/student-stats`).catch(() => ({ data: {} })),
         ]);
         rawStudents = Array.isArray(studentsRes.data) ? studentsRes.data : [];

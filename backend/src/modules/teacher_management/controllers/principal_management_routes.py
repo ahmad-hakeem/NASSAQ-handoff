@@ -808,22 +808,17 @@ async def transfer_student_class(
     if not student:
         raise HTTPException(status_code=404, detail="الطالب غير موجود")
 
-    new_class = await gd_find_one(db.session, "classes", {"id": data.new_class_id, "tenant_id": tenant_id})
+    # Class moves remain tenant-scoped even though the legacy capacity gate is
+    # retired.  Do not allow a class from another school to be used as target.
+    class_school_id = student.get("school_id") or tenant_id
+    new_class = await gd_find_one(
+        db.session, "classes", {"id": data.new_class_id, "school_id": class_school_id}
+    )
     if not new_class:
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
 
     old_class_id = student.get("class_id")
     old_class_name = student.get("class_name")
-    # Backend-authoritative capacity gate (canonical: live ACTIVE-student count
-    # vs the class's real configured capacity — no hardcoded 30, no stale
-    # counter). A move into a DIFFERENT class is a net +1 to the target; re-
-    # confirming the student's current class is a no-op and never blocked.
-    if old_class_id != data.new_class_id:
-        from engines.entity_counts import enforce_class_capacity
-        await enforce_class_capacity(
-            db.session, new_class, student.get("school_id") or tenant_id
-        )
-
     now = datetime.now(timezone.utc).isoformat()
 
     update_fields = {

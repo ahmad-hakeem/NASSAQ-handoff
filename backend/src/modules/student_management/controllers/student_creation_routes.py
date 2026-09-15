@@ -284,10 +284,6 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
             )
             if not cls_owner:
                 raise HTTPException(status_code=404, detail="الفصل غير موجود")
-            # Capacity gate — net +1 for a brand-new student; reject before any
-            # parent/student write when the class is full.
-            from engines.entity_counts import enforce_class_capacity
-            await enforce_class_capacity(db.session, cls_owner, school_id)
         if request.parent is not None:
             request.parent.full_name = _blank_to_none(request.parent.full_name)
             request.parent.national_id = _blank_to_none(request.parent.national_id)
@@ -704,10 +700,6 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
         if not school_id:
             raise HTTPException(status_code=400, detail="لم يتم تحديد المدرسة")
 
-        # Bulk capacity policy: import a student WITHOUT a class when the target
-        # is full (never overfill, never drop) — surfaced as a per-row warning.
-        from engines.entity_counts import class_has_room, CLASS_FULL_NO_ASSIGN_WARNING
-
         results = {
             "total": len(request.students),
             "success": 0,
@@ -743,6 +735,25 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                     })
                     results["failed"] += 1
                     continue
+
+                # Keep bulk-create class references tenant-scoped.  This is
+                # deliberately an existence check only: a legacy capacity
+                # value must never turn a valid requested class into NULL.
+                requested_class_id = student_data.get("class_id")
+                if requested_class_id:
+                    target_class = await gd_find_one(
+                        db.session,
+                        "classes",
+                        {"id": requested_class_id, "school_id": school_id},
+                    )
+                    if not target_class:
+                        results["errors"].append({
+                            "row": idx + 1,
+                            "student_name": student_data.get("full_name"),
+                            "error": "الفصل غير موجود",
+                        })
+                        results["failed"] += 1
+                        continue
                 
                 # Create parent data
                 parent_data = {
@@ -805,23 +816,6 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                     "created_at": now,
                     "created_by": current_user.get("id")
                 }
-                # Capacity gate (bulk — leave-without-class policy): when the
-                # target class is full the student is still imported but left
-                # UNASSIGNED, so no student is lost and no class is overfilled.
-                _eff_class_id = student_data.get("class_id")
-                if _eff_class_id:
-                    _bulk_class = await gd_find_one(
-                        db.session, "classes",
-                        {"id": _eff_class_id, "school_id": school_id},
-                    )
-                    if _bulk_class and not await class_has_room(db.session, _bulk_class, school_id):
-                        results["warnings"].append({
-                            "row": idx + 1,
-                            "student_name": student_data.get("full_name"),
-                            "warning": CLASS_FULL_NO_ASSIGN_WARNING,
-                        })
-                        _eff_class_id = None
-
                 # Wrap user insert in a savepoint so a later student-insert
                 # failure within this row can roll back BOTH the user and the
                 # student without poisoning prior successful rows in the batch.
@@ -838,7 +832,10 @@ def create_student_creation_routes(db, get_current_user, require_roles, UserRole
                         "gender": student_data.get("gender", "male"),
                         "date_of_birth": student_data.get("date_of_birth"),
                         "grade": student_data.get("grade_id") or student_data.get("grade") or student_data.get("education_level"),
-                        "class_id": _eff_class_id,
+                        # Imports retain the requested class even when the
+                        # class's legacy capacity field is lower than the
+                        # incoming batch. Capacity is not an import gate.
+                        "class_id": student_data.get("class_id"),
                         "parent_id": parent_result["parent"].get("id"),
                         "parent_user_id": parent_result["parent"].get("user_id"),
                         "parent_name": parent_result["parent"].get("full_name"),

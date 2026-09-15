@@ -36,6 +36,12 @@ class ExportType(str, Enum):
     GRADES = "grades"
 
 
+# Export reads are deliberately paged.  Besides keeping each database read
+# bounded, the stable ordering lets the export continue past the old
+# accidental 10,000-row prefix.
+_STUDENT_EXPORT_PAGE_SIZE = 1000
+
+
 class ImportResult(BaseModel):
     """نتيجة الاستيراد"""
     success: bool
@@ -356,7 +362,6 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
                     'اسم الفصل (مطلوب)': ['الأول أ', 'الثاني ب'],
                     'الصف (مطلوب)': ['الأول', 'الثاني'],
                     'الشعبة': ['أ', 'ب'],
-                    'السعة': ['30', '25'],
                     'المرحلة': ['ابتدائي', 'ابتدائي'],
                     'ملاحظات': ['', '']
                 }
@@ -880,6 +885,8 @@ async def _import_noor_classes(db, df: pd.DataFrame, school_id: str, user: dict,
         'الصف (مطلوب)': 'grade_level',
         'الصف': 'grade_level',
         'الشعبة': 'section',
+        # Keep the legacy column alias so old workbooks parse, but ignore its
+        # value below: class roster capacity is not an import policy.
         'السعة': 'capacity',
         'المرحلة': 'stage',
         'ملاحظات': 'notes'
@@ -927,14 +934,6 @@ async def _import_noor_classes(db, df: pd.DataFrame, school_id: str, user: dict,
                 if existing:
                     row_errors.append({"row": row_num, "field": "اسم الفصل", "message": f"الفصل ({name} - {section or 'بدون شعبة'}): موجود مسبقاً في هذه المدرسة"})
 
-            capacity = 30
-            try:
-                cap_val = row.get('capacity')
-                if pd.notna(cap_val) and str(cap_val).strip() != 'nan':
-                    capacity = int(float(str(cap_val).strip()))
-            except (ValueError, TypeError):
-                pass
-
             if row_errors:
                 errors.extend(row_errors)
             else:
@@ -943,7 +942,6 @@ async def _import_noor_classes(db, df: pd.DataFrame, school_id: str, user: dict,
                     "name": name,
                     "grade_level": grade_level,
                     "section": section,
-                    "capacity": capacity,
                     "stage": str(row.get('stage', '')).strip() if pd.notna(row.get('stage')) and str(row.get('stage', '')).strip() != 'nan' else '',
                     "notes": str(row.get('notes', '')).strip() if pd.notna(row.get('notes')) and str(row.get('notes', '')).strip() != 'nan' else '',
                 })
@@ -964,7 +962,10 @@ async def _import_noor_classes(db, df: pd.DataFrame, school_id: str, user: dict,
             "grade_level": item["grade_level"],
             "grade": item["grade_level"],
             "section": item["section"],
-            "capacity": item["capacity"],
+            # ``capacity`` remains nullable for compatibility with the
+            # classes schema; importing a legacy value must not create a
+            # finite class roster limit.
+            "capacity": None,
             "stage": item["stage"],
             "notes": item["notes"],
             "is_active": True,
@@ -1142,56 +1143,112 @@ async def _export_students(db, school_id: str, grade: str = None, class_name: st
             return pd.DataFrame(), "تصدير_الطلاب.xlsx"
         query["grade"] = str(canonical_grade["grade"])
 
-    class_rows = await gd_find(
-        db.session,
-        "classes",
-        {"school_id": school_id, "is_active": {"$ne": False}} if school_id else {"is_active": {"$ne": False}},
-        limit=10000,
+    class_filter = (
+        {"school_id": school_id, "is_active": {"$ne": False}}
+        if school_id
+        else {"is_active": {"$ne": False}}
     )
-    classes_by_id = {str(c.get("id")): c for c in class_rows if c.get("id")}
+    classes_by_id = {}
     if class_name:
         class_token = _normalise_token(class_name)
         matching_class_ids = []
-        for class_doc in class_rows:
-            class_tokens = {
-                _normalise_token(class_doc.get("name")),
-                _normalise_token(class_doc.get("name_en")),
-                _normalise_token(class_doc.get("section")),
-            }
-            if class_token in class_tokens:
-                matching_class_ids.append(class_doc["id"])
+        class_offset = 0
+        while True:
+            class_page = await gd_find(
+                db.session,
+                "classes",
+                class_filter,
+                order_by="id",
+                desc_order=False,
+                offset=class_offset,
+                limit=_STUDENT_EXPORT_PAGE_SIZE,
+            )
+            if not class_page:
+                break
+            for class_doc in class_page:
+                class_tokens = {
+                    _normalise_token(class_doc.get("name")),
+                    _normalise_token(class_doc.get("name_en")),
+                    _normalise_token(class_doc.get("section")),
+                }
+                if class_token in class_tokens and class_doc.get("id"):
+                    matching_class_ids.append(class_doc["id"])
+            if len(class_page) < _STUDENT_EXPORT_PAGE_SIZE:
+                break
+            class_offset += len(class_page)
         if not matching_class_ids:
             return pd.DataFrame(), "تصدير_الطلاب.xlsx"
         query["class_id"] = {"$in": matching_class_ids}
     
     query["is_active"] = True
-    students = await gd_find(db.session, "students", query, limit=10000)
-    
     data = []
-    for s in students:
-        class_doc = classes_by_id.get(str(s.get("class_id")))
-        exported_grade = normalize_canonical_grade(s.get("grade"))
-        exported_class = (
-            (class_doc or {}).get("section")
-            or (class_doc or {}).get("name")
-            or ""
+    student_offset = 0
+    while True:
+        students = await gd_find(
+            db.session,
+            "students",
+            query,
+            order_by="id",
+            desc_order=False,
+            offset=student_offset,
+            limit=_STUDENT_EXPORT_PAGE_SIZE,
         )
-        data.append({
-            'الاسم الأول': s.get('first_name', ''),
-            'اسم الأب': s.get('father_name', ''),
-            'اسم العائلة': s.get('last_name', ''),
-            'الاسم الكامل': s.get('full_name', ''),
-            'رقم الهوية': s.get('national_id', ''),
-            'تاريخ الميلاد': s.get('date_of_birth') or s.get('birth_date', ''),
-            'الجنس': 'ذكر' if s.get('gender') == 'male' else 'أنثى',
-            'الصف (مطلوب)': exported_grade["label_ar"] if exported_grade else '',
-            'الفصل (مطلوب)': exported_class,
-            'البريد الإلكتروني': s.get('email', ''),
-            'رقم الجوال': s.get('phone', ''),
-            'اسم ولي الأمر': s.get('parent_name', ''),
-            'جوال ولي الأمر': s.get('parent_phone', ''),
-            'الحالة': 'نشط' if s.get('is_active') else 'غير نشط',
-        })
+        if not students:
+            break
+
+        page_class_ids = {
+            s.get("class_id")
+            for s in students
+            if s.get("class_id") and str(s.get("class_id")) not in classes_by_id
+        }
+        if page_class_ids:
+            class_page = await gd_find(
+                db.session,
+                "classes",
+                {
+                    **class_filter,
+                    "id": {"$in": list(page_class_ids)},
+                },
+                order_by="id",
+                desc_order=False,
+                limit=len(page_class_ids),
+            )
+            classes_by_id.update(
+                {
+                    str(class_doc.get("id")): class_doc
+                    for class_doc in class_page
+                    if class_doc.get("id")
+                }
+            )
+
+        for s in students:
+            class_doc = classes_by_id.get(str(s.get("class_id")))
+            exported_grade = normalize_canonical_grade(s.get("grade"))
+            exported_class = (
+                (class_doc or {}).get("section")
+                or (class_doc or {}).get("name")
+                or ""
+            )
+            data.append({
+                'الاسم الأول': s.get('first_name', ''),
+                'اسم الأب': s.get('father_name', ''),
+                'اسم العائلة': s.get('last_name', ''),
+                'الاسم الكامل': s.get('full_name', ''),
+                'رقم الهوية': s.get('national_id', ''),
+                'تاريخ الميلاد': s.get('date_of_birth') or s.get('birth_date', ''),
+                'الجنس': 'ذكر' if s.get('gender') == 'male' else 'أنثى',
+                'الصف (مطلوب)': exported_grade["label_ar"] if exported_grade else '',
+                'الفصل (مطلوب)': exported_class,
+                'البريد الإلكتروني': s.get('email', ''),
+                'رقم الجوال': s.get('phone', ''),
+                'اسم ولي الأمر': s.get('parent_name', ''),
+                'جوال ولي الأمر': s.get('parent_phone', ''),
+                'الحالة': 'نشط' if s.get('is_active') else 'غير نشط',
+            })
+
+        if len(students) < _STUDENT_EXPORT_PAGE_SIZE:
+            break
+        student_offset += len(students)
     
     df = pd.DataFrame(data)
     return df, 'تصدير_الطلاب.xlsx'

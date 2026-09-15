@@ -1010,6 +1010,13 @@ async def approve_student_enrollment(
         raise HTTPException(status_code=404, detail="طلب التسجيل غير موجود")
 
     school_id = req.get("tenant_id") or current_user.get("tenant_id")
+    caller_tenant = current_user.get("tenant_id")
+    if (
+        current_user.get("role") != UserRole.PLATFORM_ADMIN.value
+        and caller_tenant
+        and school_id != caller_tenant
+    ):
+        raise HTTPException(status_code=403, detail="لا يمكنك اعتماد طلب تسجيل لمدرسة أخرى")
     now = datetime.now(timezone.utc).isoformat()
     student_id = str(uuid.uuid4())
 
@@ -1036,10 +1043,11 @@ async def approve_student_enrollment(
             db.session, "classes",
             {"id": student_doc["class_id"], "school_id": school_id},
         )
-        if _enr_class:
-            # Capacity gate — net +1 for the approved enrolment.
-            from engines.entity_counts import enforce_class_capacity
-            await enforce_class_capacity(db.session, _enr_class, school_id)
+        if not _enr_class:
+            # Keep enrollment class assignment tenant-scoped.  A missing or
+            # foreign class must never be persisted merely because the
+            # capacity gate was retired.
+            raise HTTPException(status_code=404, detail="الفصل غير موجود في هذه المدرسة")
     await gd_insert(db.session, "students", student_doc)
 
     # Recompute the school's stored counts from live rows (Task #826) so the

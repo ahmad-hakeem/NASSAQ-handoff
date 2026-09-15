@@ -18,7 +18,7 @@ tests, so the suite is hermetic.
 import uuid
 
 from dependencies import db, UserRole, hash_password
-from engines.sql_utils import gd_insert
+from engines.sql_utils import gd_find, gd_find_one, gd_insert
 
 
 async def _mk_login_user(role: UserRole, tenant_id: str, email: str, password: str) -> dict:
@@ -193,6 +193,112 @@ class TestStudentWizardAPI:
         data = response.json()
         assert data.get("success") is True
         assert data["student"]["id"]
+
+    async def test_bulk_import_keeps_full_legacy_class_assignment(
+        self, client, school_principal_headers, tenant_a
+    ):
+        """Student-wizard bulk import is open-ended for class rosters.
+
+        A class with a legacy capacity of one still receives every requested
+        row, including its parent link, rather than silently nulling
+        ``class_id`` or dropping rows.
+        """
+        class_id = str(uuid.uuid4())
+        await gd_insert(db.session, "classes", {
+            "id": class_id,
+            "school_id": tenant_a,
+            "name": f"WizardBulkClass-{class_id[:6]}",
+            "is_active": True,
+            "capacity": 1,
+            "current_students": 0,
+        })
+        await db.session.flush()
+
+        students = []
+        for index in range(31):
+            unique = uuid.uuid4().hex[:8]
+            students.append({
+                "full_name": f"TEST_bulk_{index}_{unique}",
+                "email": f"bulk_student_{unique}@test.com",
+                "national_id": f"{1000000000 + index:010d}",
+                "gender": "male",
+                "date_of_birth": "2015-01-15",
+                "education_level": "primary",
+                "grade_id": "grade-1",
+                "class_id": class_id,
+                "parent_name": f"TEST_bulk_parent_{index}_{unique}",
+                "parent_phone": f"05{index:08d}",
+                "parent_email": f"bulk_parent_{unique}@test.com",
+                "parent_relationship": "father",
+            })
+
+        response = await client.post(
+            "/student-wizard/bulk-import",
+            json={"students": students},
+            headers=school_principal_headers,
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["success"] is True
+        assert body["results"]["success"] == 31
+        assert body["results"]["failed"] == 0
+
+        imported = await gd_find(
+            db.session,
+            "students",
+            {"school_id": tenant_a, "class_id": class_id},
+            limit=100,
+        )
+        assert len(imported) == 31
+        assert len({student["id"] for student in imported}) == 31
+        assert all(student["class_id"] == class_id for student in imported)
+
+        class_row = await gd_find_one(db.session, "classes", {"id": class_id})
+        assert class_row["current_students"] == 31
+        links = await gd_find(
+            db.session,
+            "guardian_links",
+            {"tenant_id": tenant_a},
+            limit=100,
+        )
+        imported_ids = {student["id"] for student in imported}
+        assert len(
+            [link for link in links if link.get("student_id") in imported_ids]
+        ) == 31
+
+    async def test_bulk_import_rejects_foreign_class_reference(
+        self, client, school_principal_headers, tenant_a
+    ):
+        foreign_class_id = str(uuid.uuid4())
+        student_data = {
+            "full_name": f"TEST_foreign_bulk_{uuid.uuid4().hex[:8]}",
+            "national_id": "9876543210",
+            "gender": "male",
+            "date_of_birth": "2015-01-15",
+            "education_level": "primary",
+            "grade_id": "grade-1",
+            "class_id": foreign_class_id,
+            "parent_name": "TEST_foreign_parent",
+            "parent_phone": "0599999999",
+        }
+
+        response = await client.post(
+            "/student-wizard/bulk-import",
+            json={"students": [student_data]},
+            headers=school_principal_headers,
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["success"] is False
+        assert body["results"]["success"] == 0
+        assert body["results"]["failed"] == 1
+        assert body["results"]["errors"][0]["error"] == "الفصل غير موجود"
+        assert not await gd_find(
+            db.session,
+            "students",
+            {"school_id": tenant_a, "national_id": "9876543210"},
+            limit=10,
+        )
 
     async def test_create_student_with_health_info(self, client, school_principal_headers):
         """Test creating student with health information"""
@@ -417,3 +523,64 @@ class TestClassRosterAndCount:
             "/student-wizard/create", json=payload, headers=school_principal_headers
         )
         assert r.status_code == 404, f"Expected 404 for foreign class_id, got {r.status_code}: {r.text}"
+
+    async def test_roster_pagination_preserves_bare_array_and_reports_totals(
+        self, client, school_principal_headers, tenant_a
+    ):
+        class_id = await self._seed_class(tenant_a)
+        for index in range(5):
+            await gd_insert(db.session, "students", {
+                "id": f"roster-page-{index:02d}",
+                "school_id": tenant_a,
+                "class_id": class_id,
+                "full_name": f"Roster page {index}",
+                "is_active": True,
+            })
+        await db.session.flush()
+
+        first = await client.get(
+            f"/classes/{class_id}/students?offset=1&limit=2",
+            headers=school_principal_headers,
+        )
+        assert first.status_code == 200, first.text
+        assert [row["id"] for row in first.json()] == [
+            "roster-page-01", "roster-page-02"
+        ]
+        assert first.headers["X-Total-Count"] == "5"
+        assert first.headers["X-Has-More"] == "true"
+        assert first.headers["X-Next-Offset"] == "3"
+
+        final = await client.get(
+            f"/classes/{class_id}/students?offset=3&limit=2",
+            headers=school_principal_headers,
+        )
+        assert final.status_code == 200, final.text
+        assert [row["id"] for row in final.json()] == [
+            "roster-page-03", "roster-page-04"
+        ]
+        assert final.headers["X-Total-Count"] == "5"
+        assert final.headers["X-Has-More"] == "false"
+        assert final.headers["X-Next-Offset"] == ""
+
+    async def test_student_directory_pagination_preserves_bare_array_and_totals(
+        self, client, school_principal_headers, tenant_a
+    ):
+        for index in range(5):
+            await gd_insert(db.session, "students", {
+                "id": f"directory-page-{index:02d}",
+                "school_id": tenant_a,
+                "full_name": f"Directory page {index}",
+                "is_active": True,
+            })
+        await db.session.flush()
+
+        page = await client.get(
+            "/students?offset=2&limit=2", headers=school_principal_headers
+        )
+        assert page.status_code == 200, page.text
+        assert [row["id"] for row in page.json()] == [
+            "directory-page-02", "directory-page-03"
+        ]
+        assert page.headers["X-Total-Count"] == "5"
+        assert page.headers["X-Has-More"] == "true"
+        assert page.headers["X-Next-Offset"] == "4"

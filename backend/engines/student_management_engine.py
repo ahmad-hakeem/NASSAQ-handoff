@@ -675,9 +675,11 @@ class StudentManagementEngine:
 
         if not active:
             active = [
-                {"id": "section_a", "name_ar": "أ", "name_en": "A", "capacity": 30},
-                {"id": "section_b", "name_ar": "ب", "name_en": "B", "capacity": 30},
-                {"id": "section_c", "name_ar": "ج", "name_en": "C", "capacity": 30},
+                # Legacy section metadata is nullable; section rosters are
+                # open-ended and have no implicit default cap.
+                {"id": "section_a", "name_ar": "أ", "name_en": "A", "capacity": None},
+                {"id": "section_b", "name_ar": "ب", "name_en": "B", "capacity": None},
+                {"id": "section_c", "name_ar": "ج", "name_en": "C", "capacity": None},
             ]
 
         return active

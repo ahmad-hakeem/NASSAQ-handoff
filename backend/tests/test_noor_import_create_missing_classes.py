@@ -161,9 +161,9 @@ async def test_teacher_draft_rejected(client, _db_session):
     assert r.status_code == 400
 
 
-async def test_overrides_apply_capacity_and_homeroom(client, _db_session):
-    """Task #390 — per-pair overrides set capacity + homeroom on the
-    newly-created classes, tenant-scoped on the homeroom_teacher_id."""
+async def test_overrides_ignore_legacy_capacity_and_apply_homeroom(client, _db_session):
+    """Legacy capacity input is ignored while tenant-scoped homeroom data
+    continues to apply to a newly-created class."""
     from datetime import datetime, timezone
     user, school_id = await _seed_principal()
     # Seed an active teacher in this school so the override resolves.
@@ -190,6 +190,8 @@ async def test_overrides_apply_capacity_and_homeroom(client, _db_session):
         headers=_headers(user),
         json={"overrides": [
             {"grade_code": "1", "section_code": "أ",
+             # Older clients may still send a capacity. It is not a policy
+             # input and is ignored, even when it is numeric.
              "capacity": 25, "homeroom_teacher_id": tid},
         ]},
     )
@@ -198,14 +200,14 @@ async def test_overrides_apply_capacity_and_homeroom(client, _db_session):
     body = r.json()
     assert len(body["created_classes"]) == 1
     created = body["created_classes"][0]
-    assert created["capacity"] == 25
+    assert created["capacity"] is None
     assert created["homeroom_teacher_id"] == tid
     row = (await db.session.execute(
         text("SELECT capacity, homeroom_teacher_id, homeroom_teacher_name "
              "FROM classes WHERE id = :cid"),
         {"cid": created["class_id"]},
     )).mappings().one()
-    assert row["capacity"] == 25
+    assert row["capacity"] is None
     assert row["homeroom_teacher_id"] == tid
     assert row["homeroom_teacher_name"] == "الأستاذة سارة"
 
@@ -251,7 +253,7 @@ async def test_overrides_reject_cross_tenant_homeroom(client, _db_session):
     assert n == 0
 
 
-async def test_overrides_reject_invalid_capacity(client, _db_session):
+async def test_overrides_ignore_invalid_legacy_capacity(client, _db_session):
     user, school_id = await _seed_principal()
     rows = [_row(1, "S1", "طالب", "1", "1")]
     draft_id = await _seed_student_draft(user["id"], school_id, rows)
@@ -261,10 +263,18 @@ async def test_overrides_reject_invalid_capacity(client, _db_session):
         f"/noor-import/draft/{draft_id}/create-missing-classes",
         headers=_headers(user),
         json={"overrides": [
-            {"grade_code": "1", "section_code": "1", "capacity": 0},
+            {"grade_code": "1", "section_code": "1", "capacity": "not-a-number"},
         ]},
     )
-    assert r.status_code == 400
+    assert r.status_code == 200, r.text
+    created = r.json()["created_classes"]
+    assert len(created) == 1
+    assert created[0]["capacity"] is None
+    persisted = (await db.session.execute(
+        text("SELECT capacity FROM classes WHERE id = :cid"),
+        {"cid": created[0]["class_id"]},
+    )).scalar_one()
+    assert persisted is None
 
 
 async def test_overrides_apply_classroom_id(client, _db_session):

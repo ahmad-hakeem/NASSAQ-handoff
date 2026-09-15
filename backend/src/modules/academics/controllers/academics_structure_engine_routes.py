@@ -67,7 +67,8 @@ class GradeCreate(BaseModel):
 class SectionCreate(BaseModel):
     grade_id: str
     name: str  # أ، ب، ج
-    capacity: int = 30
+    # Nullable legacy metadata; section rosters are open-ended.
+    capacity: Optional[int] = None
     homeroom_teacher_id: Optional[str] = None
     classroom_id: Optional[str] = None
     academic_year: str = "1446-1447"

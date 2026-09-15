@@ -94,7 +94,6 @@ const CLASS_DATA = {
   school_id: 'itw_u1',
   grade_id: '1',
   grade_name: 'الصف الأول',
-  capacity: 20,
   current_students: 5,
   is_active: true,
 };

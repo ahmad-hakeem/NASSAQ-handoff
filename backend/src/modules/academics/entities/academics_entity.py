@@ -131,7 +131,9 @@ class Class(Base):
     grade_id = Column(String, nullable=True)
     grade_level = Column(String, nullable=True)
     section = Column(String, nullable=True)
-    capacity = Column(Integer, default=30)
+    # Retained as nullable legacy metadata only.  Roster membership is
+    # intentionally open-ended and never gated by this column.
+    capacity = Column(Integer, nullable=True)
     current_students = Column(Integer, default=0)
     homeroom_teacher_id = Column(String, ForeignKey("teachers.id", ondelete="SET NULL"), nullable=True)
     homeroom_teacher_name = Column(String, nullable=True)

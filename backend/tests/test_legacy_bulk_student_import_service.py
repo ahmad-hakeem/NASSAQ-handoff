@@ -513,7 +513,7 @@ async def test_matching_is_grade_scoped_and_reimport_updates_or_restores(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_full_class_is_a_failed_row_not_an_unassigned_success(monkeypatch):
+async def test_full_class_accepts_unlimited_import_rows(monkeypatch):
     session = _Session()
     session.rows["classes"] = [{
         "id": "full-class", "school_id": "school-1",
@@ -529,8 +529,8 @@ async def test_full_class_is_a_failed_row_not_an_unassigned_success(monkeypatch)
     _patch_fake_dependencies(monkeypatch, _guardian)
     errors, warnings = [], []
     frame = pd.DataFrame([{
-        "First Name": "جديد", "Last Name": "مرفوض",
-        "National ID": "1234567891", "Grade": "1", "Class": "أ",
+        "First Name": "جديد", "Last Name": "مقبول",
+        "National ID": "1234567892", "Grade": "1", "Class": "أ",
         "Parent Phone": "0501234567",
     }])
 
@@ -538,12 +538,15 @@ async def test_full_class_is_a_failed_row_not_an_unassigned_success(monkeypatch)
         _fake_db(session), frame, "school-1", {"id": "principal-1"}, errors, warnings
     )
 
-    assert result["imported"] == 0
-    assert result["failed"] == 1
-    assert result["assigned"] == 0
-    assert len(session.rows["students"]) == 1
-    assert session.rows["students"][0]["class_id"] == "full-class"
-    assert "ممتلئ" in errors[0]["message"]
+    assert result["imported"] == 1, (result, errors)
+    assert result["failed"] == 0
+    assert result["assigned"] == 1
+    assert len(session.rows["students"]) == 2
+    imported = next(
+        row for row in session.rows["students"] if row["national_id"] == "1234567892"
+    )
+    assert imported["class_id"] == "full-class"
+    assert not errors
 
 
 def _patch_fake_dependencies(monkeypatch, guardian):

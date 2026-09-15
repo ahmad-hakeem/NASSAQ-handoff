@@ -7,6 +7,8 @@ by row 1.
 """
 import pytest
 from unittest.mock import patch, AsyncMock
+import sys
+import routes
 
 from src.modules.noor_import.controllers.noor_import_routes import (
     _annotate_student_rows,
@@ -14,6 +16,14 @@ from src.modules.noor_import.controllers.noor_import_routes import (
     _commit_students,
     _summarise_counts,
 )
+from src.modules.noor_import.controllers import noor_import_routes as _noor_import_routes
+
+# The application historically exposed this controller under
+# ``routes.noor_import_routes``. Keep test patches pointed at that
+# compatibility path even when the generated ``routes`` package is absent in
+# a standalone backend checkout.
+sys.modules["routes.noor_import_routes"] = _noor_import_routes
+routes.noor_import_routes = _noor_import_routes
 
 
 def _student_row(idx, num, name="طالب", grade="1", section="أ"):
@@ -251,6 +261,72 @@ async def test_commit_students_noop_reimport_skips_db_write():
         "no-op re-import must not perform a DB update"
     assert out["updated"] == 1, \
         "row was processed end-to-end, count it as updated for the user"
+
+
+@pytest.mark.asyncio
+async def test_commit_students_moves_into_full_target_class():
+    """A matched target class remains assigned even when its legacy
+    capacity value is already reached."""
+    rows = [{
+        "row_index": 1,
+        "data": {
+            "student_number": "8888",
+            "full_name": "أحمد المنقول",
+            "grade_code": "2",
+            "section_code": "ب",
+        },
+        "issues": [],
+    }]
+    update_mock = AsyncMock()
+    existing = {
+        "id": "student-8",
+        "student_number": "8888",
+        "full_name": "أحمد",
+        "grade": "1",
+        "class_id": "source-class",
+        "is_active": True,
+    }
+    classes = [
+        {
+            "id": "source-class",
+            "grade_level": "1",
+            "grade_id": "1",
+            "section": "أ",
+            "capacity": 1,
+        },
+        {
+            "id": "full-target-class",
+            "grade_level": "2",
+            "grade_id": "2",
+            "section": "ب",
+            "capacity": 1,
+        },
+    ]
+    with patch(
+        "routes.noor_import_routes.load_school_student_index",
+        new=AsyncMock(return_value={"8888": existing}),
+    ), patch(
+        "routes.noor_import_routes.load_school_class_index",
+        new=AsyncMock(return_value=classes),
+    ), patch(
+        "routes.noor_import_routes.insert_student_record_only",
+        new=AsyncMock(),
+    ), patch(
+        "routes.noor_import_routes.update_student_mutable_fields",
+        new=update_mock,
+    ):
+        out = await _commit_students(
+            session=_FakeSession(),
+            school_id="s1",
+            rows=rows,
+            created_by="u1",
+            ambiguous_treat_as_new=set(),
+        )
+
+    assert out["updated"] == 1
+    assert out["failed"] == 0
+    assert update_mock.await_count == 1
+    assert update_mock.await_args.kwargs["class_id"] == "full-target-class"
 
 
 @pytest.mark.asyncio

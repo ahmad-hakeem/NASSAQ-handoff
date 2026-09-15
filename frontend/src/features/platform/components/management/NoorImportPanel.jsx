@@ -507,7 +507,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
   const [creatingClasses, setCreatingClasses] = useState(false);
   const [undoingClasses, setUndoingClasses] = useState(false);
   const [undoableClasses, setUndoableClasses] = useState([]);
-  const [classOverrides, setClassOverrides] = useState({}); // key: `${grade}||${section}` -> {capacity, homeroom_teacher_id, classroom_id}
+  const [classOverrides, setClassOverrides] = useState({}); // key: `${grade}||${section}` -> roster-link fields
   const [teachersList, setTeachersList] = useState([]);
   const [loadingTeachers, setLoadingTeachers] = useState(false);
   const [undoableStudentIds, setUndoableStudentIds] = useState([]);
@@ -761,14 +761,12 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
     if (!preview?.import_draft_id) return;
     if (missingClassPairs.length === 0) return;
     // Build the overrides body from the inline editor state. Only emit
-    // an entry when the principal actually changed something — bare
-    // pairs fall back to the server's hardcoded defaults (capacity 30,
-    // no homeroom).
+    // an entry when the principal actually changed something. Roster size
+    // is deliberately not edited here; the backend owns that policy.
     const overrides = missingClassPairs
       .map(p => {
         const key = `${p.grade_code}||${p.section_code}`;
         const ov = classOverrides[key] || {};
-        const hasCap = ov.capacity !== undefined && ov.capacity !== '' && ov.capacity !== null;
         const hasHr = !!ov.homeroom_teacher_id;
         const hasCr = !!ov.classroom_id;
         // A grade/section override only counts when the principal
@@ -777,9 +775,8 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         const sTrim = (ov.section_override ?? '').trim();
         const hasG = gTrim !== '' && gTrim !== (p.grade_code || '');
         const hasS = sTrim !== '' && sTrim !== (p.section_code || '');
-        if (!hasCap && !hasHr && !hasCr && !hasG && !hasS) return null;
+        if (!hasHr && !hasCr && !hasG && !hasS) return null;
         const entry = { grade_code: p.grade_code, section_code: p.section_code };
-        if (hasCap) entry.capacity = Number(ov.capacity);
         if (hasHr) entry.homeroom_teacher_id = ov.homeroom_teacher_id;
         if (hasCr) entry.classroom_id = ov.classroom_id;
         if (hasG) entry.grade_override = gTrim;
@@ -787,19 +784,10 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         return entry;
       })
       .filter(Boolean);
-    // Client-side capacity validation — mirror the backend's 1..500
-    // range so the principal sees an Arabic error instead of a 400.
-    for (const o of overrides) {
-      if (o.capacity !== undefined && (!Number.isInteger(o.capacity) || o.capacity < 1 || o.capacity > 500)) {
-        nassaqWarning('السعة يجب أن تكون رقماً صحيحاً بين 1 و 500');
-        return;
-      }
-    }
     const pairsLabel = missingClassPairs
       .map(p => {
         const key = `${p.grade_code}||${p.section_code}`;
         const ov = classOverrides[key] || {};
-        const cap = (ov.capacity !== undefined && ov.capacity !== '' && ov.capacity !== null) ? Number(ov.capacity) : 30;
         const teacher = ov.homeroom_teacher_id
           ? (teachersList.find(t => t.id === ov.homeroom_teacher_id)?.full_name || '')
           : '';
@@ -812,7 +800,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
         const sTrim = (ov.section_override ?? '').trim();
         const effG = gTrim || p.grade_code || '—';
         const effS = sTrim || p.section_code || '—';
-        return `• ${effG} / ${effS}  (${p.rows} صف، سعة ${cap}${hrLabel}${roomLabel})`;
+        return `• ${effG} / ${effS}  (${p.rows} صف${hrLabel}${roomLabel})`;
       })
       .join('\n');
     nassaqConfirm(
@@ -1086,7 +1074,7 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                       {needsClassEditor && (
                         <div className="mt-2 space-y-2">
                           <p className="text-[11px] text-yellow-800 dark:text-yellow-200">
-                            لكل مجموعة غير مرتبطة: إمّا اربطها بفصل موجود من القائمة ثم اضغط «ربط بالفصول الموجودة»، أو راجع الصف والفصل والسعة والرائد والقاعة ثم اضغط «إنشاء الفصول الناقصة» (السعة الافتراضية 30).
+                            لكل مجموعة غير مرتبطة: إمّا اربطها بفصل موجود من القائمة ثم اضغط «ربط بالفصول الموجودة»، أو راجع الصف والفصل والرائد والقاعة ثم اضغط «إنشاء الفصول الناقصة».
                           </p>
                           <div className="max-h-[220px] overflow-auto border border-yellow-300 dark:border-yellow-700 rounded">
                             <table className="w-full text-[11px]" data-testid="missing-class-pairs">
@@ -1096,7 +1084,6 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                                   <th className="p-1.5 text-start">الفصل</th>
                                   <th className="p-1.5 text-start">عدد الطلاب</th>
                                   <th className="p-1.5 text-start">ربط بفصل موجود</th>
-                                  <th className="p-1.5 text-start">السعة</th>
                                   <th className="p-1.5 text-start">رائد الفصل</th>
                                   <th className="p-1.5 text-start">القاعة</th>
                                 </tr>
@@ -1147,18 +1134,6 @@ export default function NoorImportPanel({ api, nassaqError, nassaqWarning, nassa
                                             </option>
                                           ))}
                                         </select>
-                                      </td>
-                                      <td className="p-1.5">
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          max={500}
-                                          placeholder="30"
-                                          value={ov.capacity ?? ''}
-                                          onChange={(e) => setOverride(key, { capacity: e.target.value })}
-                                          data-testid={`capacity-input-${i}`}
-                                          className="w-16 px-1.5 py-0.5 rounded border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-yellow-950/60 text-[11px]"
-                                        />
                                       </td>
                                       <td className="p-1.5">
                                         <select

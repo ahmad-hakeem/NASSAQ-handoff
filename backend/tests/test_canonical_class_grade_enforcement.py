@@ -188,6 +188,38 @@ async def test_wizard_create_matching_grade_and_grade_id_accepted(client):
 
 
 @pytest.mark.asyncio
+async def test_wizard_create_assigns_student_grade_as_string(client):
+    """Canonical grade numbers must fit the students.grade VARCHAR column."""
+    school_id = await _mk_school()
+    p = await _mk_principal(school_id)
+    h = _headers(p["id"], UserRole.SCHOOL_PRINCIPAL.value, school_id)
+    student_id = str(uuid.uuid4())
+    await gd_insert(db.session, "students", {
+        "id": student_id,
+        "school_id": school_id,
+        "full_name": "Student with canonical grade",
+        "is_active": True,
+    })
+
+    resp = await client.post("/classes/create", json={
+        "name_ar": f"فصل {uuid.uuid4().hex[:5]}",
+        "grade_id": "1",
+        "grade": 1,
+        "stage": "primary",
+        "section": "أ",
+        "student_ids": [student_id],
+    }, headers=h)
+    assert resp.status_code == 200, resp.text
+
+    assigned = await gd_find_one(db.session, "students", {"id": student_id})
+    created = await gd_find_one(
+        db.session, "classes", {"id": resp.json()["class"]["id"]}
+    )
+    assert assigned["grade"] == "1"
+    assert created["grade_id"] == "1"
+
+
+@pytest.mark.asyncio
 async def test_wizard_create_reuses_existing_grade_row_and_preserves_linkage(client):
     """A tenant grade_levels row (name='1') is matched and its id reused, with
     the canonical label persisted — existing linkage is preserved."""

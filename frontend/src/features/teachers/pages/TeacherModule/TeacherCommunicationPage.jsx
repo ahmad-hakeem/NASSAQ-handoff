@@ -31,6 +31,7 @@ import IndependentTeacherCommunicationPage from './IndependentTeacherCommunicati
 // tab so the IT composer code path is unchanged.
 import UnifiedCommunicationsHub from './UnifiedCommunicationsHub';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
 import { NotificationDetailDialog } from '@/features/communication/components/notifications/NotificationDetailDialog';
 import { normalizeStandardNotification } from '@/features/communication/components/notifications/notificationDisplay';
 
@@ -176,7 +177,7 @@ function TeacherCommunicationPageInner() {
   const fetchStudents = useCallback(async () => {
     if (!selectedClass) return;
     try {
-      const res = await api.get(`/classes/${selectedClass}/students`);
+      const res = await fetchStudentRoster(api, `/classes/${selectedClass}/students`);
       setStudents(res.data || []);
     } catch (error) {
       console.error('Error:', error);

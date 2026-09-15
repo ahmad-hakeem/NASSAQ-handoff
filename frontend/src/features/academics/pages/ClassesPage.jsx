@@ -99,7 +99,6 @@ export const ClassesPage = () => {
     school_id: userSchoolId || '',
     grade_level: '',
     section: '',
-    capacity: 30,
     homeroom_teacher_id: '',
   });
 
@@ -185,7 +184,6 @@ export const ClassesPage = () => {
         school_id: userSchoolId || '',
         grade_level: '',
         section: '',
-        capacity: 30,
         homeroom_teacher_id: '',
       });
       await fetchData({ includeInactive: showInactive });
@@ -620,32 +618,21 @@ export const ClassesPage = () => {
                     />
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>{t('capacity2')}</Label>
-                      <Input
-                        type="number"
-                        value={newClass.capacity}
-                        onChange={(e) => setNewClass({ ...newClass, capacity: parseInt(e.target.value) || 30 })}
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>{t('homeroomTeacher')}</Label>
-                      <Select 
-                        value={newClass.homeroom_teacher_id} 
-                        onValueChange={(value) => setNewClass({ ...newClass, homeroom_teacher_id: value })}
-                      >
-                        <SelectTrigger className="rounded-xl">
-                          <SelectValue placeholder={t('selectTeacher')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {filteredTeachers.map(teacher => (
-                            <SelectItem key={teacher.id} value={teacher.id}>{teacher.full_name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="space-y-2">
+                    <Label>{t('homeroomTeacher')}</Label>
+                    <Select
+                      value={newClass.homeroom_teacher_id}
+                      onValueChange={(value) => setNewClass({ ...newClass, homeroom_teacher_id: value })}
+                    >
+                      <SelectTrigger className="rounded-xl">
+                        <SelectValue placeholder={t('selectTeacher')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredTeachers.map(teacher => (
+                          <SelectItem key={teacher.id} value={teacher.id}>{teacher.full_name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 
@@ -737,7 +724,7 @@ export const ClassesPage = () => {
                             <TableCell>
                               <div className="flex items-center gap-1">
                                 <Users className="h-4 w-4 text-brand-turquoise" />
-                                {cls.current_students} / {cls.capacity}
+                                {cls.current_students || 0} {isRTL ? 'طالب' : t('studentsLower')}
                               </div>
                             </TableCell>
                             <TableCell>

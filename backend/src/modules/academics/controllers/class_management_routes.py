@@ -28,7 +28,8 @@ class CreateClassRequest(BaseModel):
     # When supplied, the backend enforces stage↔grade consistency.
     stage: Optional[str] = None
     class_type: ClassType = ClassType.regular
-    capacity: int = Field(default=30, ge=1, le=50)
+    # Nullable legacy metadata; class rosters have no configurable maximum.
+    capacity: Optional[int] = None
     homeroom_teacher_id: Optional[str] = None
     room_number: Optional[str] = None
     floor: Optional[int] = None

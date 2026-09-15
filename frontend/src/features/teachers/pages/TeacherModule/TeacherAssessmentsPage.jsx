@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 
 import { useTranslation } from '@/shared/contexts/ThemeContext';
+import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
 const ASSESSMENT_TYPES = [
   { value: 'exam', label: 'اختبار', labelEn: 'Exam' },
   { value: 'quiz', label: 'اختبار قصير', labelEn: 'Quiz' },
@@ -134,7 +135,7 @@ export default function TeacherAssessmentsPage() {
   const openGradeEntry = async (assessment) => {
     setSelectedAssessment(assessment);
     try {
-      const studentsRes = await api.get(`/classes/${assessment.class_id}/students`);
+      const studentsRes = await fetchStudentRoster(api, `/classes/${assessment.class_id}/students`);
       setStudents(studentsRes.data || []);
       
       // Fetch existing grades

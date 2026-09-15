@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 
 import { useTranslation } from '@/shared/contexts/ThemeContext';
+import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
 const BEHAVIOR_TYPES = {
   positive: { label: 'إيجابي', labelEn: 'Positive', color: 'bg-green-100 text-green-700 border-green-300', icon: ThumbsUp },
   negative: { label: 'سلبي', labelEn: 'Negative', color: 'bg-red-100 text-red-700 border-red-300', icon: ThumbsDown },
@@ -96,7 +97,7 @@ export default function TeacherBehaviorPage() {
     
     try {
       const [studentsRes, recordsRes] = await Promise.all([
-        api.get(`/classes/${selectedClass}/students`).catch(() => ({ data: [] })),
+        fetchStudentRoster(api, `/classes/${selectedClass}/students`).catch(() => ({ data: [] })),
         api.get(`/behavior?class_id=${selectedClass}`).catch(() => ({ data: [] }))
       ]);
       

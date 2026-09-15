@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent } from '@/shared/components/ui/card';
 import { Badge } from '@/shared/components/ui/badge';
 import { Button } from '@/shared/components/ui/button';
@@ -11,7 +11,6 @@ import {
   Trash2, Users, ChevronDown, ChevronUp, GripVertical, ArrowRightLeft,
   BookOpen, Building2, AlertTriangle, Star, Sparkles, Loader2
 } from 'lucide-react';
-import { toast } from 'sonner';
 
 import { useTranslation } from '@/shared/contexts/ThemeContext';
 import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
@@ -143,16 +142,17 @@ const DraggableStudentChip = ({
 };
 
 const ClassColumn = ({
-  classItem, students, isRTL, canDrag, onTransfer,
+  classItem, students, totalStudentCount, isRTL, canDrag, onTransfer,
   onView, onEdit, onDelete, onAction, searchQuery,
   selectedStudentIds, onToggleSelect
 }) => {
   const { t } = useTranslation();
   const gradeLabel = classItem.name_ar || classItem.name || '';
-  const capacity = classItem.capacity || 30;
-  const isFull = students.length >= capacity;
+  const studentCount = totalStudentCount ?? students.length;
+  const PAGE_SIZE = 50;
 
   const [collapsed, setCollapsed] = useState(false);
+  const [visibleStudentCount, setVisibleStudentCount] = useState(PAGE_SIZE);
   const [isDropTarget, setIsDropTarget] = useState(false);
   const dragCounterRef = useRef(0);
 
@@ -165,22 +165,25 @@ const ClassColumn = ({
     );
   }, [students, searchQuery]);
 
+  useEffect(() => {
+    setVisibleStudentCount(PAGE_SIZE);
+  }, [searchQuery, classItem.id]);
+
+  const visibleStudents = filteredStudents.slice(0, visibleStudentCount);
+  const hasMoreStudents = visibleStudentCount < filteredStudents.length;
+
   const handleDragOver = useCallback((e) => {
     if (!canDrag) return;
-    if (isFull) {
-      e.dataTransfer.dropEffect = 'none';
-      return;
-    }
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-  }, [canDrag, isFull]);
+  }, [canDrag]);
 
   const handleDragEnter = useCallback((e) => {
-    if (!canDrag || isFull) return;
+    if (!canDrag) return;
     e.preventDefault();
     dragCounterRef.current++;
     setIsDropTarget(true);
-  }, [canDrag, isFull]);
+  }, [canDrag]);
 
   const handleDragLeave = useCallback((e) => {
     e.preventDefault();
@@ -197,15 +200,6 @@ const ClassColumn = ({
     setIsDropTarget(false);
     if (!canDrag) return;
 
-    if (isFull) {
-      toast.error(
-        isRTL
-          ? `الفصل ${gradeLabel} ممتلئ بالكامل (${students.length}/${capacity}) ولا يمكن إضافة المزيد من الطلاب إليه.`
-          : `Class ${gradeLabel} is full (${students.length}/${capacity})`
-      );
-      return;
-    }
-
     try {
       const raw = e.dataTransfer.getData('application/nassaq-student');
       if (!raw) return;
@@ -215,7 +209,7 @@ const ClassColumn = ({
     } catch (err) {
       console.error('Drop error:', err);
     }
-  }, [canDrag, isFull, isRTL, gradeLabel, students.length, capacity, classItem, onTransfer]);
+  }, [canDrag, classItem, onTransfer]);
 
   return (
     <div
@@ -225,9 +219,8 @@ const ClassColumn = ({
       onDrop={handleDrop}
       data-testid={`class-column-${classItem.id}`}
       data-class-id={classItem.id}
-      data-student-count={students.length}
+      data-student-count={studentCount}
       className={`flex flex-col rounded-2xl border-2 transition-all duration-300 overflow-hidden h-fit
-        ${isFull ? 'border-border/30 opacity-95' : ''}
         ${isDropTarget
           ? 'border-brand-turquoise bg-brand-turquoise/5 shadow-lg shadow-brand-turquoise/10 scale-[1.01]'
           : 'border-border/40 bg-card hover:border-border/60'}`}
@@ -237,19 +230,17 @@ const ClassColumn = ({
         style={{
           background: isDropTarget
             ? 'linear-gradient(135deg, rgba(70,193,190,0.12) 0%, rgba(28,61,116,0.08) 100%)'
-            : isFull
-            ? 'linear-gradient(135deg, rgba(239,68,68,0.05) 0%, rgba(28,61,116,0.03) 100%)'
             : 'linear-gradient(135deg, rgba(28,61,116,0.06) 0%, rgba(70,193,190,0.04) 100%)',
         }}
         onClick={() => setCollapsed(!collapsed)}
       >
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isFull ? 'bg-red-500/10' : 'bg-brand-navy/10'}`}>
-          <Building2 className={`h-4.5 w-4.5 ${isFull ? 'text-red-500' : 'text-brand-navy'}`} />
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-brand-navy/10">
+          <Building2 className="h-4.5 w-4.5 text-brand-navy" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-bold text-sm truncate">{gradeLabel}</h3>
           <p className="text-[10px] text-muted-foreground">
-            {isRTL ? `${students.length} من ${capacity} طالب` : `${students.length} of ${capacity} students`}
+            {studentCount} {isRTL ? 'طالب' : t('studentsLower')}
             {searchQuery && filteredStudents.length !== students.length && (
               <span className="text-brand-turquoise ms-1">
                 ({isRTL ? `${filteredStudents.length} ظاهر` : `${filteredStudents.length} shown`})
@@ -257,15 +248,8 @@ const ClassColumn = ({
             )}
           </p>
         </div>
-        <Badge
-          variant={isFull ? 'destructive' : 'outline'}
-          className={`text-[10px] h-5 rounded-full font-bold shrink-0 ${
-            isFull
-              ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900'
-              : 'bg-brand-navy/5 text-brand-navy border-brand-navy/20'
-          }`}
-        >
-          {isFull ? (isRTL ? `مكتمل (${students.length}/${capacity})` : `Full (${students.length}/${capacity})`) : `${students.length}/${capacity}`}
+        <Badge variant="outline" className="text-[10px] h-5 rounded-full font-bold shrink-0 bg-brand-navy/5 text-brand-navy border-brand-navy/20">
+          {studentCount}
         </Badge>
         {collapsed ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />}
       </div>
@@ -288,7 +272,7 @@ const ClassColumn = ({
               )}
             </div>
           ) : (
-            filteredStudents.map(student => (
+            visibleStudents.map(student => (
               <DraggableStudentChip
                 key={student.id}
                 student={student}
@@ -303,6 +287,18 @@ const ClassColumn = ({
               />
             ))
           )}
+          {hasMoreStudents && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full mt-2 text-xs"
+              data-testid={`show-more-students-${classItem.id}`}
+              onClick={() => setVisibleStudentCount((count) => Math.min(count + PAGE_SIZE, filteredStudents.length))}
+            >
+              {isRTL ? `عرض ${Math.min(PAGE_SIZE, filteredStudents.length - visibleStudentCount)} طالب إضافي` : `Show ${Math.min(PAGE_SIZE, filteredStudents.length - visibleStudentCount)} more`}
+            </Button>
+          )}
         </div>
       )}
     </div>
@@ -316,7 +312,9 @@ const UnassignedColumn = ({
   onAutoDistribute, isAutoDistributing = false
 }) => {
   const { t } = useTranslation();
+  const PAGE_SIZE = 50;
   const [collapsed, setCollapsed] = useState(false);
+  const [visibleStudentCount, setVisibleStudentCount] = useState(PAGE_SIZE);
   const [isDropTarget, setIsDropTarget] = useState(false);
   const dragCounterRef = useRef(0);
 
@@ -328,6 +326,13 @@ const UnassignedColumn = ({
       (s.student_number || '').toLowerCase().includes(q)
     );
   }, [students, searchQuery]);
+
+  useEffect(() => {
+    setVisibleStudentCount(PAGE_SIZE);
+  }, [searchQuery]);
+
+  const visibleStudents = filteredStudents.slice(0, visibleStudentCount);
+  const hasMoreStudents = visibleStudentCount < filteredStudents.length;
 
   const allUnassignedSelected = useMemo(() => {
     if (filteredStudents.length === 0) return false;
@@ -448,7 +453,7 @@ const UnassignedColumn = ({
 
       {!collapsed && (
         <div className="p-3 space-y-1.5 max-h-[500px] overflow-y-auto">
-          {filteredStudents.map(student => (
+           {visibleStudents.map(student => (
             <DraggableStudentChip
               key={student.id}
               student={student}
@@ -462,6 +467,18 @@ const UnassignedColumn = ({
               onToggleSelect={onToggleSelect}
             />
           ))}
+           {hasMoreStudents && (
+             <Button
+               type="button"
+               variant="outline"
+               size="sm"
+               className="w-full mt-2 text-xs"
+               data-testid="show-more-unassigned-students"
+               onClick={() => setVisibleStudentCount((count) => Math.min(count + PAGE_SIZE, filteredStudents.length))}
+             >
+               {isRTL ? `عرض ${Math.min(PAGE_SIZE, filteredStudents.length - visibleStudentCount)} طالب إضافي` : `Show ${Math.min(PAGE_SIZE, filteredStudents.length - visibleStudentCount)} more`}
+             </Button>
+           )}
         </div>
       )}
     </div>
@@ -469,7 +486,7 @@ const UnassignedColumn = ({
 };
 
 export default function StudentClassGrid({
-  students, classes, isRTL, searchQuery,
+  students, classes, studentCounts, isRTL, searchQuery,
   onView, onEdit, onDelete, onAction,
   onTransferStudent, onBulkAssign, onBulkDelete,
   onAutoDistribute, isAutoDistributing = false,
@@ -514,29 +531,6 @@ export default function StudentClassGrid({
 
   const handleExecuteBulkAssign = async () => {
     if (!bulkTargetClassId || selectedStudentIds.size === 0) return;
-
-    const targetClass = (classes || []).find(c => c.id === bulkTargetClassId);
-    const classCount = classStudentMap.map[bulkTargetClassId]?.students?.length ?? (targetClass?.student_count || 0);
-    const cap = targetClass?.capacity || 30;
-    const remaining = Math.max(0, cap - classCount);
-
-    if (remaining === 0) {
-      toast.error(
-        isRTL
-          ? `الفصل ${targetClass?.name_ar || targetClass?.name || ''} ممتلئ بالكامل (${classCount}/${cap}). الرجاء اختيار فصل آخر.`
-          : `Class ${targetClass?.name_ar || targetClass?.name || ''} is full (${classCount}/${cap}). Please choose another class.`
-      );
-      return;
-    }
-
-    if (selectedStudentIds.size > remaining) {
-      toast.error(
-        isRTL
-          ? `عدد الطلاب المحددين (${selectedStudentIds.size}) يتجاوز المقاعد المتاحة في هذا الفصل (${remaining} فقط من أصل ${cap}).`
-          : `Selected students (${selectedStudentIds.size}) exceed available seats (${remaining} of ${cap}).`
-      );
-      return;
-    }
 
     setBulkLoading(true);
     try {
@@ -647,6 +641,7 @@ export default function StudentClassGrid({
             key={classItem.id}
             classItem={classItem}
             students={classStudents}
+            totalStudentCount={studentCounts?.get?.(classItem.id)}
             isRTL={isRTL}
             canDrag={canDrag}
             onTransfer={handleTransfer}
@@ -690,14 +685,14 @@ export default function StudentClassGrid({
                   >
                     <option value="">{isRTL ? '— اختر فصلاً للإسناد —' : '— Select target class —'}</option>
                     {classes.map((c) => {
-                      const classCount = classStudentMap.map[c.id]?.students?.length ?? (c.student_count || 0);
-                      const cap = c.capacity || 30;
-                      const remaining = Math.max(0, cap - classCount);
-                      const isClassFull = remaining === 0;
+                      const classCount = studentCounts?.get?.(c.id)
+                        ?? classStudentMap.map[c.id]?.students?.length
+                        ?? c.student_count
+                        ?? 0;
                       const label = c.name_ar || c.name || `${c.grade_level || ''} ${c.section || ''}`;
                       return (
-                        <option key={c.id} value={c.id} disabled={isClassFull}>
-                          {label} ({classCount}/{cap}) {isClassFull ? (isRTL ? '[ممتلئ]' : '[Full]') : (isRTL ? `[متاح ${remaining}]` : `[${remaining} left]`)}
+                        <option key={c.id} value={c.id}>
+                          {label} ({classCount} {isRTL ? 'طالب' : t('studentsLower')})
                         </option>
                       );
                     })}

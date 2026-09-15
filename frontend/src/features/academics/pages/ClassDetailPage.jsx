@@ -21,6 +21,7 @@ import {
 } from '@/shared/components/ui/dropdown-menu';
 import AddStudentWizard from '@/features/teachers/components/wizards/AddStudentWizard';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
 import { useSchoolNavigation } from '@/shared/models/utils/studentNavigation';
 import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
 
@@ -249,6 +250,7 @@ export default function ClassDetailPage() {
   const [classes, setClasses] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('grid');
+  const [visibleStudentCount, setVisibleStudentCount] = useState(50);
   const [showStudentWizard, setShowStudentWizard] = useState(false);
   const [grades, setGrades] = useState([]);
 
@@ -270,7 +272,7 @@ export default function ClassDetailPage() {
     try {
       const [classRes, studentsRes, classesRes, gradesRes] = await Promise.all([
         api.get(`/classes/${classId}`, { headers }),
-        api.get(`/classes/${classId}/students`, { headers }),
+        fetchStudentRoster(api, `/classes/${classId}/students`, { headers }),
         api.get('/classes', { headers }).catch(() => ({ data: [] })),
         api.get('/reference/grades', { headers }).catch(() => ({ data: [] })),
       ]);
@@ -307,7 +309,12 @@ export default function ClassDetailPage() {
 
   // Student category filter tabs were removed from the UI; the list now
   // always shows all students (subject only to the search query).
-  const displayedStudents = filteredStudents;
+  useEffect(() => {
+    setVisibleStudentCount(50);
+  }, [searchQuery]);
+
+  const displayedStudents = filteredStudents.slice(0, visibleStudentCount);
+  const hasMoreStudents = visibleStudentCount < filteredStudents.length;
 
   const { rolePrefix, getStudentDetailPath } = useSchoolNavigation();
 
@@ -449,8 +456,6 @@ export default function ClassDetailPage() {
     );
   }
 
-  const capacityPct = Math.min(100, ((classData.student_count || students.length) / (classData.capacity || 30)) * 100);
-
   return (
     <Sidebar>
       <div className="min-h-screen" data-testid="class-detail-page">
@@ -509,7 +514,7 @@ export default function ClassDetailPage() {
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Users className="h-3.5 w-3.5 shrink-0" />
-                      <span>{students.length} {t('studentsLower')}</span>
+                      <span>{students.length} {isRTL ? 'طالب' : t('studentsLower')}</span>
                     </div>
                     {classData.academic_year_id && (
                       <div className="flex items-center gap-1.5">
@@ -522,16 +527,7 @@ export default function ClassDetailPage() {
                 <div className="flex items-center gap-2 shrink-0">
                   <div className="text-center px-3">
                     <div className="text-2xl font-bold">{students.length}</div>
-                    <div className="text-[10px] text-muted-foreground">/ {classData.capacity || 30}</div>
-                  </div>
-                  <div className="w-20">
-                    <div className={`text-[10px] font-medium text-center mb-1 ${capacityPct > 90 ? 'text-red-500' : capacityPct > 70 ? 'text-amber-500' : 'text-emerald-500'}`}>
-                      {Math.round(capacityPct)}% {t('full')}
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-2">
-                      <div className={`h-2 rounded-full transition-all duration-500 ${capacityPct > 90 ? 'bg-gradient-to-r from-red-400 to-red-500' : capacityPct > 70 ? 'bg-gradient-to-r from-amber-400 to-orange-500' : 'bg-gradient-to-r from-emerald-400 to-green-500'}`}
-                        style={{ width: `${capacityPct}%` }} />
-                    </div>
+                    <div className="text-[10px] text-muted-foreground">{isRTL ? 'عدد الطلاب' : t('students')}</div>
                   </div>
                 </div>
               </div>
@@ -599,6 +595,21 @@ export default function ClassDetailPage() {
               ))}
             </div>
           )}
+           {hasMoreStudents && (
+             <div className="flex justify-center pt-2">
+               <Button
+                 type="button"
+                 variant="outline"
+                 size="sm"
+                 data-testid="show-more-class-students"
+                 onClick={() => setVisibleStudentCount((count) => Math.min(count + 50, filteredStudents.length))}
+               >
+                 {isRTL
+                   ? `عرض ${Math.min(50, filteredStudents.length - visibleStudentCount)} طالب إضافي`
+                   : `Show ${Math.min(50, filteredStudents.length - visibleStudentCount)} more`}
+               </Button>
+             </div>
+           )}
         </main>
 
         <AddStudentWizard

@@ -24,6 +24,7 @@ import ReactivationBanner from '@/features/teachers/components/teacher/Reactivat
 import OnboardingTrigger from '@/features/teachers/components/teacher/OnboardingTour/OnboardingTrigger';
 
 import { useTranslation } from '@/shared/contexts/ThemeContext';
+import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
 const HAKIM_CHARACTER = '/hakim-poses/teacher-helper.png';
 
 // The Hakim "class health / risk alerts" card is hidden per product request.
@@ -402,7 +403,7 @@ export default function TeacherMainDashboard() {
         setClassHealthData(healthData);
 
         const riskPromises = classes.map(cls =>
-          api.get(`/classes/${cls.id}/students`).catch(() => ({ data: [] }))
+          fetchStudentRoster(api, `/classes/${cls.id}/students`).catch(() => ({ data: [] }))
         );
         const studentsResults = await Promise.all(riskPromises);
         const allStudents = studentsResults.flatMap(r => r?.data || []);

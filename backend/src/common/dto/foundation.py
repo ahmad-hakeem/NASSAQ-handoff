@@ -382,7 +382,9 @@ class Section(BaseModel):
     grade_id: str
     
     name: str                              # أ، ب، ج or A, B, C
-    capacity: int = 30
+    # Nullable legacy class metadata.  Student rosters are open-ended; this
+    # does not describe the associated physical classroom.
+    capacity: Optional[int] = None
     current_students: int = 0
     
     # Assigned homeroom teacher

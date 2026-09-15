@@ -56,6 +56,7 @@ import {
 } from '@/shared/components/ui/table';
 import { Link } from 'react-router-dom';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
 
 const AddStudentWizard = lazy(() => import('@/features/teachers/components/wizards/AddStudentWizard'));
 
@@ -105,7 +106,7 @@ export const StudentsPage = () => {
         // For school-level users, only fetch students and classes (tenant-scoped by backend)
         // For platform admins, also fetch schools for filtering
         const [studentsRes, classesRes, gradesRes] = await Promise.all([
-          api.get('/students'),
+          fetchStudentRoster(api, '/students'),
           api.get('/classes'),
           api.get('/reference/grades').catch(() => ({ data: [] })),
         ]);

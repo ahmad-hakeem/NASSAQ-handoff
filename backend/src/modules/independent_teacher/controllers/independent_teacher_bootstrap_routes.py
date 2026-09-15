@@ -102,7 +102,9 @@ class WorkspaceClassDraft(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     grade_level: Optional[str] = Field(default=None, max_length=120)
     subject: Optional[str] = Field(default=None, max_length=120)
-    capacity: int = Field(default=30, ge=1, le=200)
+    # Nullable legacy metadata accepted from older onboarding clients.  It is
+    # never used to limit the workspace roster.
+    capacity: Optional[int] = None
 
 
 class WorkspaceBootstrapRequest(BaseModel):

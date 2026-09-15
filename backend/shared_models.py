@@ -551,7 +551,9 @@ class ClassCreate(BaseModel):
     grade: Optional[str] = None
     grade_level: Optional[str] = None
     section: Optional[str] = None
-    capacity: int = 30
+    # Nullable legacy metadata.  Class roster admission is open-ended and
+    # never consults this value.
+    capacity: Optional[int] = None
     class_teacher_id: Optional[str] = None
     homeroom_teacher_id: Optional[str] = None
     grade_id: Optional[str] = None
@@ -612,7 +614,7 @@ class ClassResponse(BaseModel):
     name: str
     grade: Optional[Union[int, str]] = None
     section: Optional[str] = None
-    capacity: Optional[int] = 30
+    capacity: Optional[int] = None
     school_id: str
     class_teacher_id: Optional[str] = None
     grade_id: Optional[str] = None

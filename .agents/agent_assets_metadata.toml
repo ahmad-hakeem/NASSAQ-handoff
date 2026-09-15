@@ -6,135 +6,172 @@ id = "-5mORokbsqOAC2184-v_B"
 uri = "file://.local/teacher_module_analysis.md"
 type = "text"
 title = "Teacher Module — Complete Analysis Report"
+logical_id = "78d1f5af-bc57-4950-a90e-89bcce4d0683"
 
 [[outputs]]
 id = "cZQDBdjJBUCJYumcjFmP8"
 uri = "file://client_update_april_7_16.md"
 type = "text"
 title = "تقرير التحديثات — منصة نَسَّق (7-16 أبريل 2026)"
+logical_id = "f4a30efd-3093-439a-bb1b-d955018c716a"
 
 [[outputs]]
 id = "JQNt_vxbrhGvCIR5RVE5M"
 uri = "file://docs/superpowers/specs/2026-04-17-student-platform-audit-and-fix-plan.md"
 type = "text"
 title = "خطة مراجعة وإصلاح منصة الطالب — NASSAQ"
+logical_id = "ceebe02b-2375-47d9-b561-de6fd7576af0"
 
 [[outputs]]
 id = "adZaqjDh4hNdCH9XxX3L9"
 uri = "file://docs/NASSAQ_Investor_System_Document.md"
 type = "text"
 title = "وثيقة نسّاق التنفيذية للمستثمرين"
+logical_id = "d0b9d917-b76c-44c7-8e3e-4d12b8dedfd7"
 
 [[outputs]]
 id = "C7hkn0x4cYMTMgNGUQ2zO"
 uri = "file://outputs/NASSAQ_Investor_System_Document.docx"
 type = "word_document"
 title = "NASSAQ Investor System Document (DOCX)"
+logical_id = "be2fe077-8a2d-4440-91ed-78cd79fbc982"
 
 [[outputs]]
 id = "_eM41ydOoe1A_PSGNmmxT"
 uri = "file://exports/users_list.csv"
 type = "table"
 title = "Users list (786 accounts)"
+logical_id = "54f94664-4222-4a23-9995-118948b167b1"
 
 [[outputs]]
 id = "u7fupcBDOfPouttDg74db"
 uri = "file://reports/تقرير_حساب_المعلم_بعد_التحديث.docx"
 type = "word_document"
 title = "تقرير حساب المعلم بعد التحديث"
+logical_id = "dee395ae-51d1-455c-9c66-d053dbb34d6c"
 
 [[outputs]]
 id = "aH_JtqV2NtMhM63D5bC9G"
 uri = "file://docs/security/SECURITY_AUDIT_2026-05-11.md"
 type = "text"
 title = "NASSAQ Security Audit — 2026-05-11"
+logical_id = "a60dad2c-6595-4b18-bd2d-c56df3495e4f"
 
 [[outputs]]
 id = "jE2SwL-rpffC2-0ikG7WL"
 uri = "file://docs/audits/2026-05-12-platform-status-report.md"
 type = "text"
 title = "NASSAQ — Platform Status Report (2026-05-12)"
+logical_id = "b82a43ae-0fdd-4587-bf75-d2834bce8e95"
 
 [[outputs]]
 id = "cyTWesmVFFjpmb30ciGaR"
 uri = "file://reports/تقرير_الأمان_نسّق.md"
 type = "text"
 title = "تقرير الأمان والحماية لمنصة نَسَّق"
+logical_id = "65299d12-976a-4d2e-a58e-a488d3a11e97"
 
 [[outputs]]
 id = "9tA_r-5VpN1jIcH6kcd-U"
 uri = "file://reports/تقرير_الأمان_نسّق.docx"
 type = "word_document"
 title = "تقرير الأمان والحماية لمنصة نَسَّق (Word)"
+logical_id = "e4cde0a0-1af0-43c6-a20a-74b571eee078"
 
 [[outputs]]
 id = "VVSOZ6M1koOLm5TSyTBzh"
 uri = "file://.local/qa/task-706/تقرير-مراجعة-الجداول-والحضور.md"
 type = "text"
 title = "تقرير مراجعة الجودة — الجداول والجدول المدرسي والحضور"
+logical_id = "030ea927-2793-4942-828c-8fe9cbc6f43c"
 
 [[outputs]]
 id = "xMq9dR5Crcriy5IyxLsCa"
 uri = "file://.local/qa/task-706/07_after_save_click.png"
 type = "image"
 title = "BUG-01: فشل حفظ حضور الطلاب لمدير المدرسة (403)"
+logical_id = "7fc7b16c-34ae-463a-b276-b7b5db4256de"
 
 [[outputs]]
 id = "wwj2_0vS_0DKiSpfJPgRv"
 uri = "file://.local/qa/task-706/02_master_schedule.png"
 type = "image"
 title = "الجدول المدرسي (سياق BUG-03 و BUG-05)"
+logical_id = "5e56e1c6-3ef3-440b-a4d2-1371f2d0a2d8"
 
 [[outputs]]
 id = "KGNhlWU_KKW9n96GJj_5O"
 uri = "file://reports/platform-admin-qa-audit-2026-05-31.md"
 type = "text"
 title = "Platform Admin QA Audit Report"
+logical_id = "13686793-934f-4649-ad23-150fd7fe1eb1"
 
 [[outputs]]
 id = "Gj2hPFRg6MPWf_VOBtQ1R"
 uri = "file://.local/it-audit/IT_QA_REPORT.md"
 type = "text"
 title = "Independent Teacher — End-to-End QA Audit Report"
+logical_id = "fd06f1bf-9c58-4bb2-a493-12dc7847e26c"
 
 [[outputs]]
 id = "Ef1lQiZuMJGwUCzJL7GO2"
 uri = "file://reports/dropdown-audit/2026-05-31-dropdown-qa-audit.md"
 type = "text"
 title = "Dropdown QA Audit — First Pass (2026-05-31)"
+logical_id = "e0c5fca5-9d8a-40b9-b7b7-6c332d4a4e4d"
 
 [[outputs]]
 id = "JQLXUiPp5o6zxOUMPQgtY"
 uri = "file://docs/qa/2026-05-31-parent-dropdowns-audit.md"
 type = "text"
 title = "Parent Role — Dropdown/Filter QA Audit (2026-05-31)"
+logical_id = "80ec6642-fd25-4b1f-bee0-6aa27ac131ec"
 
 [[outputs]]
 id = "u5nRWbS5cgNyquezirmYu"
 uri = "file://docs/qa/2026-05-31-teacher-role-qa-audit.md"
 type = "text"
 title = "School Teacher Role — QA Audit Report (2026-05-31)"
+logical_id = "186b5d00-93c0-4d97-b711-96999e614e96"
 
 [[outputs]]
 id = "K7HkxNHc0YQleAbeXEgd3"
 uri = "file://.local/audit/FINDINGS-REPORT.md"
 type = "text"
 title = "NASSAQ Security & QA Audit — Findings Report"
+logical_id = "9e923cb6-8be3-4373-971d-6fad8d08ab41"
 
 [[outputs]]
 id = "91c68PABBELcGi5VITHun"
 uri = "file://docs/HANDOVER_TECHNICAL_REPORT.md"
 type = "text"
 title = "NASSAQ — Engineering Handover Technical Report"
+logical_id = "4af9ed14-8f38-4722-9333-ba1aa902dda9"
 
 [[outputs]]
 id = "MAutFx9i9-MiwtTgaEzqT"
 uri = "file://docs/platform-state-report.md"
 type = "text"
 title = "NASSAQ Platform State Report (2026-06-23)"
+logical_id = "f69f120f-a998-49eb-b205-e4733fbfe5ed"
 
 [[outputs]]
 id = "cUdmBTObIy5mWuWCzUhl2"
 uri = "file://reports/board-report-2026-05-20-to-2026-06-26.md"
 type = "text"
 title = "Board Report — Platform Progress (20 May – 26 June 2026)"
+logical_id = "d6da0a06-6122-4d5f-9497-1487aa56ca37"
+
+[[outputs]]
+id = "dedM3lvFM3_m56MNiWcFD"
+uri = "file://docs/reports/open-ended-class-rosters.html"
+type = "text"
+title = "تقرير إزالة سقف طلاب الفصل"
+description = "المواضع المعدّلة، نتائج اختبارات الإضافة والاستيراد، وقياسات الأداء للفصول الكبيرة."
+logical_id = "947827a9-ae9a-40a0-813c-81e655df9120"
+content_hash = "sha256:9e35d6cb7125dd4d0cb33a22e942f8df413e735fe061f7d2e1a02ec729b6083f"
+size = 11039
+mtime_ms = 1789504793611
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:76d3d322-060b-41e8-b1b6-757b9374d907/947827a9-ae9a-40a0-813c-81e655df9120/03f446ed-db3d-40ed-925a-f33a20fefac3"
+storage_version_token = "1789504862457871"
+content_type = "text/html"

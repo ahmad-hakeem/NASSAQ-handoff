@@ -30,6 +30,7 @@ import {
 import { toast } from 'sonner';
 import { EDUCATION_STAGES, filterGradesByStage, gradeBelongsToStage, normalizeStage, availableStagesFromGrades } from '@/shared/models/utils/stageGrade';
 import { getFormErrorMessage } from '@/shared/models/utils/apiError';
+import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
 import {
   ArrowLeft,
   ArrowRight,
@@ -129,7 +130,7 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [result, setResult] = useState(null);
-  const [data, setData] = useState({ capacity: 30, class_type: 'regular', student_ids: [] });
+  const [data, setData] = useState({ class_type: 'regular', student_ids: [] });
   const [options, setOptions] = useState({ grades: [], teachers: [], students: [], classTypes: [] });
   const [studentSearch, setStudentSearch] = useState('');
 
@@ -151,13 +152,17 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
       const [gradesRes, teachersRes, studentsRes, typesRes] = await Promise.all([
         apiClient.get('/classes/options/grades').catch(() => ({ data: { grades: [] } })),
         apiClient.get('/classes/options/teachers').catch(() => ({ data: { teachers: [] } })),
-        apiClient.get('/classes/options/students').catch(() => ({ data: { students: [] } })),
+        fetchStudentRoster(apiClient, '/classes/options/students')
+          .catch(() => ({ data: { students: [] } })),
         apiClient.get('/classes/options/class-types').catch(() => ({ data: { types: [] } })),
       ]);
+      const studentOptions = Array.isArray(studentsRes.data)
+        ? studentsRes.data
+        : (studentsRes.data?.students || []);
       setOptions({
         grades: gradesRes.data.grades || [],
         teachers: teachersRes.data.teachers || [],
-        students: studentsRes.data.students || [],
+        students: studentOptions,
         classTypes: typesRes.data.types || [
           { code: 'regular', name_ar: 'عادي', name_en: 'Regular' },
           { code: 'advanced', name_ar: 'متقدم', name_en: 'Advanced' },
@@ -224,7 +229,7 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
 
   const handleReset = () => {
     setCurrentStep(1);
-    setData({ capacity: 30, class_type: 'regular', student_ids: [] });
+    setData({ class_type: 'regular', student_ids: [] });
     setErrors({});
     setResult(null);
     setStudentSearch('');
@@ -350,9 +355,6 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
                       </SelectContent>
                     </Select>
                   </FormField>
-                  <FormField label={t('capacity')}>
-                    <Input type="number" value={data.capacity || 30} onChange={(e) => onChange('capacity', parseInt(e.target.value) || 30)} min="1" max="50" className="h-10 rounded-lg" data-testid="class-capacity" />
-                  </FormField>
                 </div>
 
                 <div className="border-t pt-4 mt-2">
@@ -450,7 +452,6 @@ export const CreateClassWizard = ({ open, onOpenChange, onSuccess }) => {
                   <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                     <div><span className="text-muted-foreground text-xs">{t('name')}</span><p className="font-medium">{data.name_ar}</p></div>
                     <div><span className="text-muted-foreground text-xs">{t('grade')}</span><p className="font-medium">{getGradeName(data.grade_id)}</p></div>
-                    <div><span className="text-muted-foreground text-xs">{t('capacity2')}</span><p className="font-medium">{data.capacity || 30}</p></div>
                     {data.room_number && <div><span className="text-muted-foreground text-xs">{t('room')}</span><p className="font-medium">{data.room_number}</p></div>}
                   </div>
                 </div>

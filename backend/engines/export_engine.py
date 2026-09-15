@@ -43,7 +43,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.lib.enums import TA_RIGHT, TA_CENTER
 from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+    SimpleDocTemplate, Table, LongTable, TableStyle, Paragraph, Spacer,
     HRFlowable,
 )
 from reportlab.pdfbase import pdfmetrics
@@ -180,7 +180,10 @@ def _build_table(headers, rows, col_widths=None):
     for i in range(1, len(data)):
         if i % 2 == 0:
             cmds.append(("BACKGROUND", (0, i), (-1, i), ALT_ROW))
-    t = Table(data, colWidths=col_widths, repeatRows=1)
+    # LongTable keeps the header row on every page while splitting large
+    # reports at row boundaries.  This is important for class reports: a
+    # report must remain complete even when a class has hundreds of students.
+    t = LongTable(data, colWidths=col_widths, repeatRows=1)
     t.setStyle(TableStyle(cmds))
     return t
 
@@ -566,7 +569,7 @@ class ExportEngine:
             story.append(_ar_para("ملخص الطلاب", styles["ArabicSection"]))
             headers = ["التفاعلات", "نسبة الحضور", "الاسم"]
             rows = [[str(s.get("interactions", 0)), f"{s.get('attendance_rate', 0)}%",
-                      s.get("full_name", s.get("student_id", ""))] for s in student_summaries[:30]]
+                      s.get("full_name", s.get("student_id", ""))] for s in student_summaries]
             story.append(_build_table(headers, rows))
 
     def _pdf_timetable(self, story, data, styles):

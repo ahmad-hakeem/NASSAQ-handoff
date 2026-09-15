@@ -105,7 +105,9 @@ class ClassWizardCreate(BaseModel):
     stage: Optional[str] = None  # Canonical stage (primary|middle|high); enforced server-side when present
     section: Optional[str] = "أ"  # Default section
     class_type: Optional[str] = "regular"
-    capacity: int = 30
+    # Legacy metadata accepted for backwards-compatible clients.  Class
+    # rosters are open-ended; this field has no admission/enrolment effect.
+    capacity: Optional[int] = None
     homeroom_teacher_id: Optional[str] = None
     student_ids: List[str] = []
     # Independent-Teacher workspace UI — validated when present (ignored for
@@ -284,7 +286,11 @@ async def create_class_wizard(
             {"id": {"$in": data.student_ids}, "school_id": school_id},
             {
                 "class_id": class_id,
-                "grade": data.grade,
+                # Student.grade is a VARCHAR column.  ``grade_number`` is
+                # canonicalised above from the authoritative grade_id, so
+                # persist its string form while keeping the class's
+                # grade_id linkage unchanged.
+                "grade": str(grade_number),
                 "section": data.section,
             })
     
@@ -478,11 +484,10 @@ async def get_classes(
                 )
                 deleted_by_map = {}
 
-    # Aggregate live student counts per class so the UI cards can render
-    # "{student_count} / {capacity} طلاب" and the fill progress instead of
-    # always showing 0. Counts only active students assigned to a class,
-    # scoped by (school_id, class_id) so tenants never see another school's
-    # totals even if class IDs ever collide across tenants.
+    # Aggregate live student counts per class so the UI cards can render the
+    # current open-ended roster size. Counts only active students assigned to a
+    # class, scoped by (school_id, class_id) so tenants never see another
+    # school's totals even if class IDs ever collide across tenants.
     from sqlalchemy import select as _sa_select, func as _sa_func, and_ as _sa_and, tuple_ as _sa_tuple
     from pg_models import Student as _PgStudent
     pairs = [(c.get("school_id"), c.get("id")) for c in classes if c.get("id") and c.get("school_id")]
@@ -604,7 +609,7 @@ async def get_classes(
 @router.get("/classes/{class_id}", response_model=ClassResponse)
 async def get_class(class_id: str, response: Response, current_user: dict = Depends(get_current_user)):
     """Get class by ID"""
-    # Bug #372 — class detail header (student_count / capacity bar) is
+    # Bug #372 — class detail header (live student_count) is
     # the post-delete refetch target on the class detail page. Disable
     # browser heuristic caching so the live count after DELETE
     # /students/{id} is never served from the disk cache.
@@ -735,6 +740,8 @@ async def update_class(
         update_fields["grade_id"] = class_data.grade_id
     if class_data.section is not None:
         update_fields["section"] = class_data.section
+    # Preserve an explicitly supplied legacy value for round-tripping, but do
+    # not apply bounds or use it as a roster admission policy.
     if class_data.capacity is not None:
         update_fields["capacity"] = class_data.capacity
     if class_data.homeroom_teacher_id is not None:
@@ -766,7 +773,7 @@ async def delete_class(
     that branch, so the caller must re-issue with force=True after confirming.
     On force=True, the class is soft-deleted and dependent rows are
     soft-deactivated. Active students are then EITHER moved to ``target_class_id``
-    (when supplied — validated for same-tenant + capacity) OR unassigned from the
+    (when supplied — validated for same-tenant) OR unassigned from the
     class (``class_id`` cleared) when no destination is chosen — WITHOUT deleting
     the student rows, all in one atomic transaction. Historical records
     (attendance, grades, behaviour_records, assessments) are never touched.
@@ -816,7 +823,7 @@ async def delete_class(
     # Optional reassignment destination: when supplied, every active student of
     # the deleted class is MOVED into ``target_class_id`` instead of being left
     # unassigned. Validate it BEFORE any write so the whole operation fails
-    # closed (no partial delete) if the target is invalid, cross-tenant, or full.
+    # closed (no partial delete) if the target is invalid or cross-tenant.
     target_class = None
     if target_class_id:
         if target_class_id == class_id:
@@ -827,10 +834,6 @@ async def delete_class(
         target_class = await gd_find_one(db.session, "classes", target_filter)
         if not target_class:
             raise HTTPException(status_code=404, detail="الفصل المستهدف غير موجود")
-        if student_count > 0:
-            from engines.entity_counts import enforce_class_capacity
-            await enforce_class_capacity(db.session, target_class, school_id, additional=student_count)
-
     now_iso = datetime.now(timezone.utc).isoformat()
     soft_delete_payload = {
         "is_active": False,

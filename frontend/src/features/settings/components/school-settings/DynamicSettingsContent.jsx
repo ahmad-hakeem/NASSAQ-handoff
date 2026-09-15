@@ -479,7 +479,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                         <th className="text-right py-3 px-4 text-sm font-semibold text-brand-navy">اسم الفصل</th>
                         <th className="text-right py-3 px-4 text-sm font-semibold text-brand-navy">الصف</th>
                         <th className="text-right py-3 px-4 text-sm font-semibold text-brand-navy">الشعبة</th>
-                        <th className="text-center py-3 px-4 text-sm font-semibold text-brand-navy">السعة</th>
+                        <th className="text-center py-3 px-4 text-sm font-semibold text-brand-navy">عدد الطلاب</th>
                         <th className="text-center py-3 px-4 text-sm font-semibold text-brand-navy">الحالة</th>
                       </tr>
                     </thead>
@@ -490,7 +490,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                           <td className="py-3 px-4"><span className="font-medium text-slate-800">{cls.name || cls.name_ar || '-'}</span></td>
                           <td className="py-3 px-4 text-slate-600">{cls.grade_level || cls.grade || cls.grade_name || '-'}</td>
                           <td className="py-3 px-4 text-slate-600">{cls.section || '-'}</td>
-                          <td className="py-3 px-4 text-center"><Badge variant="outline" className="bg-brand-navy/5 text-brand-navy border-brand-navy/20">{cls.capacity || 30} طالب</Badge></td>
+                          <td className="py-3 px-4 text-center"><Badge variant="outline" className="bg-brand-navy/5 text-brand-navy border-brand-navy/20">{cls.current_students ?? cls.student_count ?? 'غير محدود'}{(cls.current_students ?? cls.student_count) != null ? ' طالب' : ''}</Badge></td>
                           <td className="py-3 px-4 text-center"><Badge className={cls.is_active !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}>{cls.is_active !== false ? 'نشط' : 'غير نشط'}</Badge></td>
                         </tr>
                       ))}

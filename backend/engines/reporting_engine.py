@@ -33,6 +33,16 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 
 logger = logging.getLogger("nassaq.reporting_engine")
 
+# A class report may contain any number of active students.  This is only the
+# size of each bounded read/IN clause; the surrounding loops continue until
+# every matching row has been consumed.
+CLASS_REPORT_BATCH_SIZE = 500
+
+
+def _id_batches(ids, size=CLASS_REPORT_BATCH_SIZE):
+    for start in range(0, len(ids), size):
+        yield ids[start:start + size]
+
 
 async def _empty_rows():
     """Async-iterable stand-in for "nothing to stream"."""
@@ -1142,8 +1152,11 @@ class ReportingEngine:
     async def generate_class_report(self, class_id: str, school_id: str) -> dict:
         """Generate an aggregate report for a class including attendance and grades."""
         cls = await gd_find_one(self.session, "classes", {"id": class_id, "school_id": school_id})
-        students = await gd_find(self.session, "students",
-            {"class_id": class_id, "school_id": school_id, "is_active": True}, limit=200)
+        students = await self._paginated_find(
+            "students",
+            {"class_id": class_id, "school_id": school_id, "is_active": True},
+            page_size=CLASS_REPORT_BATCH_SIZE,
+        )
 
         student_ids = [s["id"] for s in students]
         name_map = {s["id"]: s.get("full_name", "") for s in students}
@@ -1166,30 +1179,42 @@ class ReportingEngine:
         # the summaries below need, instead of holding every interaction and
         # re-scanning the list once per student.
         interaction_counts: Dict[str, int] = {}
-        if session_ids:
-            async for r in gd_iter_rows(
-                self.session, "session_interactions",
-                {"session_id": {"$in": session_ids}, "student_id": {"$in": student_ids}},
-                max_rows=50000,
-            ):
-                rid = r.get("student_id")
-                interaction_counts[rid] = interaction_counts.get(rid, 0) + 1
+        for id_batch in _id_batches(student_ids):
+            if session_ids:
+                async for r in gd_iter_rows(
+                    self.session, "session_interactions",
+                    {"session_id": {"$in": session_ids}, "student_id": {"$in": id_batch}},
+                ):
+                    rid = r.get("student_id")
+                    interaction_counts[rid] = interaction_counts.get(rid, 0) + 1
         participating_students = set(interaction_counts.keys())
         participation_rate = round((len(participating_students) / len(students) * 100) if students else 0, 1)
 
         health_doc = await gd_find_one(self.session, "ai_insights",
             {"type": "class_health", "entity_id": class_id, "school_id": school_id})
 
+        # Count attendance in bounded streaming batches.  The old per-student
+        # pair of gd_count calls was both an N+1 query pattern and made the
+        # roster cap look like a complete report.  These maps retain the same
+        # school/status semantics while covering every active student.
+        attendance_counts: Dict[str, list] = {}
+        for id_batch in _id_batches(student_ids):
+            async for r in gd_iter_rows(
+                self.session,
+                "attendance",
+                {"student_id": {"$in": id_batch}, "school_id": school_id},
+            ):
+                sid = r.get("student_id")
+                if sid not in attendance_counts:
+                    attendance_counts[sid] = [0, 0]
+                attendance_counts[sid][0] += 1
+                if r.get("status") in ("present", "late"):
+                    attendance_counts[sid][1] += 1
+
         student_summaries = []
         for stu in students:
             sid = stu["id"]
-            s_att = await gd_count(self.session, "attendance", {
-                "student_id": sid, "school_id": school_id,
-                "status": {"$in": ["present", "late"]}
-            })
-            s_total = await gd_count(self.session, "attendance", {
-                "student_id": sid, "school_id": school_id
-            })
+            s_total, s_att = attendance_counts.get(sid, (0, 0))
             s_interactions = interaction_counts.get(sid, 0)
             student_summaries.append({
                 "student_id": sid,

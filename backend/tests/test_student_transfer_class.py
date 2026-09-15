@@ -140,21 +140,16 @@ async def test_transfer_unexpected_db_error_returns_safe_arabic_envelope(
 
 
 @pytest.mark.asyncio
-async def test_transfer_into_full_class_returns_structured_arabic_only_409(
+async def test_transfer_into_class_beyond_legacy_capacity_succeeds(
     client, school_principal_headers, tenant_a, _db_session
 ):
-    """A move into a class already at its configured capacity is blocked with
-    the structured ``CLASS_CAPACITY_REACHED`` contract: HTTP 409, a stable
-    ``error.code``, and a SAFE ARABIC-ONLY ``error.message`` (no mixed
-    Arabic/English string, no English leak). The student must not move and the
-    backend remains the source of truth for the capacity rule.
-    """
+    """A class's legacy capacity value never blocks a roster transfer."""
     from engines.sql_utils import gd_insert, gd_find_one
-    from engines.entity_counts import CLASS_CAPACITY_REACHED_CODE
 
     src_class = str(uuid.uuid4())
     full_class = str(uuid.uuid4())
-    # Target class has capacity 1 and is already occupied by one active student.
+    # Target class has legacy capacity 1 and is already occupied by one active
+    # student; the move still succeeds.
     await gd_insert(_db_session, "classes", {"id": src_class, "school_id": tenant_a, "name": "5A", "capacity": 30, "current_students": 1})
     await gd_insert(_db_session, "classes", {"id": full_class, "school_id": tenant_a, "name": "5B", "capacity": 1, "current_students": 1})
 
@@ -175,24 +170,13 @@ async def test_transfer_into_full_class_returns_structured_arabic_only_409(
         json={"student_id": mover, "target_class_id": full_class},
         headers=school_principal_headers,
     )
-    assert r.status_code == 409, r.text
+    assert r.status_code == 200, r.text
     body = r.json()
-    assert body.get("success") is False
-    err = body.get("error") or {}
-    # Stable, machine-readable code the frontend keys its localized copy off.
-    assert err.get("code") == CLASS_CAPACITY_REACHED_CODE
-    msg = err.get("message")
-    assert isinstance(msg, str) and msg
-    # Safe ARABIC-ONLY user-facing message: no English leak, no bilingual
-    # "Arabic / English" separator that read like a danger dump.
-    assert "الحد الأقصى" in msg
-    assert "maximum capacity" not in msg.lower()
-    assert "please choose another class" not in msg.lower()
-    assert " / " not in msg
+    assert body.get("success") is True
 
-    # The student never moved — capacity is enforced by the backend.
+    # The student moved despite the legacy value.
     row = await gd_find_one(_db_session, "students", {"id": mover})
-    assert row.get("class_id") == src_class
+    assert row.get("class_id") == full_class
 
 
 @pytest.mark.asyncio

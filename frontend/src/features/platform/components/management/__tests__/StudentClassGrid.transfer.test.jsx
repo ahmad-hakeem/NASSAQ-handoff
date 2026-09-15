@@ -147,6 +147,91 @@ describe('StudentClassGrid drag-and-drop wiring (Task #799)', () => {
 
     expect(onTransferStudent).not.toHaveBeenCalled();
   });
+
+  test.each([31, 50, 100, 300])('shows the actual Arabic roster count for %i students', (count) => {
+    const students = Array.from({ length: count }, (_, index) => ({
+      id: `count-${index + 1}`,
+      full_name: `Count Student ${index + 1}`,
+      class_id: 'count-class',
+      student_number: String(index + 1),
+      is_active: true,
+    }));
+    render(
+      <StudentClassGrid
+        students={students}
+        classes={[{ id: 'count-class', name: 'Count Class', name_ar: 'Count Class', grade_level: 1 }]}
+        isRTL
+        canDrag={false}
+        onView={jest.fn()}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+        onAction={jest.fn()}
+      />,
+    );
+
+    expect(columnRootByName('Count Class')).toHaveTextContent(`${count} طالب`);
+  });
+
+  test('bounds large class rosters and reveals every student in 50-student batches', () => {
+    const manyStudents = Array.from({ length: 101 }, (_, index) => ({
+      id: `large-${index + 1}`,
+      full_name: `Student ${String(index + 1).padStart(3, '0')}`,
+      class_id: 'large-class',
+      student_number: String(index + 1),
+      is_active: true,
+    }));
+    render(
+      <StudentClassGrid
+        students={manyStudents}
+        classes={[{ id: 'large-class', name: 'Large Class', name_ar: 'Large Class', grade_level: 1 }]}
+        isRTL={false}
+        canDrag={false}
+        onView={jest.fn()}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+        onAction={jest.fn()}
+      />,
+    );
+
+    expect(columnRootByName('Large Class')).toHaveTextContent('101 studentsLower');
+    expect(screen.queryByText('Student 101')).toBeNull();
+    const showMore = screen.getByTestId('show-more-students-large-class');
+    fireEvent.click(showMore);
+    expect(screen.queryByText('Student 101')).toBeNull();
+    fireEvent.click(screen.getByTestId('show-more-students-large-class'));
+    expect(screen.getByText('Student 101')).toBeInTheDocument();
+    expect(screen.queryByTestId('show-more-students-large-class')).toBeNull();
+  });
+
+  test('bulk assignment remains available for a target whose existing roster is large', async () => {
+    const onBulkAssign = jest.fn().mockResolvedValue(true);
+    render(
+      <StudentClassGrid
+        students={STUDENTS}
+        classes={[
+          { ...CLASSES[0], capacity: 1, student_count: 1 },
+          { ...CLASSES[1], capacity: 1, student_count: 1 },
+        ]}
+        isRTL={false}
+        canDrag={false}
+        onView={jest.fn()}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+        onAction={jest.fn()}
+        onBulkAssign={onBulkAssign}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('select-student-s1'));
+    const target = screen.getByLabelText('Select class');
+    expect(within(target).getByRole('option', { name: /Class Two/ })).not.toBeDisabled();
+    fireEvent.change(target, { target: { value: 'c2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Assign to class' }));
+
+    await waitFor(() => {
+      expect(onBulkAssign).toHaveBeenCalledWith(['s1'], 'c2');
+    });
+  });
 });
 
 // ---- End-to-end wiring: drag -> executeStudentTransfer -> optimistic update ----
@@ -212,7 +297,7 @@ function PageHarness({ api, refetchClasses }) {
 
 function countBadgeFor(className) {
   // The column header renders the student count both as a label and a badge;
-  // assert on the "N students" label which is unambiguous per column.
+  // assert on the "N studentsLower" label which is unambiguous per column.
   return columnRootByName(className).textContent;
 }
 
@@ -237,8 +322,8 @@ describe('StudentClassGrid + page wiring end-to-end (Task #799)', () => {
 
     // Before: Alice is under Class One.
     expect(within(columnRootByName('Class One')).getByText('Alice Student')).toBeInTheDocument();
-    expect(countBadgeFor('Class One')).toMatch(/1 students/);
-    expect(countBadgeFor('Class Two')).toMatch(/1 students/);
+    expect(countBadgeFor('Class One')).toMatch(/1 studentsLower/);
+    expect(countBadgeFor('Class Two')).toMatch(/1 studentsLower/);
 
     await act(async () => {
       dragStudentToClass('Alice Student', 'Class Two');
@@ -258,8 +343,8 @@ describe('StudentClassGrid + page wiring end-to-end (Task #799)', () => {
     expect(within(columnRootByName('Class One')).queryByText('Alice Student')).toBeNull();
 
     // Counters refreshed from the server-provided counts.
-    expect(countBadgeFor('Class One')).toMatch(/0 students/);
-    expect(countBadgeFor('Class Two')).toMatch(/2 students/);
+    expect(countBadgeFor('Class One')).toMatch(/0 studentsLower/);
+    expect(countBadgeFor('Class Two')).toMatch(/2 studentsLower/);
 
     // Success toast shown; the re-derive refetch fired.
     expect(toast.success).toHaveBeenCalledWith('moved Alice Student -> Class Two');
@@ -292,8 +377,8 @@ describe('StudentClassGrid + page wiring end-to-end (Task #799)', () => {
     // No optimistic move happened: Alice is still under Class One, counts intact.
     expect(within(columnRootByName('Class One')).getByText('Alice Student')).toBeInTheDocument();
     expect(within(columnRootByName('Class Two')).queryByText('Alice Student')).toBeNull();
-    expect(countBadgeFor('Class One')).toMatch(/1 students/);
-    expect(countBadgeFor('Class Two')).toMatch(/1 students/);
+    expect(countBadgeFor('Class One')).toMatch(/1 studentsLower/);
+    expect(countBadgeFor('Class Two')).toMatch(/1 studentsLower/);
 
     expect(toast.success).not.toHaveBeenCalled();
     expect(refetchClasses).not.toHaveBeenCalled();

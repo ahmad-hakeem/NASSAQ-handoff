@@ -6,7 +6,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from starlette.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
-from typing import List, Optional, Any, Dict
+from typing import Annotated, List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 import uuid, os, logging, json, random, re, io, base64
 
@@ -27,10 +27,6 @@ from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, g
 from engines.entity_counts import (
     reconcile_school_counts,
     reconcile_class_counts,
-    enforce_class_capacity,
-    resolve_class_capacity,
-    live_class_student_count,
-    CLASS_CAPACITY_REACHED_CODE,
 )
 from src.core.guards.tenant_guard import require_request_school_id
 from src.common.utils.it_parent_link import link_workspace_parent_to_student
@@ -151,10 +147,6 @@ async def create_student(
         if not class_doc:
             raise HTTPException(status_code=404, detail="الفصل غير موجود أو لا ينتمي إلى مدرستك")
         class_name = class_doc.get("name")
-        # Backend-authoritative capacity gate — a brand-new student is a net
-        # +1 to the class, so reject before any write when the class is full.
-        await enforce_class_capacity(db.session, class_doc, school_id)
-
     await gd_insert(db.session, "students", student_doc)
     
     # Reconcile (recompute) the school's stored counts from live rows instead of
@@ -186,7 +178,10 @@ async def create_student(
 
 @router.get("/students", response_model=List[StudentResponse])
 async def get_students(
+    response: Response = None,
     class_id: Optional[str] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 1000,
     x_school_context: Optional[str] = Header(default=None, alias="X-School-Context"),
     current_user: dict = Depends(require_roles([
         UserRole.PLATFORM_ADMIN,
@@ -215,11 +210,23 @@ async def get_students(
     returns an empty list — never an unscoped cross-tenant directory
     dump. The legacy `?school_id=` query param is not honored.
     """
+    if response is None:
+        response = Response()
     from src.common.utils.tenant_scope import resolve_school_id
+
+    def _set_page_headers(total: int, returned: int) -> None:
+        has_more = offset + returned < total
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Has-More"] = "true" if has_more else "false"
+        response.headers["X-Next-Offset"] = (
+            str(offset + returned) if has_more else ""
+        )
+
     query = {"is_active": {"$ne": False}}
     if current_user.get("role") == UserRole.PLATFORM_ADMIN.value:
         scoped = resolve_school_id(current_user, x_school_context)
         if not scoped:
+            _set_page_headers(0, 0)
             return []
         query["school_id"] = scoped
     else:
@@ -250,14 +257,30 @@ async def get_students(
         teacher_id = current_user.get("teacher_id") or current_user.get("id")
         allowed_class_ids = await get_teacher_allowed_class_ids(db.session, teacher_id)
         if not allowed_class_ids:
+            _set_page_headers(0, 0)
             return []
         if class_id:
             if class_id not in allowed_class_ids:
+                _set_page_headers(0, 0)
                 return []
         else:
             query["class_id"] = {"$in": list(allowed_class_ids)}
 
-    students = await gd_find(db.session, "students", query, limit=1000)
+    # Preserve the historical bare-array response while making the school
+    # directory pageable.  The exact tenant/teacher-filtered query is reused
+    # for both the total and page so count headers cannot disclose another
+    # class or school.
+    total_students = await gd_count(db.session, "students", query)
+    students = await gd_find(
+        db.session,
+        "students",
+        query,
+        order_by="id",
+        desc_order=False,
+        limit=limit,
+        offset=offset,
+    )
+    _set_page_headers(total_students, len(students))
     
     # Get class names
     class_ids = list(set([s.get("class_id") for s in students if s.get("class_id")]))
@@ -348,18 +371,38 @@ async def get_class_teachers_options(current_user: dict = Depends(require_roles(
     return {"teachers": result_teachers}
 
 @router.get("/classes/options/students")
-async def get_class_students_options(current_user: dict = Depends(require_roles([
-    UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN,
-    UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER
-]))):
+async def get_class_students_options(
+    response: Response = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
+    current_user: dict = Depends(require_roles([
+        UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN,
+        UserRole.SCHOOL_SUB_ADMIN, UserRole.TEACHER, UserRole.INDEPENDENT_TEACHER
+    ])),
+):
     """Get available students for class assignment"""
+    if response is None:
+        response = Response()
     # Task #155 (audit row #17, post-review): fail-closed scope. The previous
     # `if school_id else {}` form returned every tenant's students when scope
     # could not be resolved.
     school_id = require_request_school_id(current_user)
 
     query = {"school_id": school_id, "is_active": {"$ne": False}}
-    students = await gd_find(db.session, "students", query, limit=500)
+    total_students = await gd_count(db.session, "students", query)
+    students = await gd_find(
+        db.session,
+        "students",
+        query,
+        order_by="id",
+        desc_order=False,
+        limit=limit,
+        offset=offset,
+    )
+    has_more = offset + len(students) < total_students
+    response.headers["X-Total-Count"] = str(total_students)
+    response.headers["X-Has-More"] = "true" if has_more else "false"
+    response.headers["X-Next-Offset"] = str(offset + len(students)) if has_more else ""
 
     # Add-flow audit 2026-07-28: this endpoint used to read `grade_id` /
     # `grade_level` keys that do NOT exist on students rows (the column is
@@ -441,7 +484,9 @@ async def get_class_types_options(current_user: dict = Depends(get_current_user)
 @router.get("/classes/{class_id}/students", response_model=List[StudentResponse])
 async def get_class_students(
     class_id: str,
-    response: Response,
+    response: Response = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 1000,
     current_user: dict = Depends(require_roles([
         UserRole.PLATFORM_ADMIN,
         UserRole.SCHOOL_PRINCIPAL,
@@ -459,6 +504,8 @@ async def get_class_students(
     class assignment via can_view_class() for parity with attendance
     and reporting endpoints. The IT §6.7 collab path has its own gate.
     """
+    if response is None:
+        response = Response()
     # Bug #372 — class roster is the post-delete refetch target on the
     # class detail page. Disable browser heuristic caching so a fresh
     # GET after DELETE /students/{id} always reflects the deletion
@@ -513,7 +560,24 @@ async def get_class_students(
         raise HTTPException(status_code=404, detail="الفصل غير موجود")
     class_name = cls.get("name")
 
-    students = await gd_find(db.session, "students", query, order_by="full_name", desc_order=False, limit=1000)
+    # Keep the historical bare-array response while making large rosters
+    # explicitly pageable.  Stable id ordering is required for offset paging;
+    # callers that omit the new query parameters still receive the first 1000
+    # rows exactly as before.
+    total_students = await gd_count(db.session, "students", query)
+    students = await gd_find(
+        db.session,
+        "students",
+        query,
+        order_by="id",
+        desc_order=False,
+        limit=limit,
+        offset=offset,
+    )
+    has_more = offset + len(students) < total_students
+    response.headers["X-Total-Count"] = str(total_students)
+    response.headers["X-Has-More"] = "true" if has_more else "false"
+    response.headers["X-Next-Offset"] = str(offset + len(students)) if has_more else ""
 
     # IT §6.7 — cross-workspace collaborators receive a strictly
     # downscoped roster: only the minimum classroom-teaching fields.
@@ -739,10 +803,6 @@ async def update_student(
             class_check = await gd_find_one(db.session, "classes", {"id": student_data.class_id, "school_id": class_owner_id})
             if not class_check:
                 raise HTTPException(status_code=404, detail="الفصل غير موجود أو لا ينتمي إلى مدرستك")
-            # Capacity gate — only a class CHANGE adds a net occupant to the
-            # target (re-sending the current class is a no-op, never blocked).
-            if student_data.class_id != existing.get("class_id"):
-                await enforce_class_capacity(db.session, class_check, class_owner_id)
         update_fields["class_id"] = student_data.class_id
     if student_data.date_of_birth is not None:
         update_fields["date_of_birth"] = student_data.date_of_birth
@@ -887,9 +947,6 @@ async def transfer_student_class(
     if old_class_id == target_class_id:
         return {"success": True, "message": "الطالب موجود بالفعل في هذا الفصل"}
 
-    # Capacity gate — moving into a different class is a net +1 to the target.
-    await enforce_class_capacity(db.session, target_class, school_id)
-
     now = datetime.now(timezone.utc).isoformat()
     student_name = student.get("full_name", "")
     target_name = target_class.get("name_ar") or target_class.get("name", "")
@@ -1003,7 +1060,9 @@ class BulkDeleteStudentsRequest(BaseModel):
 class AutoDistributeStudentsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     student_ids: Optional[List[str]] = Field(default=None)
-    default_capacity: int = Field(default=30, ge=1, le=100)
+    # Accepted for clients that still send the legacy field.  Class rosters are
+    # open-ended, so this value is intentionally ignored.
+    default_capacity: Optional[int] = None
 
 
 @router.post("/students/bulk-assign")
@@ -1047,31 +1106,6 @@ async def bulk_assign_students_class(
         raise HTTPException(status_code=404, detail="لم يتم العثور على أي طلاب مطابقين للإسناد")
 
     target_name = target_class.get("name_ar") or target_class.get("name", "")
-
-    # Capacity gate: net new students to target class
-    net_new_students = [s for s in matched_students if s.class_id != target_class_id]
-    net_new_count = len(net_new_students)
-
-    if net_new_count > 0:
-        capacity = resolve_class_capacity(target_class)
-        current_count = await live_class_student_count(db.session, target_class_id, target_school_id)
-        if (current_count + net_new_count) > capacity:
-            remaining_seats = max(0, capacity - current_count)
-            if remaining_seats == 0:
-                msg = f"الفصل {target_name} ممتلئ بالكامل (السعة القصوى {capacity} طالب)."
-            else:
-                msg = f"الفصل {target_name} لا يتسع لجميع الطلاب المحددين ({net_new_count} طالب). المقاعد المتبقية: {remaining_seats} فقط من أصل {capacity}."
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": CLASS_CAPACITY_REACHED_CODE,
-                    "message": msg,
-                    "capacity": capacity,
-                    "current_students": current_count,
-                    "remaining_seats": remaining_seats,
-                    "requested_students": net_new_count,
-                },
-            )
 
     affected_old_class_ids = set()
     now_dt = datetime.now(timezone.utc)
@@ -1249,21 +1283,19 @@ async def auto_distribute_students_endpoint(
                 unique_classes.append(mc)
 
         unplaced = list(grade_students)
-        # 1. Fill available seats in existing classes
+        # 1. Existing class rosters are open-ended.  Keep the stable ordering
+        # of the legacy distributor, but assign every remaining student to the
+        # first matching class instead of slicing by a configurable cap.
         for ec in unique_classes:
             if not unplaced:
                 break
-            cap = ec.capacity or payload.default_capacity or 30
-            live_count = await live_class_student_count(db.session, ec.id, school_id)
-            available = max(0, cap - live_count)
-            if available > 0:
-                to_assign = unplaced[:available]
-                unplaced = unplaced[available:]
-                for st in to_assign:
-                    st.class_id = ec.id
-                    st.updated_at = now_dt
-                    total_assigned += 1
-                affected_class_ids.add(ec.id)
+            to_assign = unplaced
+            unplaced = []
+            for st in to_assign:
+                st.class_id = ec.id
+                st.updated_at = now_dt
+                total_assigned += 1
+            affected_class_ids.add(ec.id)
 
         # 2. For remaining unplaced students, auto-provision new classes
         if unplaced:
@@ -1294,14 +1326,15 @@ async def auto_distribute_students_endpoint(
                 existing_full_names.add(new_class_name)
 
                 new_cid = str(uuid.uuid4())
-                class_cap = payload.default_capacity or 30
                 new_class_doc = {
                     "id": new_cid,
                     "school_id": school_id,
                     "name": new_class_name,
                     "grade_level": grade_name,
                     "section": sec_letter,
-                    "capacity": class_cap,
+                    # Nullable legacy metadata only; it is never used to
+                    # decide roster membership.
+                    "capacity": None,
                     "current_students": 0,
                     "is_active": True,
                     "created_at": now_iso,
@@ -1313,12 +1346,12 @@ async def auto_distribute_students_endpoint(
                     "name": new_class_name,
                     "grade": grade_name,
                     "section": sec_letter,
-                    "capacity": class_cap,
+                    "capacity": None,
                 })
                 affected_class_ids.add(new_cid)
 
-                batch_for_class = unplaced[:class_cap]
-                unplaced = unplaced[class_cap:]
+                batch_for_class = unplaced
+                unplaced = []
                 for st in batch_for_class:
                     st.class_id = new_cid
                     st.updated_at = now_dt
@@ -1705,9 +1738,6 @@ async def create_student_with_wizard(
         class_doc = await gd_find_one(db.session, "classes", {"id": data.class_id, "school_id": school_id})
         if not class_doc:
             raise HTTPException(status_code=404, detail="الفصل غير موجود في هذه المدرسة")
-        # Capacity gate — net +1 for a new student; reject before any write.
-        await enforce_class_capacity(db.session, class_doc, school_id)
-    
     # Create student
     student_doc = {
         "id": student_id,

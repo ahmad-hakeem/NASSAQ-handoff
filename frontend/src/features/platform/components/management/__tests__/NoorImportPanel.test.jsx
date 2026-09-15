@@ -265,8 +265,6 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     renderWithProviders(api);
     await seedPreview(api, _previewWithPair());
 
-    const capInput = await screen.findByTestId('capacity-input-0');
-    expect(capInput).toBeInTheDocument();
     // Wait for the lazy teachers fetch to resolve and populate options.
     await screen.findByText('الأستاذة سارة');
     const hrSelect = screen.getByTestId('homeroom-select-0');
@@ -275,13 +273,12 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     expect(within(hrSelect).getByText('الأستاذة سارة')).toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.change(capInput, { target: { value: '25' } });
       fireEvent.change(hrSelect, { target: { value: 't1' } });
     });
 
     // Click the create-missing-classes button, then confirm the dialog.
     const createBtn = screen.getByRole('button', { name: /إنشاء الفصول الناقصة/ });
-    api.post.mockResolvedValueOnce({ data: { created_classes: [{ id: 'c1', grade_code: '7', section_code: 'A', capacity: 25, homeroom_teacher_id: 't1', homeroom_teacher_name: 'الأستاذة سارة' }] } });
+    api.post.mockResolvedValueOnce({ data: { created_classes: [{ id: 'c1', grade_code: '7', section_code: 'A', homeroom_teacher_id: 't1', homeroom_teacher_name: 'الأستاذة سارة' }] } });
     api.post.mockResolvedValueOnce({ data: _previewWithPair() }); // re-annotation
     await act(async () => { fireEvent.click(createBtn); });
     const dialog = await screen.findByTestId('nassaq-alert-dialog');
@@ -295,7 +292,7 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     });
     const createCall = api.post.mock.calls.find(c => String(c[0]).includes('/create-missing-classes'));
     expect(createCall[1]).toEqual({ overrides: [
-      { grade_code: '7', section_code: 'A', capacity: 25, homeroom_teacher_id: 't1' },
+      { grade_code: '7', section_code: 'A', homeroom_teacher_id: 't1' },
     ]});
   });
 
@@ -316,7 +313,7 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     expect(within(hrSelect).getByText('الأستاذة منى')).toBeInTheDocument();
   });
 
-  test('editor table renders one row per unclassified pair with capacity input and homeroom select', async () => {
+  test('editor table renders one row per unclassified pair without capacity editing', async () => {
     const api = {
       post: jest.fn(),
       get: jest.fn().mockResolvedValue({ data: [
@@ -334,8 +331,8 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     const rows = table.querySelectorAll('tbody tr');
     expect(rows).toHaveLength(1);
 
-    // That row must contain a capacity input and a homeroom select.
-    expect(screen.getByTestId('capacity-input-0')).toBeInTheDocument();
+    // Roster size is backend-owned; only the valid-link selectors are shown.
+    expect(screen.queryByTestId('capacity-input-0')).toBeNull();
     expect(screen.getByTestId('homeroom-select-0')).toBeInTheDocument();
 
     // Teachers are lazily fetched and must populate the dropdown.
@@ -343,7 +340,7 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     await screen.findByText('أستاذة نور');
   });
 
-  test('out-of-range capacity surfaces a NassaqAlertDialog warning and does not POST', async () => {
+  test('class creation does not send a capacity override', async () => {
     const api = {
       post: jest.fn(),
       get: jest.fn().mockResolvedValue({ data: [] }),
@@ -351,22 +348,19 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     renderWithProviders(api);
     await seedPreview(api, _previewWithPair());
 
-    const capInput = await screen.findByTestId('capacity-input-0');
-    await act(async () => {
-      fireEvent.change(capInput, { target: { value: '9999' } });
-    });
     const createBtn = screen.getByRole('button', { name: /إنشاء الفصول الناقصة/ });
+    api.post.mockResolvedValueOnce({ data: { created_classes: [] } });
     await act(async () => { fireEvent.click(createBtn); });
 
-    // A NassaqAlertDialog warning must appear with the Arabic capacity message.
     const dialog = await screen.findByTestId('nassaq-alert-dialog');
-    expect(dialog).toBeInTheDocument();
-    expect(dialog).toHaveAttribute('data-nassaq-alert', 'warning');
-    expect(dialog.textContent).toMatch(/السعة يجب أن تكون رقماً صحيحاً بين 1 و 500/);
-
-    // The create-missing-classes endpoint must NOT have been called.
-    const createCalls = api.post.mock.calls.filter(c => String(c[0]).includes('/create-missing-classes'));
-    expect(createCalls).toHaveLength(0);
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'إنشاء وإعادة المطابقة' }));
+    });
+    await waitFor(() => {
+      const createCalls = api.post.mock.calls.filter(c => String(c[0]).includes('/create-missing-classes'));
+      expect(createCalls).toHaveLength(1);
+      expect(createCalls[0][1]).toEqual({});
+    });
   });
 
   test('undo-created-classes banner appears, POSTs class_ids, and disappears after success', async () => {
@@ -379,11 +373,9 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     renderWithProviders(api);
     await seedPreview(api, _previewWithPair());
 
-    const capInput = await screen.findByTestId('capacity-input-0');
     await screen.findByText('الأستاذة سارة');
     const hrSelect = screen.getByTestId('homeroom-select-0');
     await act(async () => {
-      fireEvent.change(capInput, { target: { value: '25' } });
       fireEvent.change(hrSelect, { target: { value: 't1' } });
     });
 
@@ -391,7 +383,7 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     const createBtn = screen.getByRole('button', { name: /إنشاء الفصول الناقصة/ });
     api.post.mockResolvedValueOnce({ data: {
       created_classes: [
-        { class_id: 'c1', grade_code: '7', section_code: 'A', capacity: 25, homeroom_teacher_id: 't1' },
+        { class_id: 'c1', grade_code: '7', section_code: 'A', homeroom_teacher_id: 't1' },
       ],
       rows: [],
       counts: { total: 2, insert: 2, update: 0, duplicate_in_file: 0, unclassified: 0, ambiguous: 0, skip: 0 },
@@ -438,29 +430,6 @@ describe('NoorImportPanel inline class-detail editor (Task #390)', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('undo-created-classes-banner')).toBeNull();
     });
-  });
-
-  test('zero capacity is also rejected with a NassaqAlertDialog warning and does not POST', async () => {
-    const api = {
-      post: jest.fn(),
-      get: jest.fn().mockResolvedValue({ data: [] }),
-    };
-    renderWithProviders(api);
-    await seedPreview(api, _previewWithPair());
-
-    const capInput = await screen.findByTestId('capacity-input-0');
-    await act(async () => {
-      fireEvent.change(capInput, { target: { value: '0' } });
-    });
-    const createBtn = screen.getByRole('button', { name: /إنشاء الفصول الناقصة/ });
-    await act(async () => { fireEvent.click(createBtn); });
-
-    const dialog = await screen.findByTestId('nassaq-alert-dialog');
-    expect(dialog).toHaveAttribute('data-nassaq-alert', 'warning');
-    expect(dialog.textContent).toMatch(/السعة يجب أن تكون رقماً صحيحاً بين 1 و 500/);
-
-    const createCalls = api.post.mock.calls.filter(c => String(c[0]).includes('/create-missing-classes'));
-    expect(createCalls).toHaveLength(0);
   });
 
   test('grade/section overrides emit only when the principal types a value different from the parsed one', async () => {

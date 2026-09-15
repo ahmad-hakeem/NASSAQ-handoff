@@ -287,7 +287,8 @@ class AcademicStructureEngine:
             "stage_code": grade.get("stage_code"),
             "name": name,
             "full_name_ar": f"{grade.get('full_name_ar')} ({name})",
-            "capacity": kwargs.get("capacity", 30),
+            # Legacy section metadata only; section rosters are open-ended.
+            "capacity": kwargs.get("capacity"),
             "current_students": 0,
             "homeroom_teacher_id": kwargs.get("homeroom_teacher_id"),
             "classroom_id": kwargs.get("classroom_id"),

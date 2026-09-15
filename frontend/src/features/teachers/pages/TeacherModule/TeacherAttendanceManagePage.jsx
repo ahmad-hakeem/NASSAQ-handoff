@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { useTranslation } from '@/shared/contexts/ThemeContext';
+import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
 
 // Canonical four-status set, mirrors backend `AttendanceStatusLiteral`
 // (`backend/routes/teacher_attendance_routes.py`). Keys MUST stay identical
@@ -137,7 +138,7 @@ export default function TeacherAttendanceManagePage() {
     setLoading(true);
     try {
       // Fetch students for the selected class
-      const response = await api.get(`/classes/${selectedClass}/students`).catch(() => null);
+      const response = await fetchStudentRoster(api, `/classes/${selectedClass}/students`).catch(() => null);
       const studentsList = response?.data || [];
       setStudents(studentsList);
       

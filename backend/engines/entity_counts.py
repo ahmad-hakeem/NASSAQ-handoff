@@ -207,13 +207,13 @@ async def reconcile_class_counts(session, class_id: str, school_id: str | None =
 
 
 # ---------------------------------------------------------------------------
-# Class capacity — single source of truth + backend-authoritative gate
+# Class capacity — compatibility surface for the open-ended roster policy
 # ---------------------------------------------------------------------------
-# A class's maximum size is the per-class ``classes.capacity`` value the school
-# manager set at create/edit time (30, 40, 44, 60, ...). It is NOT a global
-# constant. The ONLY shared fallback is for legacy rows that never persisted a
-# capacity (NULL / non-positive), which mirror the column default of 30.
-DEFAULT_CLASS_CAPACITY = 30
+# ``classes.capacity`` is retained as a nullable legacy column so old exports
+# and clients can continue to round-trip it.  It is not a roster policy:
+# classes may contain any number of students, regardless of the value stored
+# there.  Keep these helpers because importer/extension modules still import
+# them, but deliberately make them policy-neutral.
 
 # Stable, machine-readable error code for the "class is full" rejection. The
 # frontend keys its localized copy off this code (see apiError.js
@@ -256,76 +256,39 @@ CLASS_FULL_KEPT_CURRENT_WARNING = (
 )
 
 
-def resolve_class_capacity(class_doc) -> int:
-    """Single source of truth for a class's effective maximum size.
+def resolve_class_capacity(class_doc) -> None:
+    """Return the effective roster capacity for ``class_doc``.
 
-    Returns the class's stored ``capacity`` when it is a positive integer;
-    otherwise falls back to ``DEFAULT_CLASS_CAPACITY`` for legacy rows that
-    never persisted one. Accepts either a dict (``gd_find_one`` result) or an
-    ORM object.
+    The effective capacity is always ``None`` (unlimited).  The argument is
+    intentionally accepted and ignored so legacy callers can keep passing
+    either a mapping or an ORM object while the nullable ``classes.capacity``
+    column remains backward compatible.
     """
-    cap = None
-    if isinstance(class_doc, dict):
-        cap = class_doc.get("capacity")
-    elif class_doc is not None:
-        cap = getattr(class_doc, "capacity", None)
-    try:
-        cap_int = int(cap)
-    except (TypeError, ValueError):
-        return DEFAULT_CLASS_CAPACITY
-    return cap_int if cap_int > 0 else DEFAULT_CLASS_CAPACITY
+    return None
 
 
 async def class_has_room(
     session, class_doc, school_id: str | None = None, *, additional: int = 1
 ) -> bool:
-    """Return True when ``additional`` more student(s) fit in ``class_doc``.
+    """Return whether ``additional`` students may join ``class_doc``.
 
-    Occupancy is the canonical LIVE active-student count (the same predicate as
-    ``reconcile_class_counts`` and the class readers), so the decision never
-    relies on a possibly-stale denormalized ``current_students`` column. No-ops
-    to True when there is no class to check (unassigned student).
+    Class rosters are open-ended.  This compatibility helper must not query
+    occupancy (or inspect the legacy capacity value), so callers can safely
+    retain the old guard while migrating without introducing a COUNT query.
     """
-    if not class_doc:
-        return True
-    class_id = (
-        class_doc.get("id") if isinstance(class_doc, dict)
-        else getattr(class_doc, "id", None)
-    )
-    if not class_id:
-        return True
-    capacity = resolve_class_capacity(class_doc)
-    current = await live_class_student_count(session, class_id, school_id)
-    return (current + additional) <= capacity
+    return True
 
 
 async def enforce_class_capacity(
     session, class_doc, school_id: str | None = None, *, additional: int = 1
 ) -> None:
-    """Backend-authoritative capacity gate.
+    """Compatibility no-op for the retired class-capacity gate.
 
-    Raises HTTP 409 with a structured, machine-readable error contract when
-    placing ``additional`` more student(s) into ``class_doc`` would exceed its
-    configured capacity. The detail carries a stable ``code``
-    (``CLASS_CAPACITY_REACHED``) and a safe Arabic-only ``message`` — never a
-    mixed-language string — so the frontend can localize off the code while a
-    plain Arabic message is always available as the fallback.
-
-    Callers MUST invoke this only for a NET addition to the target class (a
-    brand-new student, or a move/restore into a class the student is not already
-    an active member of), so an existing member is never double-counted. No-ops
-    when there is no class (unassigned).
+    Keep the old signature so downstream integrations can be upgraded
+    independently.  In particular, do not call :func:`class_has_room` here:
+    the open-ended policy guarantees no roster COUNT query on this path.
     """
-    if not await class_has_room(session, class_doc, school_id, additional=additional):
-        from fastapi import HTTPException
-
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": CLASS_CAPACITY_REACHED_CODE,
-                "message": CLASS_FULL_MESSAGE_AR,
-            },
-        )
+    return None
 
 
 async def live_class_counts(session) -> Dict[str, int]:

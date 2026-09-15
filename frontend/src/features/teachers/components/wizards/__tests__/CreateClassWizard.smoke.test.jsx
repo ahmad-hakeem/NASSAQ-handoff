@@ -89,5 +89,6 @@ test('mounts through the loading branch, then renders step 1 without crashing', 
   // Resolve the fetches → step-1 form must appear.
   await act(async () => { resolveOptions(); });
   expect(screen.getByTestId('class-name-ar')).toBeInTheDocument();
+  expect(screen.queryByTestId('class-capacity')).not.toBeInTheDocument();
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });

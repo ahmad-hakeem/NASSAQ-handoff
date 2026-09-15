@@ -34,7 +34,6 @@ from engines.sql_utils import (
     gd_insert,
     gd_update_one,
 )
-from engines.entity_counts import resolve_class_capacity
 from src.common.utils.canonical_grades import CANONICAL_GRADES, normalize_canonical_grade
 
 
@@ -469,7 +468,9 @@ def _new_class_doc(
         "name_en": f"Grade {grade['grade']} - {section}",
         "grade_level": grade["label_ar"],
         "section": section,
-        "capacity": 30,
+        # Class capacity is a nullable legacy field, not an import policy.
+        # Imports must not manufacture a finite roster limit for new classes.
+        "capacity": None,
         "current_students": 0,
         "is_active": True,
         "created_at": now,
@@ -661,12 +662,6 @@ async def import_students(
             existing_nid = existing_nid.zfill(10)
         if len(existing_nid) == 10:
             existing_by_nid[existing_nid] = student
-    occupancy: Dict[str, int] = {}
-    for student in students:
-        if student.get("is_active") is True and student.get("class_id"):
-            cid = str(student["class_id"])
-            occupancy[cid] = occupancy.get(cid, 0) + 1
-
     seen_nids: Dict[str, int] = {}
     seen_emails: Dict[str, int] = {}
     valid_records: List[dict] = []
@@ -898,16 +893,6 @@ async def import_students(
                 class_was_created = True
 
             existing = item["existing"]
-            existing_active = bool(existing and existing.get("is_active") is True)
-            already_in_target = bool(
-                existing_active and existing.get("class_id") == class_doc.get("id")
-            )
-            capacity = resolve_class_capacity(class_doc)
-            if not already_in_target and occupancy.get(class_doc["id"], 0) >= capacity:
-                raise StudentImportRowError(
-                    f"الفصل ({item['raw_class_name']}) ممتلئ ولا يمكن استيراد الطالب إليه"
-                )
-
             student_id = existing.get("id") if existing else str(uuid.uuid4())
             now_iso = datetime.now(timezone.utc).isoformat()
             student_doc = {
@@ -1053,14 +1038,7 @@ async def import_students(
             prior_class_id = existing.get("class_id") if existing else None
             if prior_class_id:
                 touched_class_ids.add(prior_class_id)
-                if existing_active and prior_class_id != class_doc["id"]:
-                    occupancy[prior_class_id] = max(
-                        occupancy.get(prior_class_id, 0) - 1,
-                        0,
-                    )
             touched_class_ids.add(class_doc["id"])
-            if not already_in_target:
-                occupancy[class_doc["id"]] = occupancy.get(class_doc["id"], 0) + 1
             counters["assigned"] += 1
             if student_doc.get("parent_id"):
                 linked_student_ids.add(student_id)

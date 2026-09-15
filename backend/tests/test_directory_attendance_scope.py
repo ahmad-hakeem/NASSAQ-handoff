@@ -476,3 +476,47 @@ async def test_class_students_options_grade_id_matches_grades_options(
     assert by_id[s2]["grade_id"] == grade3_option["id"]
     # Unknown grades stay "" (frontend keeps these students visible).
     assert by_id[s3]["grade_id"] == ""
+
+
+@pytest.mark.asyncio
+async def test_class_students_options_paginates_501_and_scopes_tenant(
+    client, tenant_a, tenant_b
+):
+    """The wizard can fetch every 501st student without cross-tenant rows."""
+    for index in range(501):
+        await gd_insert(db.session, "students", {
+            "id": f"option-page-{index:03d}",
+            "school_id": tenant_a,
+            "full_name": f"Option page {index}",
+            "is_active": True,
+        })
+    foreign_id = str(uuid.uuid4())
+    await gd_insert(db.session, "students", {
+        "id": foreign_id,
+        "school_id": tenant_b,
+        "full_name": "Foreign option student",
+        "is_active": True,
+    })
+    headers, _ = await _mk_role_user_headers(UserRole.SCHOOL_ADMIN, tenant_a)
+
+    first = await client.get("/classes/options/students", headers=headers)
+    assert first.status_code == 200, first.text
+    assert len(first.json()["students"]) == 500
+    assert first.headers["X-Total-Count"] == "501"
+    assert first.headers["X-Has-More"] == "true"
+    assert first.headers["X-Next-Offset"] == "500"
+    assert foreign_id not in {
+        row["student_id"] for row in first.json()["students"]
+    }
+
+    second = await client.get(
+        "/classes/options/students?offset=500&limit=500",
+        headers=headers,
+    )
+    assert second.status_code == 200, second.text
+    assert [row["student_id"] for row in second.json()["students"]] == [
+        "option-page-500"
+    ]
+    assert second.headers["X-Total-Count"] == "501"
+    assert second.headers["X-Has-More"] == "false"
+    assert second.headers["X-Next-Offset"] == ""
