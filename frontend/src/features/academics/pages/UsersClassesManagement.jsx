@@ -53,6 +53,71 @@ import { useSchoolNavigation } from '@/shared/models/utils/studentNavigation';
 // button is suppressed. Flip to `true` to cleanly re-enable the button.
 const SHOW_NO_CLASS_BANNER_CTA = false;
 
+/**
+ * The bulk import endpoint intentionally returns both the legacy `imported`
+ * / `failed` counters and more specific counters for student imports. Keep
+ * the normalization in the page (rather than making the API client know
+ * about one particular response) so teacher imports continue to use the
+ * legacy contract unchanged.
+ */
+export const getBulkImportMetrics = (result = {}) => {
+  const count = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  };
+
+  return {
+    totalRows: count(result.total_rows),
+    imported: count(result.imported),
+    failed: count(result.failed),
+    created: count(result.created),
+    updated: count(result.updated),
+    restored: count(result.restored),
+    assigned: count(result.assigned),
+    classesCreated: count(result.classes_created),
+    parentsCreated: count(result.parents_created),
+    skipped: count(result.skipped),
+    errorDetails: Array.isArray(result.errors) ? result.errors : [],
+    warningDetails: Array.isArray(result.warnings) ? result.warnings : [],
+  };
+};
+
+/**
+ * `imported` means that the student record was persisted. It does not imply
+ * that the student was assigned to a class. A student import with an
+ * assignment gap must therefore be shown as partial, even if the backend's
+ * legacy `success` flag is true.
+ */
+export const getBulkImportStatus = (result = {}, importType = 'students') => {
+  const metrics = getBulkImportMetrics(result);
+  const isStudentImport = importType === 'students';
+  const hasAssignmentGap = isStudentImport && metrics.assigned < metrics.imported;
+  const hasIssues = (
+    result.success === false
+    || metrics.failed > 0
+    || (isStudentImport && (
+      metrics.skipped > 0
+      || metrics.errorDetails.length > 0
+      || metrics.warningDetails.length > 0
+      || hasAssignmentGap
+    ))
+  );
+
+  if (!hasIssues && result.success !== false) return 'success';
+  if (
+    metrics.imported > 0
+    || metrics.created > 0
+    || metrics.updated > 0
+    || metrics.restored > 0
+    || metrics.assigned > 0
+    || metrics.classesCreated > 0
+    || metrics.parentsCreated > 0
+  ) {
+    return 'partial';
+  }
+  return 'failed';
+};
+
 const THEME_COLORS = {
   student: {
     gradient: 'from-[#1B2A4A] to-[#2563eb]',
@@ -854,6 +919,7 @@ export default function UsersClassesManagement() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [importResultType, setImportResultType] = useState(null);
   const [exportType, setExportType] = useState('students');
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
@@ -1609,11 +1675,22 @@ export default function UsersClassesManagement() {
 
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
+  const getBulkRequestHeaders = () => {
+    const headers = {};
+    if (isImpersonating && schoolContext?.school_id) {
+      headers['X-School-Context'] = schoolContext.school_id;
+    }
+    return headers;
+  };
+
   const downloadTemplate = async (type) => {
     setDownloadingTemplate(true);
     try {
-      const response = await api.get(`/bulk/template/${type}`, { responseType: 'blob' });
-      const contentType = response.headers['content-type'] || '';
+      const requestConfig = { responseType: 'blob' };
+      const bulkHeaders = getBulkRequestHeaders();
+      if (Object.keys(bulkHeaders).length > 0) requestConfig.headers = bulkHeaders;
+      const response = await api.get(`/bulk/template/${type}`, requestConfig);
+      const contentType = response.headers?.['content-type'] || '';
       if (!contentType.includes('spreadsheet') && !contentType.includes('octet-stream') && !contentType.includes('excel')) {
         throw new Error(t('responseIsNotAValidFile'));
       }
@@ -1653,7 +1730,17 @@ export default function UsersClassesManagement() {
       }
       setSelectedFile(file);
       setImportResult(null);
+      setImportResultType(null);
     }
+  };
+
+  const selectImportType = (type) => {
+    setImportType(type);
+    // Never render student counters for a teacher result (or vice versa) if
+    // the user changes the import mode before choosing a new file.
+    setImportResult(null);
+    setImportResultType(null);
+    setSelectedFile(null);
   };
 
   const handleImport = async () => {
@@ -1662,19 +1749,58 @@ export default function UsersClassesManagement() {
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
-      const response = await api.post(`/bulk/import/${importType}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-      setImportResult(response.data);
-      if (response.data.imported > 0) {
-        if (response.data.failed === 0) {
-          toast.success(t('importedNRecords', { n: response.data.imported }) || `تم استيراد ${response.data.imported} سجل بنجاح`);
-        } else {
-          toast.warning(`تم استيراد ${response.data.imported} سجل بنجاح مع تخطي ${response.data.failed} صف غير صالح`);
-        }
-        fetchAllData();
-      } else if (response.data.failed > 0) {
-        nassaqError(`فشل استيراد الملف لوجود ${response.data.failed} صف يحتوي على أخطاء. يرجى مراجعة سجل الأخطاء أدناه.`);
+      const response = await api.post(`/bulk/import/${importType}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...getBulkRequestHeaders(),
+        },
+      });
+      const result = response.data || {};
+      const metrics = getBulkImportMetrics(result);
+      const status = getBulkImportStatus(result, importType);
+      setImportResult(result);
+      setImportResultType(importType);
+
+      if (status === 'success') {
+        toast.success(
+          t('importedNRecords', { n: metrics.imported })
+          || `تم استيراد ${metrics.imported} سجل بنجاح`
+        );
+      } else if (status === 'partial') {
+        const assignmentGap = importType === 'students' && metrics.assigned < metrics.imported;
+        const rowsNeedReview = Math.max(
+          metrics.failed,
+          metrics.skipped,
+          metrics.errorDetails.length,
+          metrics.warningDetails.length,
+        );
+        toast.warning(
+          isRTL
+            ? `تم حفظ ${metrics.imported} سجل، مع وجود ${rowsNeedReview} صف يحتاج للمراجعة${assignmentGap ? ` و${metrics.imported - metrics.assigned} طالب غير مسند.` : '.'}`
+            : `${metrics.imported} records were saved; ${rowsNeedReview} rows need review${assignmentGap ? ` and ${metrics.imported - metrics.assigned} students remain unassigned.` : '.'}`
+        );
       } else {
-        nassaqWarning(t('importedOfTotal', { imported: response.data.imported, total: response.data.total_rows }));
+        nassaqError(
+          isRTL
+            ? `تعذر استيراد السجلات. راجع أسباب الصفوف أدناه.`
+            : 'No records were imported. Review the row reasons below.'
+        );
+      }
+
+      // A successful HTTP response may still contain row-level failures. Any
+      // persisted student/teacher or related class/parent must be reflected
+      // immediately in every canonical list on this page.
+      const hasPersistedData = (
+        metrics.imported > 0
+        || metrics.created > 0
+        || metrics.updated > 0
+        || metrics.restored > 0
+        || metrics.assigned > 0
+        || metrics.classesCreated > 0
+        || metrics.parentsCreated > 0
+      );
+      if (hasPersistedData || (result.success !== false && metrics.totalRows > 0)) {
+        fetchAllData();
       }
     } catch (error) { nassaqError(getApiErrorMessage(error) || (t('importFailed'))); }
     finally { setImporting(false); }
@@ -1683,7 +1809,10 @@ export default function UsersClassesManagement() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const response = await api.get(`/bulk/export/${exportType}?format=${exportFormat}`, { responseType: 'blob' });
+      const requestConfig = { responseType: 'blob' };
+      const bulkHeaders = getBulkRequestHeaders();
+      if (Object.keys(bulkHeaders).length > 0) requestConfig.headers = bulkHeaders;
+      const response = await api.get(`/bulk/export/${exportType}?format=${exportFormat}`, requestConfig);
       const url = window.URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
@@ -2131,7 +2260,7 @@ export default function UsersClassesManagement() {
                                 {[{ value: 'students', label: t('students'), icon: GraduationCap }, { value: 'teachers', label: t('teachers2'), icon: Users }].map(opt => {
                                   const Icon = opt.icon;
                                   return (
-                                    <button key={opt.value} onClick={() => setImportType(opt.value)}
+                                    <button key={opt.value} onClick={() => selectImportType(opt.value)}
                                       className={`p-3 rounded-xl border-2 transition-all text-center ${importType === opt.value ? 'border-brand-turquoise bg-brand-turquoise/10' : 'border-border hover:border-brand-turquoise/50'}`}>
                                       <Icon className={`h-6 w-6 mx-auto mb-1 ${importType === opt.value ? 'text-brand-turquoise' : 'text-muted-foreground'}`} />
                                       <p className="text-xs font-medium">{opt.label}</p>
@@ -2155,112 +2284,235 @@ export default function UsersClassesManagement() {
                             </Button>
                           </CardContent>
                         </Card>
-                        {importResult && (
-                          <Card className="border shadow-sm">
-                            <CardHeader className="pb-3">
-                              <CardTitle className="flex items-center justify-between text-base">
-                                <span className="flex items-center gap-2">
-                                  <FileSpreadsheet className="h-5 w-5 text-brand-turquoise" />
-                                  {t('importResult') || 'نتيجة الاستيراد'}
-                                </span>
-                                <Badge variant={importResult.success && importResult.failed === 0 ? "default" : importResult.imported > 0 ? "outline" : "destructive"} className="text-xs">
-                                  {importResult.success && importResult.failed === 0 ? (t('done') || 'ناجح') : importResult.imported > 0 ? (t('partial') || 'استيراد جزئي') : (t('failed') || 'فشل الاستيراد')}
-                                </Badge>
-                              </CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                              {/* Status banner */}
-                              {importResult.success && importResult.failed === 0 ? (
-                                <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs">
-                                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                                  <span>تم استيراد كافة السجلات ({importResult.imported}) بنجاح دون أي أخطاء.</span>
-                                </div>
-                              ) : importResult.imported > 0 ? (
-                                <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl text-amber-800 dark:text-amber-300 text-xs">
-                                  <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-                                  <div>
-                                    <p className="font-semibold">تم استيراد السجلات السليمة ({importResult.imported} سجل) وتخطي {importResult.failed} صف به أخطاء.</p>
-                                    <p className="text-[11px] text-amber-700 dark:text-amber-400/90 mt-0.5">تم حفظ السجلات الصالحة بنجاح. يرجى مراجعة وتصحيح الصفوف المرفوضة الموضحة أدناه.</p>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex items-start gap-2 p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 rounded-xl text-rose-800 dark:text-rose-300 text-xs">
-                                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
-                                  <div>
-                                    <p className="font-semibold">لم يتم استيراد أي سجلات لوجود أخطاء في البيانات ({importResult.failed} صف يحتاج تصحيح).</p>
-                                    <p className="text-[11px] text-rose-700 dark:text-rose-400/90 mt-0.5">يرجى تصحيح الأخطاء الموضحة أدناه وإعادة رفع الملف.</p>
-                                  </div>
-                                </div>
-                              )}
+                        {importResult && (() => {
+                          const resultType = importResultType || importType;
+                          const metrics = getBulkImportMetrics(importResult);
+                          const status = getBulkImportStatus(importResult, resultType);
+                          const isStudentResult = resultType === 'students';
+                          const labels = isRTL
+                            ? {
+                              total: 'إجمالي الصفوف',
+                              imported: 'تمت معالجته',
+                              created: 'طلاب أُنشئوا',
+                              updated: 'طلاب حُدّثوا',
+                              restored: 'طلاب استُعيدوا',
+                              assigned: 'طلاب أُسندوا لفصل',
+                              classesCreated: 'فصول أُنشئت',
+                              parentsCreated: 'أولياء أمور أُنشئوا',
+                              skipped: 'صفوف متخطاة',
+                              failed: 'أخطاء الصفوف',
+                            }
+                            : {
+                              total: 'Total rows',
+                              imported: 'Processed',
+                              created: 'Students created',
+                              updated: 'Students updated',
+                              restored: 'Students restored',
+                              assigned: 'Students assigned',
+                              classesCreated: 'Classes created',
+                              parentsCreated: 'Parents created',
+                              skipped: 'Rows skipped',
+                              failed: 'Row errors',
+                            };
+                          const metricCards = isStudentResult
+                            ? [
+                              ['total_rows', labels.total, metrics.totalRows, 'muted'],
+                              ['imported', labels.imported, metrics.imported, 'emerald'],
+                              ['created', labels.created, metrics.created, 'blue'],
+                              ['updated', labels.updated, metrics.updated, 'sky'],
+                              ['restored', labels.restored, metrics.restored, 'teal'],
+                              ['assigned', labels.assigned, metrics.assigned, 'violet'],
+                              ['classes_created', labels.classesCreated, metrics.classesCreated, 'indigo'],
+                              ['parents_created', labels.parentsCreated, metrics.parentsCreated, 'amber'],
+                              ['skipped', labels.skipped, metrics.skipped, 'orange'],
+                              ['failed', labels.failed, metrics.failed, 'rose'],
+                            ]
+                            : [
+                              ['total_rows', t('total2') || 'إجمالي الصفوف', metrics.totalRows, 'muted'],
+                              ['imported', t('done') || 'تم استيراده', metrics.imported, 'emerald'],
+                              ['failed', t('failed') || 'فشل', metrics.failed, 'rose'],
+                            ];
+                          const metricColor = {
+                            muted: 'bg-muted/50 border-border/50 text-foreground',
+                            emerald: 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30 text-emerald-600 dark:text-emerald-400',
+                            blue: 'bg-blue-50 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900/30 text-blue-600 dark:text-blue-400',
+                            sky: 'bg-sky-50 dark:bg-sky-950/20 border-sky-100 dark:border-sky-900/30 text-sky-600 dark:text-sky-400',
+                            teal: 'bg-teal-50 dark:bg-teal-950/20 border-teal-100 dark:border-teal-900/30 text-teal-600 dark:text-teal-400',
+                            violet: 'bg-violet-50 dark:bg-violet-950/20 border-violet-100 dark:border-violet-900/30 text-violet-600 dark:text-violet-400',
+                            indigo: 'bg-indigo-50 dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-900/30 text-indigo-600 dark:text-indigo-400',
+                            amber: 'bg-amber-50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/30 text-amber-600 dark:text-amber-400',
+                            orange: 'bg-orange-50 dark:bg-orange-950/20 border-orange-100 dark:border-orange-900/30 text-orange-600 dark:text-orange-400',
+                            rose: 'bg-rose-50 dark:bg-rose-950/20 border-rose-100 dark:border-rose-900/30 text-rose-600 dark:text-rose-400',
+                          };
+                          const assignmentGap = isStudentResult && metrics.assigned < metrics.imported;
+                          const statusLabel = status === 'success'
+                            ? (t('done') || 'ناجح')
+                            : status === 'partial'
+                              ? (t('partial') || 'استيراد جزئي')
+                              : (t('failed') || 'فشل الاستيراد');
 
-                              {/* Metrics */}
-                              <div className="grid grid-cols-3 gap-3 text-center">
-                                <div className="p-3 bg-muted/50 rounded-xl border border-border/50">
-                                  <p className="text-xl font-bold">{importResult.total_rows || 0}</p>
-                                  <p className="text-xs text-muted-foreground">{t('total2') || 'إجمالي الصفوف'}</p>
-                                </div>
-                                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
-                                  <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{importResult.imported || 0}</p>
-                                  <p className="text-xs text-emerald-700 dark:text-emerald-400">{t('done') || 'تم استيراده'}</p>
-                                </div>
-                                <div className="p-3 bg-rose-50 dark:bg-rose-950/20 rounded-xl border border-rose-100 dark:border-rose-900/30">
-                                  <p className="text-xl font-bold text-rose-600 dark:text-rose-400">{importResult.failed || 0}</p>
-                                  <p className="text-xs text-rose-700 dark:text-rose-400">{t('failed') || 'فشل'}</p>
-                                </div>
-                              </div>
+                          const getIssueRow = (issue) => (
+                            issue && typeof issue === 'object'
+                              ? (issue.row ?? issue.row_number ?? issue.line)
+                              : null
+                          );
+                          const getIssueReason = (issue) => {
+                            if (typeof issue === 'string') return issue;
+                            return issue?.message || issue?.error || issue?.warning || issue?.reason || (isRTL ? 'سبب غير محدد' : 'Reason not provided');
+                          };
+                          const getIssueField = (issue) => (
+                            issue && typeof issue === 'object'
+                              ? (issue.field || issue.column || issue.code)
+                              : null
+                          );
 
-                              {/* Error log list */}
-                              {(importResult.errors?.length > 0 || importResult.warnings?.length > 0) && (
-                                <div className="space-y-2">
-                                  <div className="flex items-center justify-between text-xs font-semibold text-rose-700 dark:text-rose-400">
-                                    <span className="flex items-center gap-1.5">
-                                      <AlertTriangle className="h-4 w-4" />
-                                      سجل أخطاء التحقق ({importResult.errors?.length || 0})
+                          return (
+                            <Card className="border shadow-sm">
+                              <CardHeader className="pb-3">
+                                <CardTitle className="flex items-center justify-between text-base">
+                                  <span className="flex items-center gap-2">
+                                    <FileSpreadsheet className="h-5 w-5 text-brand-turquoise" />
+                                    {t('importResult') || 'نتيجة الاستيراد'}
+                                  </span>
+                                  <Badge
+                                    variant={status === 'success' ? 'default' : status === 'partial' ? 'outline' : 'destructive'}
+                                    className="text-xs"
+                                    data-testid={`import-status-badge-${status}`}
+                                  >
+                                    {statusLabel}
+                                  </Badge>
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent className="space-y-4">
+                                {status === 'success' && (
+                                  <div className="flex items-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs" data-testid="import-status-success">
+                                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                    <span>
+                                      {isStudentResult
+                                        ? (isRTL
+                                          ? `تم حفظ ${metrics.imported} طالباً وتعيينهم جميعاً إلى الفصول دون أخطاء.`
+                                          : `${metrics.imported} students were saved and assigned to classes without errors.`)
+                                        : (isRTL
+                                          ? `تم استيراد كافة السجلات (${metrics.imported}) بنجاح دون أي أخطاء.`
+                                          : `All records (${metrics.imported}) were imported successfully without errors.`)}
                                     </span>
                                   </div>
-                                  <div className="max-h-[240px] overflow-y-auto space-y-2 pe-1" data-testid="import-error-list">
-                                    {importResult.errors?.map((err, i) => (
-                                      <div key={`err-${i}`} className="text-xs p-2.5 bg-rose-50/70 dark:bg-rose-950/25 border border-rose-200/60 dark:border-rose-900/30 rounded-lg text-rose-900 dark:text-rose-200 space-y-1" data-testid={`import-error-row-${err.row}`}>
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          {err.row && (
-                                            <Badge variant="outline" className="text-[10px] bg-rose-100/70 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800">
-                                              الصف {err.row}
-                                            </Badge>
+                                )}
+                                {status === 'partial' && (
+                                  <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl text-amber-800 dark:text-amber-300 text-xs" data-testid="import-status-partial">
+                                    <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                                    <div>
+                                      {isStudentResult ? (
+                                        <>
+                                          <p className="font-semibold">
+                                            {isRTL
+                                              ? `تم حفظ ${metrics.imported} طالباً: أُنشئ ${metrics.created}، وحُدّث ${metrics.updated}، واستُعيد ${metrics.restored}.`
+                                              : `${metrics.imported} students saved: ${metrics.created} created, ${metrics.updated} updated, ${metrics.restored} restored.`}
+                                          </p>
+                                          <p className="mt-0.5">
+                                            {isRTL
+                                              ? `تم إسناد ${metrics.assigned} من ${metrics.imported} طالباً${assignmentGap ? ' فقط' : ''}. أُنشئت ${metrics.classesCreated} فصول و${metrics.parentsCreated} أولياء أمور.`
+                                              : `${metrics.assigned} of ${metrics.imported} students assigned${assignmentGap ? ' only' : ''}. ${metrics.classesCreated} classes and ${metrics.parentsCreated} parents created.`}
+                                          </p>
+                                          {(metrics.failed > 0 || metrics.skipped > 0 || assignmentGap) && (
+                                            <p className="text-[11px] text-amber-700 dark:text-amber-400/90 mt-0.5">
+                                              {isRTL
+                                                ? `تحتاج ${metrics.failed} أخطاء و${metrics.skipped} صفوف متخطاة${assignmentGap ? ' ومراجعة الطلاب غير المسندين' : ''}.`
+                                                : `${metrics.failed} errors and ${metrics.skipped} skipped rows need review${assignmentGap ? ', including unassigned students' : ''}.`}
+                                            </p>
                                           )}
-                                          {err.field && (
-                                            <Badge variant="secondary" className="text-[10px]">
-                                              {err.field}
-                                            </Badge>
-                                          )}
-                                        </div>
-                                        <p className="text-xs leading-relaxed font-medium">
-                                          {err.message || err.error}
-                                        </p>
-                                      </div>
-                                    ))}
-                                    {importResult.warnings?.map((warn, i) => (
-                                      <div key={`warn-${i}`} className="text-xs p-2.5 bg-amber-50/70 dark:bg-amber-950/25 border border-amber-200/60 dark:border-amber-900/30 rounded-lg text-amber-900 dark:text-amber-200 space-y-1">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          {warn.row && (
-                                            <Badge variant="outline" className="text-[10px] bg-amber-100/70 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800">
-                                              الصف {warn.row}
-                                            </Badge>
-                                          )}
-                                          <Badge variant="secondary" className="text-[10px]">
-                                            تنبيه
-                                          </Badge>
-                                        </div>
-                                        <p className="text-xs leading-relaxed font-medium">
-                                          {warn.message || warn.warning}
-                                        </p>
-                                      </div>
-                                    ))}
+                                        </>
+                                      ) : (
+                                        <>
+                                          <p className="font-semibold">
+                                            {isRTL
+                                              ? `تم استيراد السجلات السليمة (${metrics.imported} سجل) وتخطي ${metrics.failed} صف به أخطاء.`
+                                              : `${metrics.imported} valid records imported; ${metrics.failed} rows contain errors.`}
+                                          </p>
+                                          <p className="text-[11px] text-amber-700 dark:text-amber-400/90 mt-0.5">
+                                            {isRTL ? 'تم حفظ السجلات الصالحة بنجاح. راجع الصفوف المرفوضة أدناه.' : 'Valid records were saved. Review the rejected rows below.'}
+                                          </p>
+                                        </>
+                                      )}
+                                    </div>
                                   </div>
+                                )}
+                                {status === 'failed' && (
+                                  <div className="flex items-start gap-2 p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 rounded-xl text-rose-800 dark:text-rose-300 text-xs" data-testid="import-status-failed">
+                                    <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                                    <div>
+                                      <p className="font-semibold">
+                                        {isRTL
+                                          ? `لم يتم استيراد أي سجلات لوجود أخطاء في البيانات (${metrics.failed} صف يحتاج تصحيح).`
+                                          : `No records were imported because ${metrics.failed} rows need correction.`}
+                                      </p>
+                                      <p className="text-[11px] text-rose-700 dark:text-rose-400/90 mt-0.5">
+                                        {isRTL ? 'يرجى تصحيح الأسباب الموضحة لكل صف وإعادة رفع الملف.' : 'Correct the reason shown for each row and upload the file again.'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className={`grid ${isStudentResult ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5' : 'grid-cols-3'} gap-3 text-center`}>
+                                  {metricCards.map(([key, label, value, color]) => (
+                                    <div key={key} className={`p-3 rounded-xl border ${metricColor[color]}`} data-testid={`import-metric-${key}`}>
+                                      <p className="text-xl font-bold tabular-nums">{value}</p>
+                                      <p className="text-xs mt-0.5">{label}</p>
+                                    </div>
+                                  ))}
                                 </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        )}
+
+                                {(metrics.errorDetails.length > 0 || metrics.warningDetails.length > 0) && (
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-xs font-semibold text-rose-700 dark:text-rose-400">
+                                      <span className="flex items-center gap-1.5">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        {isRTL
+                                          ? `أسباب الصفوف (${metrics.errorDetails.length} أخطاء، ${metrics.warningDetails.length} تنبيهات)`
+                                          : `Row reasons (${metrics.errorDetails.length} errors, ${metrics.warningDetails.length} warnings)`}
+                                      </span>
+                                    </div>
+                                    <div className="max-h-[280px] overflow-y-auto space-y-2 pe-1" data-testid="import-error-list">
+                                      {metrics.errorDetails.map((err, i) => {
+                                        const row = getIssueRow(err);
+                                        const field = getIssueField(err);
+                                        return (
+                                          <div key={`err-${i}`} className="text-xs p-2.5 bg-rose-50/70 dark:bg-rose-950/25 border border-rose-200/60 dark:border-rose-900/30 rounded-lg text-rose-900 dark:text-rose-200 space-y-1" data-testid={`import-error-row-${row ?? i}`}>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              {row != null && (
+                                                <Badge variant="outline" className="text-[10px] bg-rose-100/70 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800">
+                                                  {isRTL ? `الصف ${row}` : `Row ${row}`}
+                                                </Badge>
+                                              )}
+                                              {field && <Badge variant="secondary" className="text-[10px]">{field}</Badge>}
+                                            </div>
+                                            <p className="text-xs leading-relaxed font-medium">{getIssueReason(err)}</p>
+                                          </div>
+                                        );
+                                      })}
+                                      {metrics.warningDetails.map((warn, i) => {
+                                        const row = getIssueRow(warn);
+                                        return (
+                                          <div key={`warn-${i}`} className="text-xs p-2.5 bg-amber-50/70 dark:bg-amber-950/25 border border-amber-200/60 dark:border-amber-900/30 rounded-lg text-amber-900 dark:text-amber-200 space-y-1" data-testid={`import-warning-row-${row ?? i}`}>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              {row != null && (
+                                                <Badge variant="outline" className="text-[10px] bg-amber-100/70 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800">
+                                                  {isRTL ? `الصف ${row}` : `Row ${row}`}
+                                                </Badge>
+                                              )}
+                                              <Badge variant="secondary" className="text-[10px]">{isRTL ? 'تنبيه' : 'Warning'}</Badge>
+                                            </div>
+                                            <p className="text-xs leading-relaxed font-medium">{getIssueReason(warn)}</p>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </CardContent>
+                            </Card>
+                          );
+                        })()}
                       </div>
                     </TabsContent>
 
@@ -2284,7 +2536,7 @@ export default function UsersClassesManagement() {
                           <div className="space-y-2">
                             <Label>{t('format')}</Label>
                             <div className="flex gap-2">
-                              {['xlsx', 'csv', 'json'].map(f => (
+                              {['xlsx', 'csv'].map(f => (
                                 <Button key={f} variant={exportFormat === f ? 'default' : 'outline'} size="sm" onClick={() => setExportFormat(f)} className="flex-1">{f.toUpperCase()}</Button>
                               ))}
                             </div>

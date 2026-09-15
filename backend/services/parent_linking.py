@@ -87,7 +87,11 @@ async def find_or_create_parent(
     email belongs to a non-parent), otherwise a fresh parent account +
     per-school ``parents`` row is minted.
 
-    Returns ``{"parent", "is_new", "linked_students", "temp_password"}``.
+    Returns ``{"parent", "is_new", "is_new_user", "linked_students",
+    "temp_password"}``. ``is_new`` describes the per-school parent row;
+    ``is_new_user`` is independently true only when this call minted the
+    global users row. A per-school parent may legitimately reuse a global
+    parent account.
     """
     existing_parent = None
 
@@ -144,6 +148,7 @@ async def find_or_create_parent(
         return {
             "parent": existing_parent,
             "is_new": False,
+            "is_new_user": False,
             "linked_students": linked_students,
             "temp_password": None,
         }
@@ -207,6 +212,7 @@ async def find_or_create_parent(
     return {
         "parent": parent_doc,
         "is_new": True,
+        "is_new_user": existing_user is None,
         "linked_students": [],
         "temp_password": temp_password,
     }
@@ -287,7 +293,7 @@ async def link_or_update_real_school_guardian(
     merge into its own students-row update so that write stays atomic::
 
         {"parent_id", "parent_name", "parent_phone", "parent_email",
-         "parent_relationship"}
+         "parent_relationship", "is_new", "is_new_user", "parent_user_id"}
 
     The CALLER owns the transaction; wrap in ``begin_nested()``.
     """
@@ -372,7 +378,17 @@ async def link_or_update_real_school_guardian(
             )
             target_parent.update(p_update)
 
-        # Ensure parent user account exists and update it
+        # Ensure parent user account exists and update it. Track ownership
+        # separately from the parent-row identity: an existing per-school
+        # parent may need a user lookup but must never make that user appear
+        # newly created to a rollback manifest.
+        user_already_exists = bool(target_parent.get("user_id"))
+        if not user_already_exists and target_parent.get("email"):
+            user_already_exists = bool(await gd_find_one(
+                session,
+                "users",
+                {"email": target_parent["email"], "role": parent_role_value},
+            ))
         parent_user_id = await ensure_parent_user_account(
             session, target_parent, school_id, created_by,
             hash_password=hash_password,
@@ -438,6 +454,7 @@ async def link_or_update_real_school_guardian(
             "parent_email": mirror_email,
             "parent_relationship": relationship,
             "is_new": False,
+            "is_new_user": not user_already_exists,
             "parent_user_id": parent_user_id,
         }
 
@@ -450,6 +467,16 @@ async def link_or_update_real_school_guardian(
     )
     parent = result["parent"]
     is_new = result["is_new"]
+    is_new_user = bool(result.get("is_new_user"))
+    if not is_new:
+        user_already_exists = bool(parent.get("user_id"))
+        if not user_already_exists and parent.get("email"):
+            user_already_exists = bool(await gd_find_one(
+                session,
+                "users",
+                {"email": parent["email"], "role": parent_role_value},
+            ))
+        is_new_user = not user_already_exists
 
     # Fill / update parent record on an existing match
     if not is_new:
@@ -524,6 +551,7 @@ async def link_or_update_real_school_guardian(
         "parent_email": mirror_email,
         "parent_relationship": relationship,
         "is_new": is_new,
+        "is_new_user": is_new_user,
         "parent_user_id": parent_user_id,
     }
 

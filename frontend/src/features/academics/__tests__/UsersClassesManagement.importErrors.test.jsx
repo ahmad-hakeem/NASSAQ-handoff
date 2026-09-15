@@ -79,7 +79,9 @@ jest.mock('@/features/platform/components/management/NoorImportPanel', () => ({
   default: () => <div data-testid="noor-import-panel" />,
 }));
 
-import UsersClassesManagement from '../pages/UsersClassesManagement';
+import UsersClassesManagement, {
+  getBulkImportStatus,
+} from '../pages/UsersClassesManagement';
 
 describe('UsersClassesManagement — Bulk Import Error Logs Rendering', () => {
   beforeEach(() => {
@@ -147,5 +149,57 @@ describe('UsersClassesManagement — Bulk Import Error Logs Rendering', () => {
     expect(screen.getByText('اسم العائلة: حقل مطلوب ولا يمكن تركه فارغاً')).toBeInTheDocument();
     expect(screen.getByText('رقم الهوية (123): يجب أن يتكون من 10 أرقام')).toBeInTheDocument();
     expect(screen.getAllByText('الصف 3')).toHaveLength(2);
+  });
+
+  test('shows distinct student counters and never reports an assignment gap as fully successful', async () => {
+    render(<UsersClassesManagement initialTab="import-export" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('بدء الاستيراد')).toBeInTheDocument();
+    });
+
+    mockApiPost.mockResolvedValueOnce({
+      data: {
+        success: true,
+        total_rows: 2,
+        imported: 2,
+        failed: 0,
+        created: 1,
+        updated: 1,
+        restored: 0,
+        assigned: 1,
+        classes_created: 1,
+        parents_created: 2,
+        skipped: 0,
+        errors: [],
+        warnings: [{ row: 4, message: 'الفصل ممتلئ؛ تعذر إسناد الطالب' }],
+      },
+    });
+
+    const file = new File(['dummy content'], 'students_test.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [file] } });
+    fireEvent.click(screen.getByText('بدء الاستيراد'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('import-status-partial')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('import-status-success')).not.toBeInTheDocument();
+    expect(screen.getByTestId('import-metric-created')).toHaveTextContent('1');
+    expect(screen.getByTestId('import-metric-updated')).toHaveTextContent('1');
+    expect(screen.getByTestId('import-metric-assigned')).toHaveTextContent('1');
+    expect(screen.getByTestId('import-metric-classes_created')).toHaveTextContent('1');
+    expect(screen.getByTestId('import-metric-parents_created')).toHaveTextContent('2');
+    expect(screen.getByTestId('import-warning-row-4')).toHaveTextContent('الفصل ممتلئ؛ تعذر إسناد الطالب');
+  });
+
+  test('keeps teacher imports on the legacy success semantics', () => {
+    expect(getBulkImportStatus({
+      success: true,
+      total_rows: 2,
+      imported: 2,
+      failed: 0,
+    }, 'teachers')).toBe('success');
   });
 });
