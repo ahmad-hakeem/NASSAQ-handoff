@@ -18,7 +18,7 @@ from engines.smart_scheduling_engine import (
     ConflictSeverity,
     SmartSchedulingEngine,
 )
-from engines.sql_utils import gd_insert, gd_find_one, gd_update_many
+from engines.sql_utils import gd_insert, gd_find_one, gd_update_many, gd_update_one
 from src.modules.scheduling.controllers._publish_gate import assert_publishable
 
 
@@ -48,6 +48,28 @@ async def _mk_session(school_id: str, timetable_id: str, **fields) -> str:
     row.update(fields)
     await gd_insert(db.session, "timetable_sessions", row)
     return sid
+
+
+async def _mk_legacy_conflict(
+    timetable_id: str,
+    conflict_type: str,
+    *,
+    severity: str = "critical",
+) -> str:
+    conflict_id = str(uuid.uuid4())
+    await gd_insert(db.session, "timetable_conflicts", {
+        "id": conflict_id,
+        "run_id": str(uuid.uuid4()),
+        "timetable_id": timetable_id,
+        "conflict_type": conflict_type,
+        "severity": severity,
+        "is_resolved": False,
+        "day_of_week": "sunday",
+        "period_number": 1,
+        "message_en": conflict_type,
+        "message_ar": conflict_type,
+    })
+    return conflict_id
 
 
 async def _isolate_hc():
@@ -180,20 +202,24 @@ async def test_validate_before_publish_respects_inactive_constraints(school_a_id
     assert result["is_publishable"] is True
 
 
-async def test_validate_before_publish_under_warns_over_blocks(school_a_id):
+async def test_validate_before_publish_under_and_over_warn_without_blocking(school_a_id):
     """Period-quota policy at the publish gate: a subject placed FEWER times
     than its weekly demand (under-placement / incomplete schedule) is a
     non-blocking warning, while a subject placed MORE times than demanded
-    (over-placement) still blocks publish. Exercises HC-09
+    (over-placement) is also a non-blocking warning. Exercises HC-09
     (subject_weekly_periods) and HC-14 (schedule_completeness) end-to-end
-    through validate_before_publish's severity partitioning.
+    through validate_before_publish's severity partitioning.  Both sides of
+    the period-count mismatch are warnings; structural validators retain the
+    blocking partition.
 
     build_academic_demand reads real curriculum data; here it is stubbed on
     the instance so the test controls the demand without seeding a full
     academic structure."""
     await _isolate_hc()
     tt_id = await _mk_timetable(school_a_id)
-    await _mk_hc("subject_weekly_periods", "HC-09", severity="high")
+    # The persisted severity is configuration metadata only; the registry
+    # emits HC-09 as MEDIUM even when a stale deployment row says critical.
+    await _mk_hc("subject_weekly_periods", "HC-09", severity="critical")
     await _mk_hc("schedule_completeness", "HC-14", severity="medium")
 
     under_cls, under_subj = str(uuid.uuid4()), str(uuid.uuid4())
@@ -233,21 +259,20 @@ async def test_validate_before_publish_under_warns_over_blocks(school_a_id):
         school_id=school_a_id, timetable_id=tt_id
     )
 
-    # Over-placement must block publish.
-    assert result["is_publishable"] is False
+    # Neither over- nor under-placement may block publish.
+    assert result["is_publishable"] is True
     block = result["violations"]
-    assert any(
-        v["validation_key"] == "subject_weekly_periods"
-        and v["refs"].get("class_id") == over_cls
-        for v in block
-    )
-    # Under-placement must NOT block — it is surfaced only as a warning.
-    assert not any(v["refs"].get("class_id") == under_cls for v in block)
+    assert not any(v["validation_key"] == "subject_weekly_periods" for v in block)
     warn_keys = {w["validation_key"] for w in result["warnings"]}
     assert "schedule_completeness" in warn_keys
     assert any(
         w["validation_key"] == "subject_weekly_periods"
         and w["refs"].get("class_id") == under_cls
+        for w in result["warnings"]
+    )
+    assert any(
+        w["validation_key"] == "subject_weekly_periods"
+        and w["refs"].get("class_id") == over_cls
         for w in result["warnings"]
     )
 
@@ -446,3 +471,115 @@ async def test_publish_endpoint_uses_same_gate_logic_as_validate_before_publish(
     )
     endpoint_blocked = r.status_code == 409
     assert endpoint_blocked == (not engine_result["is_publishable"])
+
+
+async def test_publish_ignores_stale_subject_quota_conflict(
+    client, school_principal_headers, tenant_a
+):
+    """A legacy HC-09 row must not resurrect the former weekly-count blocker."""
+    await _isolate_hc()
+    draft_id = await _mk_timetable(tenant_a)
+    previous_id = await _mk_timetable(tenant_a)
+    await gd_update_one(
+        db.session,
+        "timetables",
+        {"id": previous_id},
+        {"status": "published", "is_published": True},
+    )
+    await _mk_legacy_conflict(
+        draft_id, "subject_quota_violation", severity="critical"
+    )
+    await db.session.commit()
+
+    response = await client.post(
+        f"/smart-scheduling/timetable/{draft_id}/publish",
+        headers=school_principal_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    published = await gd_find_one(db.session, "timetables", {"id": draft_id})
+    previous = await gd_find_one(db.session, "timetables", {"id": previous_id})
+    assert published["status"] == "published"
+    assert previous["status"] == "archived"
+
+
+async def test_publish_keeps_other_critical_legacy_conflicts_blocking(
+    client, school_principal_headers, tenant_a
+):
+    """Ignoring stale HC-09 data must not weaken unrelated conflict checks."""
+    await _isolate_hc()
+    draft_id = await _mk_timetable(tenant_a)
+    previous_id = await _mk_timetable(tenant_a)
+    await gd_update_one(
+        db.session,
+        "timetables",
+        {"id": previous_id},
+        {"status": "published", "is_published": True},
+    )
+    await _mk_legacy_conflict(
+        draft_id, "subject_quota_violation", severity="critical"
+    )
+    await _mk_legacy_conflict(draft_id, "teacher_overlap", severity="critical")
+    await db.session.commit()
+
+    response = await client.post(
+        f"/smart-scheduling/timetable/{draft_id}/publish",
+        headers=school_principal_headers,
+    )
+
+    # The legacy endpoint translates a failed promote into 400 after the
+    # registry gate has passed; importantly, no archive was committed.
+    assert response.status_code == 400, response.text
+    draft = await gd_find_one(db.session, "timetables", {"id": draft_id})
+    previous = await gd_find_one(db.session, "timetables", {"id": previous_id})
+    assert draft["status"] == "draft"
+    assert previous["status"] == "published"
+
+
+async def test_publish_savepoint_rolls_back_archive_if_promote_fails(
+    tenant_a, monkeypatch
+):
+    """A failure after archiving cannot leave a school without its old publish."""
+    draft_id = await _mk_timetable(tenant_a)
+    previous_id = await _mk_timetable(tenant_a)
+    await gd_update_one(
+        db.session,
+        "timetables",
+        {"id": previous_id},
+        {"status": "published", "is_published": True},
+    )
+    previous_session_id = await _mk_session(
+        tenant_a, previous_id, teacher_id=str(uuid.uuid4()),
+        class_id=str(uuid.uuid4()), subject_id=str(uuid.uuid4()),
+    )
+    draft_session_id = await _mk_session(
+        tenant_a, draft_id, teacher_id=str(uuid.uuid4()),
+        class_id=str(uuid.uuid4()), subject_id=str(uuid.uuid4()),
+    )
+
+    import engines.smart_scheduling_engine as engine_module
+
+    original_update = engine_module.gd_update_one
+
+    async def _fail_promote(session, collection, filters, updates):
+        if collection == "timetables" and filters.get("id") == draft_id:
+            raise RuntimeError("injected promote failure")
+        return await original_update(session, collection, filters, updates)
+
+    monkeypatch.setattr(engine_module, "gd_update_one", _fail_promote)
+    result = await SmartSchedulingEngine(db).publish_timetable(
+        timetable_id=draft_id, published_by=str(uuid.uuid4())
+    )
+
+    assert result is False
+    previous = await gd_find_one(db.session, "timetables", {"id": previous_id})
+    draft = await gd_find_one(db.session, "timetables", {"id": draft_id})
+    assert previous["status"] == "published"
+    assert previous["is_published"] is True
+    assert draft["status"] == "draft"
+    assert await gd_find_one(
+        db.session, "timetable_sessions", {"id": previous_session_id}
+    )
+    assert await gd_find_one(
+        db.session, "timetable_sessions", {"id": draft_session_id}
+    )

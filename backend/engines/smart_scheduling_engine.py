@@ -183,6 +183,18 @@ class ConflictType(str, Enum):
     CONSTRAINT_VIOLATION = "constraint_violation"  # انتهاك قيد
 
 
+# Older timetable-conflict rows used the quota conflict type (and a few
+# deployments stored the validator key/code directly).  Those rows represent
+# HC-09's former weekly-count gate and must not resurrect that gate after HC-09
+# became a warning.  This narrow allow-list is intentionally applied only to
+# quota rows; unknown and every other critical conflict type remains blocking.
+_LEGACY_NON_BLOCKING_QUOTA_CONFLICT_TYPES = frozenset({
+    ConflictType.SUBJECT_QUOTA_VIOLATION.value,
+    "subject_weekly_periods",
+    "HC-09",
+})
+
+
 class ConflictSeverity(str, Enum):
     """شدة التعارض"""
     CRITICAL = "critical"         # حرج - يمنع النشر
@@ -2128,15 +2140,13 @@ class SmartSchedulingEngine:
                         weekly_needed = demand.get("weekly_periods", 4)
                         current_count = subject_session_counts.get(subject_id, 0)
 
-                        # HC-09 (subject_weekly_periods) treats every session beyond a
-                        # subject's weekly_periods as a publish-blocking violation, so
-                        # the gap-filler must never push a subject past its quota. Once
-                        # a subject is at (or over) weekly_needed it stops being a
-                        # gap-fill candidate and the slot is left as a free period.
-                        # Without this guard a class whose total demand is smaller than
-                        # its available slots (few subjects, many periods) gets its
-                        # empty slots flooded with its only schedulable subject, which
-                        # then fails HC-09 at publish time.
+                        # HC-09 (subject_weekly_periods) reports a non-blocking
+                        # warning when a subject exceeds its weekly target.  Keep
+                        # the generation guard anyway: it prevents a class whose
+                        # total demand is smaller than its available slots (few
+                        # subjects, many periods) from having every empty slot
+                        # flooded with its only schedulable subject.  This is a
+                        # generation-quality preference, not a publish gate.
                         if current_count >= weekly_needed:
                             continue
 
@@ -4055,48 +4065,101 @@ class SmartSchedulingEngine:
         }
 
     async def publish_timetable(self, timetable_id: str, published_by: str) -> bool:
-        """Publish a timetable (archives any previously published timetable for the same school)"""
-        # Check for critical conflicts
-        conflicts = await gd_count(self.session, "timetable_conflicts", {
+        """Publish a timetable atomically.
+
+        The legacy conflict table predates the registry publish gate.  Ignore
+        only persisted HC-09 quota rows, including stale rows written while
+        weekly-count overages were critical; every other unresolved critical
+        conflict remains a hard stop.  Archive and promote are kept inside a
+        savepoint because the request middleware may commit after an endpoint
+        raises an HTTP error.
+        """
+        # Check for critical conflicts.  Do this as a bounded read followed by
+        # an explicit type filter rather than a SQL ``NOT IN``: rows with a
+        # missing/unknown conflict_type must remain blocking.
+        critical_conflicts = await gd_find(self.session, "timetable_conflicts", {
             "timetable_id": timetable_id,
             "severity": ConflictSeverity.CRITICAL.value,
             "is_resolved": False
-        })
+        }, limit=50000)
+        conflicts = [
+            conflict for conflict in critical_conflicts
+            if conflict.get("conflict_type")
+            not in _LEGACY_NON_BLOCKING_QUOTA_CONFLICT_TYPES
+        ]
 
-        if conflicts > 0:
+        if conflicts:
             return False
 
         now = datetime.now(timezone.utc).isoformat()
 
-        # Archive any other currently published timetable(s) for the same school
-        target = await gd_find_one(self.session, "timetables", {"id": timetable_id})
-        if target:
-            school_id = target.get("school_id")
-            if school_id:
-                others = await gd_find(self.session, "timetables", {
-                    "school_id": school_id,
-                    "status": TimetableStatus.PUBLISHED.value,
-                })
+        class _PublishAborted(Exception):
+            """Force the savepoint to roll back a partial archive/promote."""
+
+        try:
+            async with self.session.begin_nested():
+                # Archive any other currently published timetable(s) for the
+                # same school.  No session rows are changed by publication,
+                # so a savepoint rollback preserves the previous timetable
+                # and all of its sessions if promotion fails.
+                target = await gd_find_one(
+                    self.session, "timetables", {"id": timetable_id}
+                )
+                if not target or not target.get("school_id"):
+                    raise _PublishAborted("target timetable is missing or has no school")
+
+                school_id = target["school_id"]
+                others = await gd_find(
+                    self.session, "timetables", {
+                        "school_id": school_id,
+                        "status": TimetableStatus.PUBLISHED.value,
+                    }
+                )
                 for other in others:
                     if other.get("id") == timetable_id:
                         continue
-                    await gd_update_one(self.session, "timetables", {"id": other["id"]}, {
-                        "status": TimetableStatus.ARCHIVED.value,
-                        "is_published": False,
-                        "archived_at": now,
-                        "archived_by": published_by,
-                        "updated_at": now,
-                    })
+                    other_id = other.get("id")
+                    if not other_id:
+                        raise _PublishAborted("published timetable row has no id")
+                    archived = await gd_update_one(
+                        self.session, "timetables", {"id": other_id}, {
+                            "status": TimetableStatus.ARCHIVED.value,
+                            "is_published": False,
+                            "archived_at": now,
+                            "archived_by": published_by,
+                            "updated_at": now,
+                        }
+                    )
+                    if archived != 1:
+                        raise _PublishAborted(
+                            f"could not archive timetable {other_id}"
+                        )
 
-        result = await gd_update_one(self.session, "timetables", {"id": timetable_id}, {
-            "status": TimetableStatus.PUBLISHED.value,
-            "is_published": True,
-            "published_at": now,
-            "published_by": published_by,
-            "updated_at": now
-        })
+                promoted = await gd_update_one(
+                    self.session, "timetables", {"id": timetable_id}, {
+                        "status": TimetableStatus.PUBLISHED.value,
+                        "is_published": True,
+                        "published_at": now,
+                        "published_by": published_by,
+                        "updated_at": now
+                    }
+                )
+                if promoted != 1:
+                    raise _PublishAborted(
+                        f"could not promote timetable {timetable_id}"
+                    )
+        except _PublishAborted as exc:
+            logger.warning("Timetable publish aborted atomically: %s", exc)
+            return False
+        except Exception:
+            # The savepoint context has already rolled back all archive
+            # updates.  Returning False lets both publish endpoints produce
+            # their existing clean failure response; the outer middleware may
+            # safely commit the request because no partial writes remain.
+            logger.exception("Timetable publish failed; savepoint rolled back")
+            return False
 
-        return result > 0
+        return True
     
     async def archive_timetable(self, timetable_id: str, archived_by: str) -> bool:
         """Archive a timetable"""

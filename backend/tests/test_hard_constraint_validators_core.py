@@ -99,8 +99,8 @@ def test_subject_weekly_periods_over_target():
     violations = subject_weekly_periods.validate(_ctx(sessions=sessions, demands=demands))
     assert len(violations) == 1
     assert violations[0].refs["delta"] == 1
-    # Over-placement is a hard error that must block publish.
-    assert violations[0].severity == ConflictSeverity.HIGH
+    # Over-placement is informational and must not block publish.
+    assert violations[0].severity == ConflictSeverity.MEDIUM
 
 
 def test_daily_period_limit_default_six():

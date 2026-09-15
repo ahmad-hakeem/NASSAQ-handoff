@@ -4,7 +4,9 @@
 call before flipping a timetable to ``status="published"``. It delegates
 the decision to ``engine.validate_before_publish``, which dispatches the
 HardConstraintRegistry and partitions HIGH/CRITICAL violations as
-blocking.
+blocking. The registry owns emitted severity; persisted constraint-row
+severity only controls activation, so stale HC-09 configuration cannot
+restore its former blocking behavior.
 """
 
 from fastapi import HTTPException

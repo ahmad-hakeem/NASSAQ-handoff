@@ -34,8 +34,9 @@ def validate(ctx: ConstraintContext, candidate=None) -> List[ConstraintViolation
         # other hard constraints can prevent fitting every period. Per the
         # product decision it is surfaced as a non-blocking warning (MEDIUM)
         # rather than blocking publish; the missing periods are still shown
-        # to principals as insights. Over-placement remains a hard error in
-        # HC-09 (subject_weekly_periods).
+        # to principals as insights. Subject weekly-count mismatches are
+        # likewise informational HC-09 warnings; structural/resource
+        # validators remain responsible for blocking invalid timetables.
         violations.append(ConstraintViolation(
             code="HC-14",
             validation_key="schedule_completeness",

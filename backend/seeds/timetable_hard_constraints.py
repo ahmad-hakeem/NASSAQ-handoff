@@ -2,8 +2,11 @@
 القيود الإلزامية لإنشاء الجدول الدراسي
 Hard Constraints — School Timetable
 
-هذه القيود هي قواعد نظام ثابتة لا يمكن تجاوزها عند إنشاء أو نشر الجدول الدراسي.
-These are system-level rules that MUST be enforced during timetable generation and publishing.
+هذه القيود هي قواعد نظام ثابتة تُطبّق عند إنشاء أو نشر الجدول الدراسي؛ وتحدد
+شدة القاعدة ما إذا كانت مخالفتها تحذيراً أو مانعاً للنشر.
+These are system-level rules applied during timetable generation and publishing;
+the configured severity determines whether a violation is a warning or a
+publish blocker.
 """
 
 from datetime import datetime, timezone
@@ -133,11 +136,11 @@ TIMETABLE_HARD_CONSTRAINTS = [
         "code": "HC-09",
         "name_ar": "احترام عدد الحصص الأسبوعية لكل مادة",
         "name_en": "Subject Weekly Period Compliance",
-        "description_ar": "كل مادة دراسية يجب ألا تتجاوز عدد الحصص المحدد لها في المنهج الرسمي. تجاوز العدد (أكثر من المطلوب) يمنع النشر. أما النقص (أقل من المطلوب) فيظهر كتنبيه ولا يمنع النشر، لأنه قد يكون نتيجة قيود غير قابلة للحل.",
-        "description_en": "Each subject must not exceed the number of periods defined in the official curriculum. Over-placement (more than required) blocks publishing. Under-placement (fewer than required) is surfaced as a warning and does not block publishing, since it may result from unavoidable constraints.",
+        "description_ar": "يُستخدم عدد الحصص الأسبوعية المحدد للمادة في المنهج الرسمي كمرجع إرشادي. الزيادة أو النقص يظهران كتنبيه متوسط للمراجعة ولا يمنعان النشر؛ أما تعارضات المعلم أو الفصل والقيود البنيوية الأخرى فتبقى مانعة للنشر.",
+        "description_en": "The official curriculum weekly period count is guidance for review. Both over- and under-placement are surfaced as a medium warning and never block publishing; teacher/class conflicts and other structural constraints remain publish blockers.",
         "category": "curriculum",
         "applies_to": ["subject", "class"],
-        "severity": "critical",
+        "severity": "medium",
         "is_system": True,
         "is_active": True,
         "can_disable": False,

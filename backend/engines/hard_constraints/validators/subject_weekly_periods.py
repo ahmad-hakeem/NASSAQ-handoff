@@ -1,4 +1,10 @@
-"""HC-09 -- subject_weekly_periods validator."""
+"""HC-09 -- subject_weekly_periods informational validator.
+
+Weekly subject counts are curriculum guidance, not a timetable integrity
+constraint.  A mismatch is retained as a publish-time warning so principals
+can review it, but it must never make an otherwise valid timetable
+unpublishable.
+"""
 
 from typing import Any, Dict, List
 
@@ -28,14 +34,11 @@ def validate(ctx: ConstraintContext) -> List[ConstraintViolation]:
         if actual == expected:
             continue
         delta = actual - expected
-        # Over-placement (delta > 0) is a hard error: a subject scheduled more
-        # than its weekly quota indicates a generation bug and must block
-        # publish (HIGH). Under-placement (delta < 0) is often unavoidable
-        # real-world infeasibility (teacher availability/constraints prevent
-        # fitting every period); per product decision it is surfaced as a
-        # non-blocking warning (MEDIUM) instead of blocking publish — the
-        # unscheduled demand is already shown to principals as insights.
-        severity = META.severity if delta > 0 else ConflictSeverity.MEDIUM
+        # Both over- and under-placement are planning signals.  Neither is a
+        # timetable integrity failure, so both remain non-blocking MEDIUM
+        # warnings.  Structural/resource validators (including teacher load)
+        # continue to emit their own blocking severities.
+        severity = META.severity
         violations.append(ConstraintViolation(
             code=META.code,
             validation_key=META.validation_key,
@@ -61,7 +64,7 @@ def validate(ctx: ConstraintContext) -> List[ConstraintViolation]:
 META = ValidatorMeta(
     code="HC-09",
     validation_key="subject_weekly_periods",
-    severity=ConflictSeverity.HIGH,
+    severity=ConflictSeverity.MEDIUM,
     tier="full",
     fn=validate,
 )

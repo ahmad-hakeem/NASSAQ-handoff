@@ -239,10 +239,10 @@ async def test_gap_filler_never_exceeds_subject_weekly_periods():
 
     Before the quota guard, the gap-filler placed the only schedulable
     subject into every empty slot (here 10 slots) even though its
-    weekly_periods was 2, producing an over-placed grid that HC-09
-    (subject_weekly_periods) then rejected at publish time. With the
-    guard the subject is placed exactly weekly_periods times and the
-    remaining slots are left as free periods.
+    weekly_periods was 2, producing an over-placed grid and a noisy HC-09
+    (subject_weekly_periods) warning. With the guard the subject is placed
+    exactly weekly_periods times and the remaining slots are left as free
+    periods.
     """
     engine = _mk_engine()
     teacher = "teacher-1"
