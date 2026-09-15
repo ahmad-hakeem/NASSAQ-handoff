@@ -5,9 +5,19 @@ Uses Replit's co-located PostgreSQL via DATABASE_URL for <5ms latency.
 """
 import os
 import logging
+from dataclasses import dataclass
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from typing import Any
+
+from sqlalchemy import bindparam, text
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    async_sessionmaker,
+    AsyncSession,
+)
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 logger = logging.getLogger("nassaq.db")
 
@@ -34,8 +44,6 @@ if os.environ.get("TESTING"):
     # would hand a later test an asyncpg connection created on an earlier
     # loop ("Future attached to a different loop"). NullPool opens a fresh
     # connection per checkout, matching the per-test engines in conftest.
-    from sqlalchemy.pool import NullPool
-
     engine = create_async_engine(
         _get_async_url(),
         echo=False,
@@ -69,6 +77,31 @@ async def get_pg_session():
             raise
 
 get_db = get_pg_session
+
+
+def is_replit_managed_deployment() -> bool:
+    """Return whether Replit Publish owns this deployment's schema.
+
+    ``REPLIT_DEPLOYMENT`` is the existing, explicit Replit deployment marker.
+    Its truthiness rules live in the shared preservation registry so Alembic,
+    lifecycle startup, and this gate cannot disagree.  Do not infer
+    ownership from ``DATABASE_URL``: a managed database URL is also available
+    to development and migration-test processes.
+    """
+
+    from src.core.database.preserved_school_columns import is_managed_production
+
+    return is_managed_production()
+
+
+def schema_verification_is_fatal(*, production: bool, managed: bool) -> bool:
+    """Whether schema verification failures must stop startup.
+
+    A managed Replit deployment is fail-closed even when a development shell
+    or an unset ``ENVIRONMENT`` value accompanies the deployment marker.
+    """
+
+    return bool(production or managed)
 
 
 def get_alembic_head_revision():
@@ -112,21 +145,264 @@ def get_alembic_head_revision():
         return None
 
 
+@dataclass(frozen=True)
+class _SchemaContract:
+    """One required physical column in the read-only schema gate."""
+
+    table_name: str
+    column_name: str
+    postgres_type: str
+    nullable: bool
+    require_no_server_default: bool = False
+
+
+def _canonical_postgres_type(type_name: str | None) -> str:
+    """Normalize equivalent PostgreSQL type spellings for comparison."""
+
+    value = " ".join((type_name or "").replace('"', "").lower().split())
+    aliases = {
+        "varchar": "character varying",
+        "character varying": "character varying",
+        "bool": "boolean",
+        "int2": "smallint",
+        "int4": "integer",
+        "int8": "bigint",
+        "float4": "real",
+        "float8": "double precision",
+        "timestamp without time zone": "timestamp without time zone",
+        "timestamp with time zone": "timestamp with time zone",
+    }
+    # PostgreSQL FLOAT without an explicit precision is FLOAT8 /
+    # double-precision.  Do not generalize this to every FLOAT(n): FLOAT(24)
+    # is a distinct real-precision contract and should still be reported.
+    if value in {"float", "float(53)"}:
+        return "double precision"
+    # Preserve length/precision modifiers while normalizing the base name.
+    for source, target in aliases.items():
+        if value == source:
+            return target
+        if value.startswith(f"{source}("):
+            return f"{target}{value[len(source):]}"
+    return value
+
+
+def _metadata_type_name(column: Any) -> str:
+    """Compile a SQLAlchemy column type using PostgreSQL's dialect."""
+
+    try:
+        compiled = column.type.compile(dialect=postgresql.dialect())
+    except Exception:
+        compiled = str(column.type)
+    return _canonical_postgres_type(str(compiled))
+
+
+def _sqlalchemy_type_name(type_: Any) -> str:
+    """Compile a standalone SQLAlchemy type using PostgreSQL's dialect."""
+
+    try:
+        compiled = type_.compile(dialect=postgresql.dialect())
+    except Exception:
+        compiled = str(type_)
+    return _canonical_postgres_type(str(compiled))
+
+
+def _expected_schema_contracts() -> dict[tuple[str, str], _SchemaContract]:
+    """Build required columns from ORM metadata plus compatibility contracts."""
+
+    # Importing pg_models registers every mapped entity without touching the
+    # database.  The five compatibility columns intentionally remain outside
+    # this metadata and are supplied by the explicit registry below.
+    import pg_models as _  # noqa: F401
+
+    from src.core.database.preserved_school_columns import (
+        KNOWN_PHYSICAL_COLUMN_TYPES,
+        PRESERVED_SCHOOL_COLUMNS,
+    )
+
+    contracts: dict[tuple[str, str], _SchemaContract] = {}
+    for table in Base.metadata.sorted_tables:
+        for column in table.columns:
+            contracts[(table.name, column.name)] = _SchemaContract(
+                table_name=table.name,
+                column_name=column.name,
+                postgres_type=_metadata_type_name(column),
+                nullable=bool(column.nullable),
+            )
+
+    # Preserve exact deployed widths/text types for the handful of legacy
+    # columns whose ORM declarations are intentionally broader.  This is
+    # deliberately per-column: all other metadata type comparisons remain
+    # strict, and a narrower/unrelated physical type is still a failure.
+    for key, type_ in KNOWN_PHYSICAL_COLUMN_TYPES.items():
+        existing = contracts.get(key)
+        if existing is None:
+            raise RuntimeError(
+                "Known physical type contract has no ORM metadata column: "
+                f"{key[0]}.{key[1]}"
+            )
+        contracts[key] = _SchemaContract(
+            table_name=existing.table_name,
+            column_name=existing.column_name,
+            postgres_type=_sqlalchemy_type_name(type_),
+            nullable=existing.nullable,
+            require_no_server_default=existing.require_no_server_default,
+        )
+
+    for name, type_ in PRESERVED_SCHOOL_COLUMNS.items():
+        contracts[("schools", name)] = _SchemaContract(
+            table_name="schools",
+            column_name=name,
+            postgres_type=_sqlalchemy_type_name(type_),
+            nullable=True,
+            require_no_server_default=True,
+        )
+    return contracts
+
+
+def expected_schema_contracts() -> dict[tuple[str, str], _SchemaContract]:
+    """Return the final required physical contracts without touching PostgreSQL.
+
+    This is useful to compare a catalog snapshot or Publish structural diff
+    against the same contract used by the startup gate.  It returns metadata
+    only; no row values or credentials are included.
+    """
+
+    return _expected_schema_contracts()
+
+
+# One catalog query covers every ORM table and every compatibility column.
+# It intentionally does not mention alembic_version or any application table
+# data.  Extra physical columns are harmless and are not selected as failures.
+_PHYSICAL_SCHEMA_QUERY = text(
+    """
+    SELECT
+        ns.nspname AS table_schema,
+        cls.relname AS table_name,
+        attr.attname AS column_name,
+        format_type(attr.atttypid, attr.atttypmod) AS type_name,
+        NOT attr.attnotnull AS nullable,
+        pg_get_expr(def.adbin, def.adrelid) AS column_default
+    FROM pg_catalog.pg_class AS cls
+    JOIN pg_catalog.pg_namespace AS ns
+      ON ns.oid = cls.relnamespace
+    JOIN pg_catalog.pg_attribute AS attr
+      ON attr.attrelid = cls.oid
+    LEFT JOIN pg_catalog.pg_attrdef AS def
+      ON def.adrelid = attr.attrelid
+     AND def.adnum = attr.attnum
+    WHERE ns.nspname = 'public'
+      AND cls.relkind IN ('r', 'p')
+      AND attr.attnum > 0
+      AND NOT attr.attisdropped
+      AND cls.relname = ANY(:table_names)
+    """
+).bindparams(
+    bindparam(
+        "table_names",
+        type_=postgresql.ARRAY(postgresql.VARCHAR()),
+    )
+)
+
+
+async def verify_physical_schema() -> dict[str, Any]:
+    """Verify required physical columns with one read-only catalog query.
+
+    The result is deliberately a diagnostic mapping rather than an exception:
+    the lifecycle gate decides whether a production process may serve traffic.
+    This function never reads school values and never performs DDL or Alembic
+    bookkeeping writes.
+    """
+
+    expected = _expected_schema_contracts()
+    expected_tables = sorted({table for table, _ in expected})
+
+    async with engine.connect() as conn:
+        result = await conn.execute(
+            _PHYSICAL_SCHEMA_QUERY,
+            {"table_names": expected_tables},
+        )
+        rows = result.mappings().all()
+
+    observed = {
+        (row["table_name"], row["column_name"]): row
+        for row in rows
+    }
+    observed_tables = {row["table_name"] for row in rows}
+
+    missing_tables = sorted(set(expected_tables) - observed_tables)
+    missing_columns: list[str] = []
+    type_mismatches: list[str] = []
+    nullability_mismatches: list[str] = []
+    default_mismatches: list[str] = []
+
+    for key, contract in expected.items():
+        label = f"{contract.table_name}.{contract.column_name}"
+        actual = observed.get(key)
+        if actual is None:
+            missing_columns.append(label)
+            continue
+
+        actual_type = _canonical_postgres_type(actual["type_name"])
+        if actual_type != contract.postgres_type:
+            type_mismatches.append(
+                f"{label}: expected {contract.postgres_type}, got {actual_type}"
+            )
+        if bool(actual["nullable"]) != contract.nullable:
+            nullability_mismatches.append(
+                f"{label}: expected nullable={contract.nullable}, "
+                f"got nullable={bool(actual['nullable'])}"
+            )
+        if contract.require_no_server_default and actual["column_default"] is not None:
+            default_mismatches.append(
+                f"{label}: expected no server default, "
+                f"got {actual['column_default']}"
+            )
+
+    ok = not (
+        missing_tables
+        or missing_columns
+        or type_mismatches
+        or nullability_mismatches
+        or default_mismatches
+    )
+    return {
+        "ok": ok,
+        "missing_tables": missing_tables,
+        "missing_columns": missing_columns,
+        "type_mismatches": type_mismatches,
+        "nullability_mismatches": nullability_mismatches,
+        "default_mismatches": default_mismatches,
+        "expected_column_count": len(expected),
+        "catalog_row_count": len(rows),
+    }
+
+
 async def init_pg_tables():
-    """Verify (read-only) that the PostgreSQL schema is at the Alembic head.
+    """Verify the deployment-owned schema without changing PostgreSQL.
 
-    Returns a status dict so the caller can fail fast in production when the
-    live schema is not at the latest migration head. This function performs NO
-    DDL — it never creates, drops, or alters schema. Schema is Alembic-managed
-    only; runtime objects are handled separately by ``ensure_runtime_sequences``.
+    Replit Publish does not copy ``alembic_version`` data when it applies its
+    structural diff.  In a published deployment, therefore, the gate checks
+    the physical schema from one catalog query and never consults or stamps
+    Alembic bookkeeping.  Other environments retain the strict, single-row
+    Alembic head check.
 
-    ``at_head`` is True only when ``alembic_version`` holds EXACTLY one row whose
-    revision equals the single computed migration head. A missing table, a
-    branched multi-row ``alembic_version``, or unresolved multiple script heads
-    all yield ``at_head=False`` (fail-safe).
+    No path in this function creates tables, sequences, or columns.
     """
     import pg_models as _  # noqa: ensure models are imported
-    from sqlalchemy import text
+
+    if is_replit_managed_deployment():
+        physical = await verify_physical_schema()
+        return {
+            "managed": True,
+            "schema_mode": "physical",
+            "physical_schema_ok": physical["ok"],
+            "schema_ready": physical["ok"],
+            # Deliberately not a version claim: managed deployments do not
+            # trust alembic_version and never stamp it.
+            "at_head": None,
+            **physical,
+        }
+
     head_version = get_alembic_head_revision()
     db_version = None
     has_alembic = False
@@ -149,11 +425,14 @@ async def init_pg_tables():
         logger.warning(f"Schema drift: DB at {db_version} (alembic_version rows={version_row_count}) but migration head is {head_version}")
     logger.info("PostgreSQL schema verified (Alembic-managed)")
     return {
+        "managed": False,
+        "schema_mode": "alembic",
         "has_alembic": has_alembic,
         "db_version": db_version,
         "head_version": head_version,
         "version_row_count": version_row_count,
         "at_head": at_head,
+        "schema_ready": at_head,
     }
 
 

@@ -1,16 +1,17 @@
-"""drop setup_completed and setup_steps_completed from schools
+"""Retire the unsafe setup-column cleanup revision.
 
 Revision ID: e3f4a5b6c7d8
 Revises: d2e3f4a5b6c7
 Create Date: 2026-08-31
+
+This revision originally dropped two still-populated compatibility columns.
+That data-destructive body is intentionally retired in place: the revision ID
+and graph remain stable, but both directions are now no-ops.  Existing rows
+are never rewritten or removed.  The later additive preservation revision
+re-adds columns only for databases where an already-applied historical
+revision removed them; fresh/older databases retain their original columns.
 """
 from typing import Sequence, Union
-
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
-
-from migration_idempotent import has_column
 
 revision: str = 'e3f4a5b6c7d8'
 down_revision: Union[str, Sequence[str], None] = 'd2e3f4a5b6c7'
@@ -19,18 +20,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Drop setup_completed column from schools
-    if has_column('schools', 'setup_completed'):
-        op.drop_column('schools', 'setup_completed')
+    """Safely retire the historical destructive upgrade as a no-op."""
 
-    # 2. Drop setup_steps_completed JSONB column from schools
-    if has_column('schools', 'setup_steps_completed'):
-        op.drop_column('schools', 'setup_steps_completed')
+    pass
 
 
 def downgrade() -> None:
-    if not has_column('schools', 'setup_completed'):
-        op.add_column('schools', sa.Column('setup_completed', sa.Boolean(), nullable=True, server_default=sa.text('false')))
+    """Never recreate or seed values during a graph downgrade."""
 
-    if not has_column('schools', 'setup_steps_completed'):
-        op.add_column('schools', sa.Column('setup_steps_completed', postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default=sa.text("'[]'::jsonb")))
+    pass

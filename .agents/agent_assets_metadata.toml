@@ -175,3 +175,17 @@ mtime_ms = 1789504793611
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:76d3d322-060b-41e8-b1b6-757b9374d907/947827a9-ae9a-40a0-813c-81e655df9120/03f446ed-db3d-40ed-925a-f33a20fefac3"
 storage_version_token = "1789504862457871"
 content_type = "text/html"
+
+[[outputs]]
+id = "9mmO-_PKyFufZfZDccWqu"
+uri = "file://docs/reports/schools-publish-data-safety.html"
+type = "text"
+title = "تقرير سلامة بيانات المدارس عند النشر"
+description = "سبب الحذف وSQL الفعلي، تدقيق الأعمدة والبيانات، الإصلاح و29 اختباراً، وحدود التحقق وخطة النسخ والاستعادة والنشر."
+logical_id = "5b004a8c-1dca-4a08-af26-e011ec7878a1"
+content_hash = "sha256:99385f73031280f8c1ef27cf27625e6ee9a51cb9e1cd30025c16730291ba20c4"
+size = 22048
+mtime_ms = 1789508319791
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:76d3d322-060b-41e8-b1b6-757b9374d907/5b004a8c-1dca-4a08-af26-e011ec7878a1/4e3f6609-2c27-4cd0-89c6-74ee92ac0f8c"
+storage_version_token = "1789508387774341"
+content_type = "text/html"

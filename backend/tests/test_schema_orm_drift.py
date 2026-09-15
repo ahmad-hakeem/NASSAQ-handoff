@@ -29,6 +29,7 @@ from sqlalchemy.pool import NullPool
 
 from db import Base, _get_async_url
 import pg_models  # noqa: F401  ensure all ORM tables are registered on Base.metadata
+from src.core.database.preserved_school_columns import PRESERVED_SCHOOL_COLUMNS
 
 
 # Tables present in the live DB that are intentionally not modeled in
@@ -57,6 +58,10 @@ KNOWN_DB_ONLY_TABLES: frozenset[str] = frozenset({
 KNOWN_DB_ONLY_COLUMNS: frozenset[tuple[str, str]] = frozenset({
     ("schools", "ai_consent_enabled"),  # legacy column, no longer surfaced via ORM
     ("teachers", "created_by"),         # legacy column, no longer surfaced via ORM
+    # Legacy school compatibility storage is deliberately DB-only.  The
+    # registry is also consumed by Alembic's include_object callback, so
+    # autogenerate cannot turn this intentional drift into DROP COLUMN ops.
+    *{("schools", name) for name in PRESERVED_SCHOOL_COLUMNS},
 })
 
 

@@ -22,6 +22,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from db import Base
 import pg_models  # noqa: ensure all models registered
+from src.core.database.preserved_school_columns import (
+    assert_online_migrations_allowed,
+    is_preserved_school_column,
+)
 
 config = context.config
 
@@ -29,6 +33,33 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
+
+def include_object(object_, name, type_, reflected, compare_to):
+    """Keep intentional DB-only school compatibility columns out of drops."""
+
+    if is_preserved_school_column(
+        object_,
+        name,
+        type_,
+        reflected,
+        compare_to,
+    ):
+        return False
+    return True
+
+
+def _assert_online_migrations_allowed() -> None:
+    """Publish owns managed-production schema changes.
+
+    The marker is deliberately checked here rather than ``ENVIRONMENT``:
+    development workflows may run the application in production mode, while
+    a managed deployment must never mutate its database from a worker's
+    Alembic invocation.  Offline SQL rendering remains allowed because it
+    does not connect or execute DDL.
+    """
+
+    assert_online_migrations_allowed()
 
 
 def _get_url():
@@ -49,6 +80,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=url,
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -62,12 +94,17 @@ def do_run_migrations(connection):
         import logging
         logger = logging.getLogger("alembic.env")
         logger.info(f"DEPLOYMENT SAFETY: Running migrations in {env} mode — destructive ops are monitored")
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
 
 async def run_async_migrations() -> None:
+    _assert_online_migrations_allowed()
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = _get_url()
     connectable = async_engine_from_config(
@@ -81,6 +118,7 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
+    _assert_online_migrations_allowed()
     asyncio.run(run_async_migrations())
 
 

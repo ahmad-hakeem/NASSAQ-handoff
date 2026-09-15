@@ -15,21 +15,8 @@ echo "Installing backend dependencies..."
 cd /home/runner/workspace/backend
 pip install -r requirements.txt --no-cache-dir -q 2>&1 | tail -5
 
-# DEPLOYMENT SAFETY: apply database migrations exactly once per release.
-# The build phase runs a single time per deploy (unlike the autoscale run
-# command, which starts multiple instances), so this is the correct place to
-# run `alembic upgrade head` without racing concurrent workers. Alembic only
-# applies forward migrations — it never drops/seeds existing data. If the
-# migration fails, `set -e` aborts the build so the broken release never ships.
-if [ -n "$DATABASE_URL" ]; then
-  echo "Applying database migrations (alembic upgrade head)..."
-  alembic upgrade head
-  echo "Database migrations applied."
-else
-  echo "WARNING: DATABASE_URL not available at build time — skipping migrations."
-  echo "         The app's startup schema gate will refuse to serve traffic in"
-  echo "         production until migrations are applied to the target database."
-fi
+# Replit Publish owns production schema changes.  Keep this image build
+# database-independent: it must not connect to PostgreSQL or execute DDL.
 
 echo "Building frontend..."
 cd /home/runner/workspace/frontend

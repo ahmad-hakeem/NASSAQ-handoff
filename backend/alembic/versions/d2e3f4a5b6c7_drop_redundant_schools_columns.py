@@ -1,16 +1,18 @@
-"""drop redundant schools columns: principal_mobile, configuration, location
+"""Retire the unsafe ``schools``-column cleanup revision.
 
 Revision ID: d2e3f4a5b6c7
 Revises: tch01sch02null
 Create Date: 2026-08-31
+
+This revision originally backfilled ``principal_mobile`` into
+``principal_phone`` and dropped three still-populated compatibility columns.
+That data-destructive body is intentionally retired in place: the revision ID
+and graph remain stable, but both directions are now no-ops.  Existing rows
+are never rewritten or removed.  The later additive preservation revision
+re-adds columns only for databases where an already-applied historical
+revision removed them; fresh/older databases retain their original columns.
 """
 from typing import Sequence, Union
-
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
-
-from migration_idempotent import has_column
 
 revision: str = 'd2e3f4a5b6c7'
 down_revision: Union[str, Sequence[str], None] = 'tch01sch02null'
@@ -19,36 +21,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Backfill any non-empty principal_mobile into principal_phone before dropping
-    if has_column('schools', 'principal_mobile') and has_column('schools', 'principal_phone'):
-        op.execute(
-            sa.text(
-                "UPDATE schools SET principal_phone = principal_mobile "
-                "WHERE (principal_phone IS NULL OR principal_phone = '') "
-                "AND principal_mobile IS NOT NULL AND principal_mobile != ''"
-            )
-        )
+    """Safely retire the historical destructive upgrade as a no-op."""
 
-    # 2. Drop redundant principal_mobile column
-    if has_column('schools', 'principal_mobile'):
-        op.drop_column('schools', 'principal_mobile')
-
-    # 3. Drop redundant configuration JSONB column (now managed by school_settings table)
-    if has_column('schools', 'configuration'):
-        op.drop_column('schools', 'configuration')
-
-    # 4. Drop redundant location JSONB column (already explicit columns: city, region, address, etc.)
-    if has_column('schools', 'location'):
-        op.drop_column('schools', 'location')
+    pass
 
 
 def downgrade() -> None:
-    if not has_column('schools', 'location'):
-        op.add_column('schools', sa.Column('location', postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default='{}'))
+    """Never recreate or backfill columns during a graph downgrade."""
 
-    if not has_column('schools', 'configuration'):
-        op.add_column('schools', sa.Column('configuration', postgresql.JSONB(astext_type=sa.Text()), nullable=True, server_default='{}'))
-
-    if not has_column('schools', 'principal_mobile'):
-        op.add_column('schools', sa.Column('principal_mobile', sa.String(), nullable=True))
-        op.execute(sa.text("UPDATE schools SET principal_mobile = principal_phone WHERE principal_mobile IS NULL"))
+    pass

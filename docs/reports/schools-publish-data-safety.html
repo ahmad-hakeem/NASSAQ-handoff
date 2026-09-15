@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تدقيق سلامة بيانات المدارس عند النشر</title>
+<style>
+body{font:16px/1.85 system-ui,sans-serif;color:#172033;background:#f4f6f8;margin:0}main{max-width:1050px;margin:30px auto;padding:32px;background:white;border:1px solid #dae0e8;border-radius:14px}h1,h2{line-height:1.5}h2{margin-top:32px;border-bottom:1px solid #dde3ea;padding-bottom:8px}table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:10px;border:1px solid #dce2e8;text-align:right;vertical-align:top}th{background:#eef3f7}code,pre{direction:ltr;unicode-bidi:embed;font-family:ui-monospace,monospace}pre{background:#f1f4f7;padding:16px;overflow:auto;text-align:left;font-size:13px;line-height:1.6}.notice{padding:16px;background:#fff4db;border-right:4px solid #a46500}.ok{background:#eaf7ee;border-color:#268448}.small{font-size:13px;color:#506074}a{color:#126091}@media(max-width:650px){main{margin:0;padding:18px;border-radius:0}table{display:block;overflow:auto;white-space:normal}}@media print{body{background:white}main{border:0;margin:0;padding:0}h2{break-after:avoid}tr{break-inside:avoid}}
+</style>
+<main>
+<h1>تدقيق سلامة بيانات المدارس عند النشر</h1>
+<p class="small">16 سبتمبر 2026 — بيانات مجمّعة ومخططات فقط؛ لا يحتوي التقرير أرقام اتصال أو بيانات تعريف الطلاب والمستخدمين.</p>
+<div class="notice ok"><strong>نتيجة الإصلاح:</strong> اختفت أوامر حذف الأعمدة الخمسة من فرق النشر الفعلي. لم يُنفَّذ نشر أو أي تعديل على قاعدة الإنتاج. أُعيدت الأعمدة إلى التطوير بإضافة غير هدامة، مع إبقائها خارج نماذج التطبيق النشطة.</div>
+<p class="notice"><strong>ليس تصريحاً بالنشر:</strong> نسخة إنتاج حديثة موثقة، واختبار استعادتها، وتجربة نشر كاملة على بيئة منفصلة، ما زالت غير متحققة. لا يوجد ضمان مثبت بانعدام التوقف أو فقدان البيانات. لا توافق على خطة النشر القديمة التي تتضمن الحذف.</p>
+
+<h2>1. السبب ومصدر أوامر الحذف</h2>
+<p>يقارن النشر المخطط الفعلي للتطوير بالإنتاج. كانت الأعمدة موجودة في الإنتاج ومحذوفة في التطوير بواسطة ترحيلين قديمين؛ لذلك اقترح النشر حذفها. إزالة حد طلاب الفصل لا تتطلب حذف أي منها.</p>
+<ul>
+<li><code>backend/alembic/versions/d2e3f4a5b6c7_drop_redundant_schools_columns.py</code>: كان يحذف <code>principal_mobile</code> و<code>configuration</code> و<code>location</code>. كان ينقل الجوال إلى الهاتف فقط إذا كان الهاتف فارغاً، دون معالجة القيم المختلفة الموجودة معاً.</li>
+<li><code>backend/alembic/versions/e3f4a5b6c7d8_drop_setup_completed_and_setup_steps_completed.py</code>: كان يحذف حالتي الإعداد دون حفظ القيم القديمة.</li>
+<li>يظهر تاريخ Git إدخال التغييرات المعنية بتاريخ 31 أغسطس 2026. تحتفظ الملفات الآن بمعرّفات الترحيل وترابطها، لكن أجسام الترقية والتراجع الهدامة أُوقفت عمداً. لم تُضف هذه العمليات إلى قائمة السماح بالفقدان.</li>
+</ul>
+<p>هذه أوامر الحذف الدقيقة التي أعادها فحص النشر قبل الإصلاح، وليست أوامر نُفِّذت أثناء هذا التحقيق:</p>
+<pre>ALTER TABLE "schools" DROP COLUMN "configuration";
+ALTER TABLE "schools" DROP COLUMN "location";
+ALTER TABLE "schools" DROP COLUMN "setup_completed";
+ALTER TABLE "schools" DROP COLUMN "setup_steps_completed";
+ALTER TABLE "schools" DROP COLUMN "principal_mobile";</pre>
+<p>فرق المنصة لا ينقل بيانات الحقول بالضرورة كما تفعل تعليمات DML داخل Alembic. كذلك كان <code>build.sh</code> يشغّل ترحيلات Alembic أثناء البناء، مما كان يسمح بإعادة تشغيل الحذف القديم حتى بعد تصحيح فرق المخطط. أُزيل هذا المسار؛ النشر المُدار وحده مسؤول عن تغيير مخطط الإنتاج.</p>
+
+<h2>2. مقارنة المخططات</h2>
+<table>
+<tr><th>المصدر</th><th>قبل الإصلاح</th><th>بعد العمل</th></tr>
+<tr><td>الإنتاج</td><td>الأعمدة الخمسة موجودة؛ سجل Alembic: <code>tch01sch02null</code>.</td><td>لم يُعدّل. الأعمدة والبيانات لم تُلمس بواسطة الوكيل.</td></tr>
+<tr><td>التطوير</td><td>الأعمدة الخمسة غائبة؛ سجل Alembic: <code>c3d4e5f6a7b8</code>.</td><td>أُضيفت الأعمدة المفقودة فقط عبر <code>d4e5f6a7b8c9</code>.</td></tr>
+<tr><td>ORM</td><td>حقول التشغيل الحالية لا تتضمن الأعمدة القديمة.</td><td>لم تُفعّل قراءتها أو كتابتها من جديد. سجل توافق منفصل يحمي أعمدة قاعدة البيانات من الحذف التلقائي ويتحقق من وجودها.</td></tr>
+<tr><td>اختبار/مرحلة منفصلة</td><td colspan="2">لم تُثبت بيئة مرحلية مستعادة من الإنتاج. محاكاة البيانات الوصفية المنفذة ليست بديلاً عنها.</td></tr>
+</table>
+<p>الأنواع المطلوبة: <code>configuration JSONB</code>، <code>location JSONB</code>، <code>setup_completed BOOLEAN</code>، <code>setup_steps_completed JSONB</code>، <code>principal_mobile VARCHAR</code> دون حد طول. جميعها تقبل NULL ولا تحمل قيمة افتراضية على الخادم، مطابقاً للإنتاج.</p>
+
+<h2>3. أثر البيانات لكل عمود</h2>
+<p>عدد صفوف المدارس: <strong>61</strong>. عبارة «61 items» في التحذير ليست عدداً موثوقاً للقيم غير الفارغة في كل عمود.</p>
+<table>
+<tr><th>العمود</th><th>غير NULL</th><th>الشكل/المحتوى المجمّع</th><th>الاستخدام والبديل</th><th>القرار</th></tr>
+<tr><td><code>configuration</code></td><td>61</td><td>61 كائناً فارغاً <code>{}</code>.</td><td>لم يُعثر على قراءة تشغيلية مباشرة للحقل القديم. التعليل القديم يشير إلى <code>school_settings</code>؛ الإعدادات الحالية تعتمد حقول المدرسة الصريحة وإعداداتها. لم يوجد ترحيل موثق يثبت نقل محتوى الحقل.</td><td>الاحتفاظ؛ لا ضرورة لحذفه.</td></tr>
+<tr><td><code>location</code></td><td>61</td><td>61 كائناً فارغاً <code>{}</code>.</td><td>العنوان والمدينة والمنطقة حقول مستقلة حالياً. لم يوجد نقل بيانات مثبت من JSON القديم. استُبعدت نتائج البحث غير المتعلقة بالمدارس مثل <code>window.location</code>.</td><td>الاحتفاظ.</td></tr>
+<tr><td><code>setup_completed</code></td><td>61</td><td>20 صحيحة، 41 خاطئة.</td><td>لم يُعثر على مستهلك نشط للحقل القديم. <code>setup_score</code> مقياس مشتق لجاهزية المدرسة، وليس بديلاً مطابقاً للحالة التاريخية؛ لا يمكن تأكيد إعادة بناء القيم منه.</td><td>الاحتفاظ بالحالة التاريخية.</td></tr>
+<tr><td><code>setup_steps_completed</code></td><td>61</td><td>61 مصفوفة فارغة <code>[]</code>.</td><td>لم يُعثر على مستهلك نشط أو بديل موثق يحفظ تقدم كل خطوة.</td><td>الاحتفاظ.</td></tr>
+<tr><td><code>principal_mobile</code></td><td>13</td><td>13 قيمة نصية غير فارغة؛ 6 تطابق <code>principal_phone</code> و7 تختلف نصياً؛ لا توجد قيمة جوال غير فارغة يقابلها هاتف فارغ.</td><td>واجهات DTO والنماذج الأمامية ما زالت تستخدم الاسم للتوافق؛ المسارات الحالية تعتمد الهاتف كحقل أساسي أو اسم بديل له. لم يُثبت أن القيم السبعة المختلفة مكررة أو غير لازمة.</td><td>حفظ القيم القديمة دون اختيار أحد الرقمين أو استبداله.</td></tr>
+</table>
+<p>لم يُعثر في كتالوج الإنتاج على views تعتمد الأعمدة الخمسة أو triggers مخصصة على جدول المدارس. المفاتيح الخارجية المسترجعة ترتبط بـ<code>schools.id</code>، لا بهذه الأعمدة. هذا لا يستبعد مستهلكاً خارجياً غير موجود في المستودع أو اعتماد SQL ديناميكياً خارج حدود الفحص.</p>
+
+<h2>4. أدلة مراجعة الاستخدام</h2>
+<ul>
+<li>النموذج الأساسي: <code>backend/src/modules/schools/entities/schools_entity.py</code>.</li>
+<li>الإعدادات والحقول البديلة: <code>backend/src/modules/schools/services/school_settings_service.py</code>.</li>
+<li>التسلسل وإنشاء وتحديث المدارس ومقياس الإعداد: <code>backend/src/modules/schools/services/school_crud_service.py</code>.</li>
+<li>عقود الاسم البديل للجوال: <code>backend/src/modules/schools/dto/school_dto.py</code> و<code>backend/shared_models.py</code>.</li>
+<li>إعدادات الواجهة: <code>frontend/src/features/settings/components/school-settings/DynamicSettingsContent.jsx</code> و<code>frontend/src/shared/hooks/useSchoolSettings.js</code>.</li>
+<li>إنشاء المدرسة: <code>frontend/src/admin/features/schools/components/CreateSchoolWizard.jsx</code> و<code>frontend/src/admin/features/schools/components/wizard/StepSchoolProfile.jsx</code>.</li>
+</ul>
+<p>شمل البحث المسارات والخدمات والتسلسلات والوظائف والاستيراد والواجهة. عدم العثور على مرجع نشط لا يُعد بمفرده موافقة على حذف بيانات محفوظة.</p>
+
+<h2>5. الإصلاح المنفذ وضماناته المحدودة</h2>
+<ul>
+<li>ترحيل إضافي غير هدام: <code>backend/alembic/versions/d4e5f6a7b8c9_preserve_legacy_school_columns.py</code>. يضيف المفقود فقط، ولا يعدّل قيمة موجودة. التراجع لا يحذف الأعمدة.</li>
+<li>إيقاف الحذف القديم في الترحيلين المعنيين مع إبقاء هوية سجل الترحيلات، وحماية التشغيل على قواعد قديمة لم تشغلهما بعد. هذا لا يعيد بيانات سبق فقدها في التطوير؛ يضيف أعمدة فارغة هناك فقط.</li>
+<li>سجل صريح للأعمدة القديمة في <code>backend/src/core/database/preserved_school_columns.py</code> وحماية خاصة بها في Alembic autogenerate. بقية فروق المخطط تظل خاضعة للفحص.</li>
+<li>منع Alembic online داخل بيئة نشر Replit المُدارة، وإزالة ترحيل قاعدة البيانات من البناء. لا توجيه إلى اتصال إنتاج للالتفاف على صلاحيات القراءة فقط.</li>
+<li>بدء التشغيل المُدار يتحقق باستعلام كتالوج واحد من الأعمدة المطلوبة والأنواع وNULL، ومن غياب القيم الافتراضية للأعمدة الخمسة. لا يثق بسجل Alembic القديم، ولا يعدله. خارج النشر المُدار يبقى شرط تطابق رأس Alembic.</li>
+<li>لا إضافة DDL لبدء التشغيل؛ أُوقف مسار ضمان sequences القديم في بدء التشغيل المُدار.</li>
+</ul>
+<p>فحوص المستودع لا تتحكم في زر النشر أو الموافقة داخل المنصة، وليست إثباتاً عاماً يمنع كل تغيير يدوي مستقبلي في قاعدة التطوير. يجب إعادة فحص SQL الفعلي قبل كل نشر؛ أي DROP/TRUNCATE أو تغيير نوع هدام أو تغيير سياسة حذف العلاقات يحتاج مراجعة مستقلة وخطة استعادة موثقة.</p>
+
+<h2>6. فرق النشر بعد الإصلاح</h2>
+<p>نتيجة الفحص الفعلي: <code>hasStructuralDataLoss=false</code>، <code>maybeNonBackwardsCompatible=false</code>، ولا تحذيرات أو أعمدة/جداول مقترحة للحذف. بقيت أربع عبارات:</p>
+<pre>CREATE TABLE "bulk_import_batches" (
+  "id" varchar PRIMARY KEY NOT NULL,
+  "school_id" varchar NOT NULL,
+  "actor_id" varchar,
+  "actor_name" varchar,
+  "import_type" varchar NOT NULL,
+  "file_name" varchar,
+  "imported_count" integer DEFAULT 0 NOT NULL,
+  "student_ids" jsonb,
+  "created_class_ids" jsonb,
+  "status" varchar DEFAULT 'active' NOT NULL,
+  "created_at" timestamp with time zone DEFAULT now(),
+  "updated_at" timestamp with time zone DEFAULT now(),
+  "created_parent_ids" jsonb DEFAULT '[]'::jsonb,
+  "created_parent_user_ids" jsonb DEFAULT '[]'::jsonb,
+  "ownership_version" integer
+);
+ALTER TABLE "bulk_import_batches"
+  ADD CONSTRAINT "bulk_import_batches_school_id_fkey"
+  FOREIGN KEY ("school_id") REFERENCES "public"."schools"("id")
+  ON DELETE cascade ON UPDATE no action;
+CREATE INDEX "idx_bulk_import_batches_school_status"
+  ON "bulk_import_batches" USING btree ("school_id","status");
+CREATE INDEX "ix_bulk_import_batches_school_id"
+  ON "bulk_import_batches" USING btree ("school_id");</pre>
+<p>علاقة CASCADE هنا تخص جدول سجل الاستيراد الجديد عند حذف المدرسة، ولا تنفذ حذفاً لمدرسة قائمة. تظل إضافة العلاقة قابلة لأخذ قفل قصير؛ لم تُقَس مدة القفل على مرحلة مستعادة.</p>
+
+<h2>7. أدلة التحقق</h2>
+<ul>
+<li><strong>29 اختباراً ناجحاً</strong>: سلامة الترحيلات ومعرّفاتها، منع العمليات الهدامة غير المصرح بها، عدم تغيير قيم مصطنعة محفوظة، حماية الأعمدة القديمة، فحص البدء المُدار حتى عند غياب إعداد وضع الإنتاج، وانحراف ORM.</li>
+<li>تطبيق ترحيل الإضافة على التطوير فقط: نجح، دون تشغيل أي ترحيل قديم مجدداً.</li>
+<li>فحص التطوير الفعلي: <strong>987 عقد عمود مطلوب؛ نجح</strong>، بلا أعمدة أو جداول مفقودة، وبلا اختلافات نوع/NULL/قيم افتراضية مخالفة.</li>
+<li>فحص لقطة كتالوج الإنتاج: الاختلاف المطلوب الوحيد هو جدول <code>bulk_import_batches</code> الجديد وأعمدته الخمسة عشر.</li>
+<li>محاكاة إضافة أعمدة الجدول إلى لقطة البيانات الوصفية: نجح فحص التوافق. <strong>ليست تنفيذاً لـSQL على نسخة بيانات إنتاج، ولا اختبار استعادة أو حمل أو أقفال.</strong></li>
+<li>أُعيد تشغيل API في التطوير؛ اكتمل بدء التشغيل بنجاح، وفُحصت الصفحة الرئيسية في المتصفح دون خطأ ظاهر.</li>
+<li>رُوجعت سلسلة الترحيلات بعد رأس الإنتاج: بعد إيقاف الحذف القديم، لا توجد فيها عمليات INSERT/UPDATE/DELETE أو نقل بيانات مطلوب تخطّاه مسار النشر الجديد.</li>
+</ul>
+<pre>cd backend
+ENVIRONMENT=development python3 -m pytest -q \
+  tests/test_preserved_school_columns.py \
+  tests/test_migration_destructive_ops_guard.py \
+  tests/test_alembic_migrations_integrity.py \
+  tests/test_managed_schema_safety.py \
+  tests/test_schema_orm_drift.py</pre>
+<p>لم تُعَد في هذا التدقيق اختبارات المستخدمين الكاملة للدخول والإعداد ولوحة المدير والجداول والإشعارات والمعلم وولي الأمر على نسخة إنتاج مستعادة. لا تُستبدل هذه الاختبارات بنتيجة فحص الكتالوج.</p>
+<p>بعض مسارات CI المعرّفة سابقاً تشير إلى ملفات <code>scripts/ci/*</code> مفقودة. لم تُستخدم نتائجها القديمة لإثبات النجاح؛ شُغّلت مجموعة الاختبارات المحددة أعلاه مباشرة.</p>
+
+<h2>8. النسخة الاحتياطية والاستعادة</h2>
+<p>الملف الموجود <code>production_backup_fresh.sql.gz</code> بتاريخ تعديل 14 سبتمبر 2026 نجح في فحص فك الضغط. لكنه يحتوي <strong>71 مدرسة ولا يحتوي الأعمدة الخمسة</strong> في بيانات المدارس، مقابل 61 مدرسة ووجود الأعمدة في الإنتاج الحالي. اسم الملف ليس إثباتاً لمصدره أو حداثته.</p>
+<p><strong>النتيجة: لا نسخة صالحة موثقة لاستعادة الأعمدة محل الخطر، ولا استعادة اختبارية مكتملة.</strong> لم تُصدّر بيانات اتصال حساسة إلى التقرير أو إلى نسخة جديدة غير محمية في المستودع.</p>
+<ol>
+<li>يؤكد مالك المشروع من أدوات قاعدة الإنتاج النسخ المتاحة ونطاق الاستعادة ووقت آخر نسخة، دون إرسال كلمات مرور أو روابط موقعة في المحادثة.</li>
+<li>يُؤخذ تصدير حديث كامل للمخطط والبيانات في تخزين محمي، مع حفظ بيانات الأعمدة الخمسة. يسجل وقت النسخة ومعرّفها وتحقق سلامة الملف.</li>
+<li>تُستعاد النسخة في قاعدة منفصلة معزولة، لا فوق التطوير أو الإنتاج. تُعطّل فيها الاتصالات الخارجية والإشعارات والبريد والمهام الآلية.</li>
+<li>تُقارن الأعداد والقيم داخل بيئة الاستعادة دون كشف قيم الاتصال. يجب إثبات استعادة حالات الإعداد والقيم الثلاث عشرة للجوال واختلافاتها السبعة.</li>
+<li>تُجرّب عبارات النشر الأربع على النسخة المعزولة مع قياس الزمن والأقفال، ثم اختبارات الأدوار والوظائف المذكورة، ويُوثق التراجع.</li>
+</ol>
+
+<h2>9. خطة النشر والتراجع</h2>
+<ol>
+<li>إلغاء محاولة النشر المعلقة ذات SQL القديم؛ لا توافق على حذف الأعمدة حتى بعد تعديل الكود.</li>
+<li>استكمال شرط النسخة الحديثة والاستعادة والمرحلة التجريبية قبل منح الموافقة المطلوبة في الملخص الأصلي.</li>
+<li>إعادة فتح نشر جديد والتأكد من بقاء فرق الإضافة فقط، ومن عدم اختيار «استبدال بيانات الإنتاج ببيانات التطوير».</li>
+<li>ينفّذ المستخدم النشر عبر المنصة. لا يشغّل Alembic أو DDL يدوياً على الإنتاج.</li>
+<li>مراقبة جاهزية النسخة الجديدة والأخطاء وزمن الاستجابة والتدفقات الأساسية. لا يكفي نجاح البناء وحده لإثبات نجاح الترقية.</li>
+<li>عند فشل التطبيق بعد إضافة الجدول: إيقاف تقدم النشر وإبقاء الأعمدة والجدول الإضافي. استعادة نسخة التطبيق السابقة لا تستلزم حذف البيانات المضافة.</li>
+<li>إذا وقع فقدان بيانات غير متوقع: إيقاف الكتابات المتأثرة بالتنسيق مع المالك، ثم استخدام نسخة أو نقطة استعادة جرى اختبارها. لم يُختبر هذا الإجراء على الإنتاج هنا.</li>
+</ol>
+<p>لا توجد مرحلة «تقليص/حذف» معتمدة الآن. إن أُريد تقاعد هذه الحقول لاحقاً، يبدأ عمل منفصل: تعريف البديل، دعم القديم والجديد، نقل لا يطمس القيم المتعارضة، تحقق من التطابق، تحويل الاستخدام، مراقبة، ثم موافقة مستقلة على الحذف مع نسخة قابلة للاستعادة.</p>
+<p>تدعم وثائق Replit مقارنة المخططات ضمن النشر وإجراءات استعادة البيانات. لم يثبت هذا التحقيق ضماناً لكون جميع عبارات النشر ذرية معاً، أو سياسة إعادة المحاولة، أو انعدام التوقف؛ لا يُستنتج ذلك من علم <code>maybeNonBackwardsCompatible=false</code>.</p>
+<p class="small">مراجع المنصة:
+<a href="https://docs.replit.com/cloud-services/storage-and-databases/production-databases">قواعد بيانات الإنتاج</a> ·
+<a href="https://docs.replit.com/features/data-and-storage/data-recovery">استعادة البيانات</a>.</p>
+</main>
+</html>
