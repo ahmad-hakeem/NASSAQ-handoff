@@ -194,6 +194,66 @@ describe('UsersClassesManagement — Bulk Import Error Logs Rendering', () => {
     expect(screen.getByTestId('import-warning-row-4')).toHaveTextContent('الفصل ممتلئ؛ تعذر إسناد الطالب');
   });
 
+  test('shows reused parents and linked students when no new parents were created', async () => {
+    render(<UsersClassesManagement initialTab="import-export" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('بدء الاستيراد')).toBeInTheDocument();
+    });
+
+    mockApiPost.mockResolvedValueOnce({
+      data: {
+        success: true,
+        total_rows: 10,
+        imported: 10,
+        failed: 0,
+        created: 10,
+        updated: 0,
+        restored: 0,
+        assigned: 10,
+        classes_created: 0,
+        classes_reused: 3,
+        parents_created: 0,
+        parents_reused: 9,
+        students_linked_to_parents: 10,
+        grades_created: 0,
+        grades_reused: 10,
+        skipped: 0,
+        errors: [],
+        warnings: [],
+      },
+    });
+
+    const file = new File(['workbook'], 'workbook10students.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [file] } });
+    fireEvent.click(screen.getByText('بدء الاستيراد'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('import-status-success')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('import-metric-parents_created')).toHaveTextContent('0');
+    expect(screen.getByTestId('import-metric-parents_reused')).toHaveTextContent('9');
+    expect(screen.getByTestId('import-metric-students_linked_to_parents')).toHaveTextContent('10');
+    expect(screen.getByTestId('import-metric-grades_created')).toHaveTextContent('0');
+    expect(screen.getByTestId('import-metric-grades_reused')).toHaveTextContent('10');
+  });
+
+  test('requires every student parent link when the new link counter is present', () => {
+    expect(getBulkImportStatus({
+      success: true,
+      imported: 10,
+      assigned: 10,
+      students_linked_to_parents: 9,
+    }, 'students')).toBe('partial');
+    expect(getBulkImportStatus({
+      success: true,
+      imported: 10,
+      assigned: 10,
+    }, 'students')).toBe('success');
+  });
+
   test('keeps teacher imports on the legacy success semantics', () => {
     expect(getBulkImportStatus({
       success: true,

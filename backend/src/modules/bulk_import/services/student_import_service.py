@@ -35,7 +35,7 @@ from engines.sql_utils import (
     gd_update_one,
 )
 from engines.entity_counts import resolve_class_capacity
-from src.common.utils.canonical_grades import normalize_canonical_grade
+from src.common.utils.canonical_grades import CANONICAL_GRADES, normalize_canonical_grade
 
 
 _ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
@@ -53,6 +53,10 @@ _HEADER_ALIASES = {
     "father_name": {
         "father name", "middle name", "second name", "اسم الأب", "اسم الاب",
         "الاسم الأوسط", "الاسم الاوسط",
+    },
+    "grandfather_name": {
+        "grandfather name", "third name", "اسم الجد", "اسم الجد الأكبر",
+        "اسم الجد الاكبر",
     },
     "last_name": {
         "last name", "lastname", "family name", "surname",
@@ -106,6 +110,10 @@ class StudentImportRowError(ValueError):
     """A safe, user-facing failure for one row."""
 
 
+class StudentImportRelationshipError(StudentImportRowError):
+    """A persisted class/grade/parent relationship failed validation."""
+
+
 def _normalise_header(value: Any) -> str:
     raw = "" if value is None else str(value)
     raw = raw.replace("\u00a0", " ").translate(_ARABIC_DIGITS).strip()
@@ -138,10 +146,26 @@ def _normalise_token(value: Any) -> str:
 def _normalise_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Map known Arabic/English header aliases to stable internal names."""
     rename: Dict[Any, str] = {}
+    seen: Dict[str, List[str]] = {}
     for column in df.columns:
         normalised = _normalise_header(column)
-        rename[column] = _HEADER_INDEX.get(normalised, normalised)
-    return df.rename(columns=rename)
+        target = _HEADER_INDEX.get(normalised, normalised)
+        rename[column] = target
+        seen.setdefault(target, []).append(str(column))
+    duplicate_headers = [
+        {
+            "field": field,
+            "headers": headers,
+        }
+        for field, headers in seen.items()
+        if len(headers) > 1
+    ]
+    result = df.rename(columns=rename)
+    # DataFrame.attrs survives the rename and lets the service return a
+    # user-facing validation error instead of allowing pandas' duplicate
+    # column semantics to silently select an arbitrary value.
+    result.attrs["duplicate_headers"] = duplicate_headers
+    return result
 
 
 def _clean_national_id(value: Any) -> str:
@@ -154,8 +178,36 @@ def _clean_phone(value: Any) -> str:
     return re.sub(r"[\s\-()]", "", raw)
 
 
-def _safe_error(row: int, field: str, message: str) -> dict:
-    return {"row": row, "field": field, "message": message}
+def _safe_error(
+    row: int,
+    field: str,
+    message: str,
+    *,
+    student_name: str = "",
+    suggested_correction: Optional[str] = None,
+) -> dict:
+    suggestions = {
+        "الاسم الأول": "أدخل الاسم الأول للطالب.",
+        "اسم العائلة": "أدخل اسم العائلة للطالب.",
+        "رقم الهوية": "أدخل رقم هوية مكوّناً من 10 أرقام.",
+        "جوال ولي الأمر": "أدخل رقم جوال ولي الأمر مع 9 أرقام على الأقل.",
+        "البريد الإلكتروني": "أدخل بريداً إلكترونياً صحيحاً أو اتركه فارغاً.",
+        "بريد ولي الأمر": "أدخل بريداً إلكترونياً صحيحاً أو اتركه فارغاً.",
+        "الصف": "استخدم صفاً canonical مثل «الصف الأول الابتدائي» أو رقمه من 1 إلى 12.",
+        "الفصل": "أدخل اسم الشعبة، مثل «أ»، أو الاسم الكامل مع بادئة الصف غير الملتبسة.",
+        "grade": "احتفظ بعمود واحد للصف واستخدم قيمة من القائمة المعتمدة.",
+        "class_name": "احتفظ بعمود واحد للفصل وأدخل قيمة شعبة واضحة.",
+        "headers": "احذف العمود المكرر واحتفظ بعمود واحد لكل حقل.",
+        "relationships": "تحقق من الصف والفصل وبيانات ولي الأمر ثم أعد المحاولة.",
+        "عام": "صحح البيانات المشار إليها ثم أعد استيراد الصف.",
+    }
+    return {
+        "row": row,
+        "field": field,
+        "message": message,
+        "student_name": student_name,
+        "suggested_correction": suggested_correction or suggestions.get(field, suggestions["عام"]),
+    }
 
 
 def _exception_message(exc: Exception) -> str:
@@ -179,11 +231,54 @@ async def acquire_school_import_lock(session, school_id: str) -> None:
     )
 
 
+async def _supports_batch_ownership_version(session) -> bool:
+    """Detect the optional ownership marker without requiring a migration.
+
+    Deployments that predate the ownership migration must keep importing
+    successfully.  Their manifests intentionally remain legacy/unsafe for
+    destructive parent cleanup; once the column is present, new manifests
+    carry version 2 and rollback can use the proven ownership lists.
+    """
+    # Unit-test sessions model persistence with an in-memory ``rows`` store.
+    if hasattr(session, "rows"):
+        return True
+    try:
+        result = await session.execute(text("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'bulk_import_batches'
+                  AND column_name = 'ownership_version'
+            )
+        """))
+        scalar = getattr(result, "scalar", None)
+        return bool(scalar() if callable(scalar) else False)
+    except Exception:
+        return False
+
+
 def _canonical_grade(value: Any) -> Optional[dict]:
     raw = normalise_cell(value)
     if raw is None:
         return None
-    return normalize_canonical_grade(raw)
+    canonical = normalize_canonical_grade(raw)
+    if canonical:
+        return canonical
+
+    # The spreadsheet template historically omitted the ``الصف`` prefix
+    # from otherwise canonical labels (for example ``الأول الابتدائي``).
+    # Resolve only aliases that retain the stage, so the bare ordinal
+    # ``الأول`` remains fail-closed instead of being guessed as primary.
+    alias_token = " ".join(
+        raw.removeprefix("الصف ").split()
+    ).replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+    matches = []
+    for entry in CANONICAL_GRADES:
+        label = str(entry["label_ar"]).removeprefix("الصف ")
+        label_token = " ".join(label.split()).replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        if alias_token == label_token:
+            matches.append(entry)
+    return dict(matches[0]) if len(matches) == 1 else None
 
 
 def _grade_index(rows: Iterable[dict]) -> Tuple[Dict[str, dict], Dict[str, str]]:
@@ -200,6 +295,11 @@ def _grade_index(rows: Iterable[dict]) -> Tuple[Dict[str, dict], Dict[str, str]]
             if canonical:
                 break
         if not canonical:
+            continue
+        # A grade row without a persisted id cannot be used for relational
+        # class linkage.  Treat it as corrupt/absent so the import can create
+        # one canonical tenant-scoped row instead of reporting a false reuse.
+        if not row.get("id"):
             continue
         value = str(canonical["grade"])
         by_value[value] = row
@@ -238,46 +338,109 @@ def _class_canonical_grade(class_doc: dict, grade_rows: Dict[str, dict], grade_i
     return None
 
 
-def _section_from_input(value: str, grade: dict) -> str:
-    """Extract a stable section token while accepting exported full names."""
+_SECTION_LETTER_ALIASES = {
+    "a": "أ",
+    "أ": "أ",
+    "ا": "أ",
+    "إ": "أ",
+    "آ": "أ",
+}
+
+
+def _arabic_prefix_fold(value: Any) -> str:
+    """Fold only Arabic hamza variants while resolving a known prefix."""
+    return (
+        str(value or "")
+        .replace("أ", "ا")
+        .replace("إ", "ا")
+        .replace("آ", "ا")
+    )
+
+
+def _canonical_section_atom(value: Any) -> str:
+    """Canonicalise a bare section letter without touching opaque labels."""
     raw = normalise_cell(value) or ""
-    if not raw:
-        return ""
-    # The importer accepts a full exported class name as well as a bare
-    # section.  Only separators are interpreted; arbitrary free text remains
-    # a valid section label and is not silently rewritten.
-    pieces = re.split(r"\s*(?:-|–|—|/|:)\s*", raw)
-    if len(pieces) > 1:
-        return normalise_cell(pieces[-1]) or raw
-    label = _normalise_token(grade["label_ar"])
-    token = _normalise_token(raw)
-    if token.startswith(label):
-        remainder = raw[len(grade["label_ar"]):].strip(" -–—/:")
-        if remainder:
-            return normalise_cell(remainder) or raw
-    number = str(grade["grade"])
-    if token.startswith(number) and len(token) > len(number):
-        remainder = raw[len(number):].strip(" -–—/:.")
-        if remainder:
-            return normalise_cell(remainder) or raw
+    if len(raw) == 1:
+        return _SECTION_LETTER_ALIASES.get(raw.casefold(), raw)
     return raw
 
 
+def _section_match_token(value: Any) -> str:
+    """Build a comparison token while preserving opaque suffixes.
+
+    ``أ-1`` and ``ا-1`` are the same section identity, but ``ا-1`` and
+    ``ا-2`` remain different because only the hamza-family letters are folded.
+    This is used for matching only; persisted/displayed section text remains
+    the importer's original canonical value.
+    """
+    return _normalise_token(_arabic_prefix_fold(normalise_cell(value) or ""))
+
+
+def _section_from_input(value: str, grade: dict) -> str:
+    """Extract a stable section token while accepting unambiguous prefixes.
+
+    Grade prefixes are interpreted only when they are provably the selected
+    grade (the canonical Arabic label, its hamza-folded form, an ordinal
+    form, or the exact numeric grade).  Other separator-containing values stay
+    opaque: ``ا-1`` and ``ا-2`` must not collapse to ``1`` and ``2`` or to
+    one another.
+    """
+    raw = normalise_cell(value) or ""
+    if not raw:
+        return ""
+
+    # A bare Arabic/Latin section letter is safe to alias.  This special case
+    # deliberately runs before prefix parsing so ``ا-1`` remains opaque.
+    bare = _canonical_section_atom(raw)
+    if bare != raw or len(raw) == 1:
+        return bare
+
+    folded = _arabic_prefix_fold(raw)
+    grade_number = str(grade["grade"])
+    ordinal = str(grade["label_ar"]).split()[1]
+    prefixes = (
+        str(grade["label_ar"]),
+        str(grade["label_ar"]).replace("الصف ", "", 1),
+        f"الصف {ordinal}",
+        ordinal,
+        f"Grade {grade_number}",
+        grade_number,
+    )
+    for prefix in prefixes:
+        prefix_folded = _arabic_prefix_fold(prefix)
+        pattern = rf"^{re.escape(prefix_folded)}(?:\s+|[-–—/:])(.+)$"
+        match = re.match(pattern, folded, flags=re.IGNORECASE)
+        if match:
+            return _canonical_section_atom(match.group(1).strip(" -–—/:"))
+
+    # No grade prefix was proven.  Keep the entire opaque section identity.
+    return _canonical_section_atom(raw)
+
+
 def _class_matches(class_doc: dict, raw_name: str, section: str, grade: dict) -> bool:
-    incoming = {_normalise_token(raw_name), _normalise_token(section)}
+    incoming_section = _section_from_input(section, grade)
+    incoming = {
+        _normalise_token(raw_name),
+        _normalise_token(section),
+        _normalise_token(incoming_section),
+        _section_match_token(section),
+        _section_match_token(incoming_section),
+    }
     class_name = class_doc.get("name")
     class_name_en = class_doc.get("name_en")
     class_section = class_doc.get("section") or _section_from_input(class_name or "", grade)
+    class_section = _section_from_input(class_section, grade)
     known = {
         _normalise_token(class_name),
         _normalise_token(class_name_en),
         _normalise_token(class_section),
+        _section_match_token(class_section),
     }
     return bool((incoming - {""}) & (known - {""}))
 
 
 def _class_key(grade: dict, section: str) -> Tuple[str, str]:
-    return str(grade["grade"]), _normalise_token(section)
+    return str(grade["grade"]), _section_match_token(section)
 
 
 def _new_class_doc(
@@ -321,6 +484,20 @@ def _new_class_doc(
     return doc
 
 
+def _new_grade_doc(*, school_id: str, grade: dict) -> dict:
+    """Build the tenant grade row used by classes and student imports."""
+    return {
+        "id": str(uuid.uuid4()),
+        "name": grade["label_ar"],
+        "name_ar": grade["label_ar"],
+        "name_en": grade["label_en"],
+        "stage": grade["stage"],
+        "order": grade["grade"],
+        "is_active": True,
+        "school_id": school_id,
+    }
+
+
 def _provided(row: pd.Series, field: str) -> Tuple[Optional[str], bool]:
     if field not in row.index:
         return None, False
@@ -333,6 +510,75 @@ def _split_full_name(full_name: Optional[str]) -> Tuple[str, str, str]:
     if len(parts) < 2:
         return (parts[0] if parts else "", "", "")
     return parts[0], " ".join(parts[1:-1]), parts[-1]
+
+
+def _row_student_name(row: pd.Series) -> str:
+    """Return a useful student label for every row-level error."""
+    full_name = normalise_cell(row.get("full_name")) if "full_name" in row.index else None
+    if full_name:
+        return full_name
+    parts = [
+        normalise_cell(row.get(field))
+        for field in ("first_name", "father_name", "grandfather_name", "last_name")
+        if field in row.index
+    ]
+    return " ".join(part for part in parts if part).strip()
+
+
+async def _validate_persisted_relationships(
+    session,
+    *,
+    school_id: str,
+    student_doc: dict,
+    class_doc: dict,
+    grade_row: dict,
+) -> None:
+    """Fail the row savepoint unless its canonical links are queryable."""
+    persisted_class = await gd_find_one(session, "classes", {
+        "id": class_doc["id"],
+        "school_id": school_id,
+    })
+    if not persisted_class:
+        raise StudentImportRelationshipError("لم يتم حفظ الفصل المرتبط بالطالب")
+
+    grade_id = grade_row.get("id") if grade_row else None
+    if not grade_id:
+        raise StudentImportRelationshipError("لم يتم تحديد المرحلة الدراسية المرتبطة بالفصل")
+    persisted_grade = await gd_find_one(session, "grade_levels", {
+        "id": grade_id,
+        "school_id": school_id,
+    })
+    if not persisted_grade:
+        raise StudentImportRelationshipError("لم يتم حفظ المرحلة الدراسية المرتبطة بالفصل")
+    if persisted_class.get("grade_id") != grade_id:
+        raise StudentImportRelationshipError("الفصل المحفوظ لا يرتبط بالمرحلة الدراسية المحددة")
+
+    persisted_student = await gd_find_one(session, "students", {
+        "id": student_doc["id"],
+        "school_id": school_id,
+    })
+    if not persisted_student or persisted_student.get("class_id") != class_doc["id"]:
+        raise StudentImportRelationshipError("لم يتم ربط الطالب بالفصل المحفوظ")
+    if str(persisted_student.get("grade")) != str(grade_row.get("order")):
+        raise StudentImportRelationshipError("الطالب المحفوظ لا يرتبط بالمرحلة الدراسية المحددة")
+
+    parent_id = student_doc.get("parent_id")
+    if not parent_id:
+        raise StudentImportRelationshipError("لم يتم ربط الطالب بولي أمر حقيقي")
+    persisted_parent = await gd_find_one(session, "parents", {
+        "id": parent_id,
+        "school_id": school_id,
+    })
+    if not persisted_parent:
+        raise StudentImportRelationshipError("لم يتم حفظ حساب ولي الأمر المرتبط")
+    persisted_link = await gd_find_one(session, "guardian_links", {
+        "student_id": student_doc["id"],
+        "tenant_id": school_id,
+        "parent_id": parent_id,
+        "is_active": True,
+    })
+    if not persisted_link:
+        raise StudentImportRelationshipError("لم يتم حفظ علاقة ولي الأمر بالطالب")
 
 
 async def import_students(
@@ -370,6 +616,21 @@ async def import_students(
             skipped += 1
             continue
         data_rows.append((row_num, row))
+    duplicate_headers = df.attrs.get("duplicate_headers") or []
+    if duplicate_headers:
+        for duplicate in duplicate_headers:
+            headers = "، ".join(duplicate["headers"])
+            errors.append(_safe_error(
+                1,
+                "headers",
+                f"الأعمدة ({headers}) تشير إلى الحقل نفسه ({duplicate['field']}) ولا يمكن اختيار قيمة بينها تلقائياً",
+            ))
+        return _result(
+            imported=0,
+            failed=1,
+            skipped=skipped,
+            validation_errors=1,
+        )
     if missing_headers:
         for row_num, _row in data_rows or [(1, None)]:
             for field, label in missing_headers:
@@ -377,11 +638,13 @@ async def import_students(
                     row_num,
                     field,
                     f"{label}: عمود مطلوب لاستيراد الطلاب وتعيينهم إلى فصل",
+                    student_name=_row_student_name(_row) if _row is not None else "",
                 ))
         return _result(
             imported=0,
             failed=len({e.get("row") for e in errors if e.get("row")}),
             skipped=skipped,
+            validation_errors=len({e.get("row") for e in errors if e.get("row")}),
         )
 
     # Load all tenant-scoped rows while the import lock is held.  This is the
@@ -407,12 +670,15 @@ async def import_students(
     seen_nids: Dict[str, int] = {}
     seen_emails: Dict[str, int] = {}
     valid_records: List[dict] = []
+    validation_error_rows: set[int] = set()
+    relationship_error_rows: set[int] = set()
 
     for row_num, row in data_rows:
         row_errors: List[dict] = []
         try:
             first_name, has_first = _provided(row, "first_name")
             father_name, _has_father = _provided(row, "father_name")
+            grandfather_name, _has_grandfather = _provided(row, "grandfather_name")
             last_name, has_last = _provided(row, "last_name")
             full_name_value, has_full_name = _provided(row, "full_name")
             if (not first_name or not last_name) and has_full_name:
@@ -423,6 +689,7 @@ async def import_students(
             first_name = first_name or ""
             last_name = last_name or ""
             father_name = father_name or ""
+            grandfather_name = grandfather_name or ""
 
             if not first_name:
                 row_errors.append(_safe_error(row_num, "الاسم الأول", "الاسم الأول: حقل مطلوب"))
@@ -497,6 +764,14 @@ async def import_students(
                 row_errors.append(_safe_error(row_num, "الفصل", "الفصل: حقل مطلوب"))
 
             if row_errors:
+                validation_error_rows.add(row_num)
+                student_name = " ".join(
+                    part for part in (
+                        first_name, father_name, grandfather_name, last_name
+                    ) if part
+                ).strip()
+                for row_error in row_errors:
+                    row_error["student_name"] = student_name
                 errors.extend(row_errors)
                 continue
 
@@ -518,7 +793,11 @@ async def import_students(
                     "female" if gender_token in {"female", "f", "أنثى", "انثى"} else "male"
                 )
             parent_name, has_parent_name = _provided(row, "parent_name")
-            full_name = " ".join(p for p in (first_name, father_name, last_name) if p).strip()
+            full_name = " ".join(
+                p for p in (
+                    first_name, father_name, grandfather_name, last_name
+                ) if p
+            ).strip()
             if not parent_name:
                 parent_name = f"ولي أمر {full_name}"
 
@@ -526,6 +805,7 @@ async def import_students(
                 "row_num": row_num,
                 "first_name": first_name,
                 "father_name": father_name,
+                "grandfather_name": grandfather_name,
                 "last_name": last_name,
                 "full_name": full_name,
                 "national_id": clean_nid,
@@ -539,7 +819,13 @@ async def import_students(
                 "existing": existing_by_nid.get(clean_nid),
             })
         except Exception as exc:
-            errors.append(_safe_error(row_num, "عام", f"خطأ في معالجة الصف: {_exception_message(exc)}"))
+            validation_error_rows.add(row_num)
+            errors.append(_safe_error(
+                row_num,
+                "عام",
+                f"خطأ في معالجة الصف: {_exception_message(exc)}",
+                student_name=_row_student_name(row),
+            ))
 
     counters = {
         "created": 0,
@@ -556,12 +842,19 @@ async def import_students(
     created_class_ids: List[str] = []
     created_parent_ids: List[str] = []
     created_parent_user_ids: List[str] = []
+    initial_class_ids = {str(class_doc.get("id")) for class_doc in classes if class_doc.get("id")}
+    reused_class_ids: set[str] = set()
+    reused_parent_ids: set[str] = set()
+    linked_student_ids: set[str] = set()
+    created_grade_ids: set[str] = set()
+    reused_grade_ids: set[str] = set()
     touched_class_ids: set[str] = set()
     imported = 0
 
     # The cache starts as an immutable snapshot.  A class created/reactivated
     # during a row is added only after that row's savepoint succeeds.
     class_docs = list(classes)
+    grade_rows_by_number = dict(grade_values)
     from dependencies import generate_secure_password, hash_password
     from services.parent_linking import link_or_update_real_school_guardian
 
@@ -574,6 +867,10 @@ async def import_students(
         class_doc = None
         class_was_created = False
         new_class_doc = None
+        grade_row = grade_rows_by_number.get(str(item["grade"]["grade"]))
+        grade_was_created = grade_row is None
+        if grade_was_created:
+            grade_row = _new_grade_doc(school_id=school_id, grade=item["grade"])
         try:
             candidates = []
             for candidate in class_docs:
@@ -589,7 +886,6 @@ async def import_students(
             if candidates:
                 class_doc = candidates[0]
             else:
-                grade_row = grade_values.get(str(item["grade"]["grade"]))
                 new_class_doc = _new_class_doc(
                     school_id=school_id,
                     grade=item["grade"],
@@ -650,7 +946,13 @@ async def import_students(
 
             parent_created = None
             parent_user_created = None
+            needs_grade_link_repair = (
+                not class_doc.get("grade_id")
+                or str(class_doc.get("grade_id") or "").isdigit()
+            )
             async with db.session.begin_nested():
+                if grade_was_created:
+                    await gd_insert(db.session, "grade_levels", grade_row)
                 if class_was_created:
                     await gd_insert(db.session, "classes", new_class_doc)
                 elif class_doc.get("is_active") is False:
@@ -660,6 +962,18 @@ async def import_students(
                         "classes",
                         {"id": class_doc["id"], "school_id": school_id},
                         {"$set": {"is_active": True, "updated_at": now_iso}},
+                    )
+                # Older schools may have persisted the canonical number
+                # (for example ``"1"``) in classes.grade_id before tenant
+                # grade rows were introduced.  Once this import resolves the
+                # real grade row, repair that legacy link in place rather
+                # than rejecting an otherwise matching existing class.
+                if needs_grade_link_repair:
+                    await gd_update_one(
+                        db.session,
+                        "classes",
+                        {"id": class_doc["id"], "school_id": school_id},
+                        {"$set": {"grade_id": grade_row["id"], "updated_at": now_iso}},
                     )
 
                 guardian_fields = await link_or_update_real_school_guardian(
@@ -692,20 +1006,49 @@ async def import_students(
                     )
                 else:
                     await gd_insert(db.session, "students", student_doc)
+                await _validate_persisted_relationships(
+                    db.session,
+                    school_id=school_id,
+                    student_doc=student_doc,
+                    class_doc=class_doc,
+                    grade_row=grade_row,
+                )
 
             # Everything below this point is cache/counter bookkeeping.  It
             # deliberately occurs after the savepoint exits successfully.
+            if needs_grade_link_repair:
+                # ``class_doc`` may be an entry in the matching cache.  Do not
+                # mutate it until the savepoint has committed: a guardian or
+                # relationship failure restores the database but cannot undo
+                # mutations to this in-memory object.
+                class_doc["grade_id"] = grade_row["id"]
+            grade_number = str(item["grade"]["grade"])
+            if grade_was_created:
+                grade_rows_by_number[grade_number] = dict(grade_row)
+                grade_values[grade_number] = dict(grade_row)
+                grade_ids[str(grade_row["id"])] = grade_number
+                created_grade_ids.add(str(grade_row["id"]))
+            else:
+                reused_grade_ids.add(str(grade_row["id"]))
             if class_was_created:
                 class_docs.append(dict(new_class_doc))
                 created_class_ids.append(new_class_doc["id"])
                 counters["classes_created"] += 1
-            elif class_doc.get("is_active") is False:
-                class_doc["is_active"] = True
+            else:
+                if class_doc.get("is_active") is False:
+                    class_doc["is_active"] = True
+                if str(class_doc.get("id")) in initial_class_ids:
+                    reused_class_ids.add(str(class_doc["id"]))
             if parent_created:
-                created_parent_ids.append(parent_created)
-                counters["parents_created"] += 1
+                if parent_created not in created_parent_ids:
+                    created_parent_ids.append(parent_created)
+                    counters["parents_created"] += 1
             if parent_user_created:
-                created_parent_user_ids.append(parent_user_created)
+                if parent_user_created not in created_parent_user_ids:
+                    created_parent_user_ids.append(parent_user_created)
+            parent_id = guardian_fields.get("parent_id")
+            if parent_id and not guardian_fields.get("is_new"):
+                reused_parent_ids.add(str(parent_id))
 
             prior_class_id = existing.get("class_id") if existing else None
             if prior_class_id:
@@ -719,6 +1062,8 @@ async def import_students(
             if not already_in_target:
                 occupancy[class_doc["id"]] = occupancy.get(class_doc["id"], 0) + 1
             counters["assigned"] += 1
+            if student_doc.get("parent_id"):
+                linked_student_ids.add(student_id)
 
             imported += 1
             imported_student_ids.append(student_id)
@@ -732,11 +1077,21 @@ async def import_students(
             else:
                 counters["created"] += 1
                 created_student_ids.append(student_id)
+        except StudentImportRelationshipError as exc:
+            relationship_error_rows.add(item["row_num"])
+            errors.append(_safe_error(
+                item["row_num"],
+                "relationships",
+                _exception_message(exc),
+                student_name=item.get("full_name", ""),
+            ))
         except Exception as exc:
+            validation_error_rows.add(item["row_num"])
             errors.append(_safe_error(
                 item["row_num"],
                 "عام",
                 _exception_message(exc),
+                student_name=item.get("full_name", ""),
             ))
 
     if imported:
@@ -761,7 +1116,7 @@ async def import_students(
 
         batch_id = str(uuid.uuid4())
         try:
-            await gd_insert(db.session, "bulk_import_batches", {
+            batch_manifest = {
                 "id": batch_id,
                 "school_id": school_id,
                 "actor_id": user.get("id"),
@@ -776,14 +1131,17 @@ async def import_students(
                 "created_class_ids": created_class_ids,
                 "created_parent_ids": created_parent_ids,
                 "created_parent_user_ids": created_parent_user_ids,
-                # Only manifests written by this implementation have
-                # trustworthy ownership lists. Rollback must treat older
-                # manifests as unsafe, especially for global users.
-                "ownership_version": 2,
                 "status": "active",
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
-            })
+            }
+            # The ownership migration is deliberately optional for this
+            # import path.  Without it the row is still committed, but
+            # rollback will treat the manifest as legacy and preserve all
+            # parent/user resources.
+            if await _supports_batch_ownership_version(db.session):
+                batch_manifest["ownership_version"] = 2
+            await gd_insert(db.session, "bulk_import_batches", batch_manifest)
         except Exception:
             # The import itself is already committed at row savepoint scope;
             # a reporting-manifest failure must not turn successful rows into
@@ -805,6 +1163,19 @@ async def import_students(
         existing_student_ids=updated_student_ids + restored_student_ids,
         created_class_ids=created_class_ids,
         created_parent_ids=created_parent_ids,
+        classes_reused=len(reused_class_ids),
+        # A resource created by an earlier successful row may be returned as
+        # "reused" by a later row in the same upload.  It is still created
+        # from the import's perspective, so the two counters must be
+        # disjoint.
+        parents_reused=len(
+            reused_parent_ids - {str(parent_id) for parent_id in created_parent_ids}
+        ),
+        students_linked_to_parents=len(linked_student_ids),
+        grades_created=len(created_grade_ids),
+        grades_reused=len(reused_grade_ids - created_grade_ids),
+        validation_errors=len(validation_error_rows),
+        relationship_errors=len(relationship_error_rows),
         created_parent_user_ids=created_parent_user_ids,
         **counters,
     )
@@ -829,7 +1200,14 @@ def _result(
     restored: int = 0,
     assigned: int = 0,
     classes_created: int = 0,
+    classes_reused: int = 0,
     parents_created: int = 0,
+    parents_reused: int = 0,
+    students_linked_to_parents: int = 0,
+    grades_created: int = 0,
+    grades_reused: int = 0,
+    validation_errors: int = 0,
+    relationship_errors: int = 0,
 ) -> dict:
     return {
         "imported": imported,
@@ -840,7 +1218,14 @@ def _result(
         "restored": restored,
         "assigned": assigned,
         "classes_created": classes_created,
+        "classes_reused": classes_reused,
         "parents_created": parents_created,
+        "parents_reused": parents_reused,
+        "students_linked_to_parents": students_linked_to_parents,
+        "grades_created": grades_created,
+        "grades_reused": grades_reused,
+        "validation_errors": validation_errors,
+        "relationship_errors": relationship_errors,
         "existing": updated + restored,
         "batch_id": batch_id,
         "student_ids": student_ids or [],

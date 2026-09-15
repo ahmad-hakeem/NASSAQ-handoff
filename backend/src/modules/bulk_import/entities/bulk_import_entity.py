@@ -30,6 +30,10 @@ class BulkImportBatch(Base):
     created_class_ids = Column(JSONB, nullable=True, default=list)
     created_parent_ids = Column(JSONB, nullable=True, default=list)
     created_parent_user_ids = Column(JSONB, nullable=True, default=list)
+    # Version the ownership manifest independently from the row lists.  Older
+    # batches have NULL here and are intentionally not allowed to authorize
+    # destructive parent/user cleanup.
+    ownership_version = Column(Integer, nullable=True)
     status = Column(String, nullable=False, default="active")
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

@@ -446,7 +446,9 @@ async def test_bulk_import_batches_tracking_and_rollback(
     await gd_insert(_db_session, "parents", {
         "id": p1_id,
         "school_id": tenant_a,
-        "user_id": u1_id,
+        # ``parents`` has no user_id column; the canonical relationship is
+        # represented by guardian_links.parent_ref below.
+        "email": f"parent_{p1_id[:8]}@nassaq.local",
         "full_name": "ولي أمر 1",
         "student_ids": [s1_id],
         "is_active": True,
@@ -470,7 +472,7 @@ async def test_bulk_import_batches_tracking_and_rollback(
     await gd_insert(_db_session, "parents", {
         "id": p2_id,
         "school_id": tenant_a,
-        "user_id": u2_id,
+        "email": f"parent_{p2_id[:8]}@nassaq.local",
         "full_name": "ولي أمر 2",
         "student_ids": [s2_id, other_sid],
         "is_active": True,
@@ -484,6 +486,30 @@ async def test_bulk_import_batches_tracking_and_rollback(
         "parent_id": p2_id,
         "is_active": True,
         "created_at": now_iso,
+    })
+    await gd_insert(_db_session, "guardian_links", {
+        "id": str(uuid.uuid4()),
+        "parent_ref": u1_id,
+        "parent_id": p1_id,
+        "student_id": s1_id,
+        "tenant_id": tenant_a,
+        "is_active": True,
+    })
+    await gd_insert(_db_session, "guardian_links", {
+        "id": str(uuid.uuid4()),
+        "parent_ref": u2_id,
+        "parent_id": p2_id,
+        "student_id": s2_id,
+        "tenant_id": tenant_a,
+        "is_active": True,
+    })
+    await gd_insert(_db_session, "guardian_links", {
+        "id": str(uuid.uuid4()),
+        "parent_ref": u2_id,
+        "parent_id": p2_id,
+        "student_id": other_sid,
+        "tenant_id": tenant_a,
+        "is_active": True,
     })
 
     for sid, name, pid in [(s1_id, "طالب استيراد 1", p1_id), (s2_id, "طالب استيراد 2", p2_id)]:
@@ -516,6 +542,7 @@ async def test_bulk_import_batches_tracking_and_rollback(
         "created_class_ids": [new_cid],
         "created_parent_ids": [p1_id],
         "created_parent_user_ids": [u1_id],
+        "ownership_version": 2,
         "status": "active",
         "created_at": now_dt,
         "updated_at": now_dt,
@@ -577,7 +604,7 @@ async def test_bulk_import_batches_tracking_and_rollback(
         "اسم العائلة": "معاد",
         "رقم الهوية": unique_nid,
         "جوال ولي الأمر": "0501234567",
-        "الصف": "الأول",
+        "الصف": "الصف الأول الابتدائي",
         "الفصل": "أ",
     }])
     output_buf = io.BytesIO()
@@ -610,7 +637,7 @@ async def test_bulk_import_batches_tracking_and_rollback(
         "اسم العائلة": "محدث",
         "رقم الهوية": unique_nid,
         "جوال ولي الأمر": "0501234567",
-        "الصف": "الأول",
+        "الصف": "الصف الأول الابتدائي",
         "الفصل": "أ",
     }])
     buf_reactivate = io.BytesIO()
@@ -645,14 +672,16 @@ async def test_bulk_import_300_students_performance(
 
     rows = []
     base_nid = 2000000000
+    # ``الأول`` is intentionally ambiguous across stages; use the
+    # stage-bearing alias and keep each generated class within capacity.
     for i in range(300):
         rows.append({
             "الاسم الأول": f"طالب{i}",
             "اسم العائلة": f"العائلة{i}",
             "رقم الهوية": str(base_nid + i),
             "جوال ولي الأمر": f"050000{i:04d}",
-            "الصف": "الأول",
-            "الفصل": "أ",
+            "الصف": "الأول الابتدائي",
+            "الفصل": f"أ-{i // 30 + 1}",
         })
 
     df = pd.DataFrame(rows)

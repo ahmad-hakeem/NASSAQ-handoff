@@ -65,6 +65,7 @@ export const getBulkImportMetrics = (result = {}) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
   };
+  const hasStudentParentLinkCounter = Object.prototype.hasOwnProperty.call(result, 'students_linked_to_parents');
 
   return {
     totalRows: count(result.total_rows),
@@ -75,7 +76,13 @@ export const getBulkImportMetrics = (result = {}) => {
     restored: count(result.restored),
     assigned: count(result.assigned),
     classesCreated: count(result.classes_created),
+    classesReused: count(result.classes_reused),
     parentsCreated: count(result.parents_created),
+    parentsReused: count(result.parents_reused),
+    studentsLinkedToParents: count(result.students_linked_to_parents),
+    hasStudentParentLinkCounter,
+    gradesCreated: count(result.grades_created),
+    gradesReused: count(result.grades_reused),
     skipped: count(result.skipped),
     errorDetails: Array.isArray(result.errors) ? result.errors : [],
     warningDetails: Array.isArray(result.warnings) ? result.warnings : [],
@@ -92,6 +99,11 @@ export const getBulkImportStatus = (result = {}, importType = 'students') => {
   const metrics = getBulkImportMetrics(result);
   const isStudentImport = importType === 'students';
   const hasAssignmentGap = isStudentImport && metrics.assigned < metrics.imported;
+  const hasParentLinkGap = (
+    isStudentImport
+    && metrics.hasStudentParentLinkCounter
+    && metrics.studentsLinkedToParents < metrics.imported
+  );
   const hasIssues = (
     result.success === false
     || metrics.failed > 0
@@ -100,6 +112,7 @@ export const getBulkImportStatus = (result = {}, importType = 'students') => {
       || metrics.errorDetails.length > 0
       || metrics.warningDetails.length > 0
       || hasAssignmentGap
+      || hasParentLinkGap
     ))
   );
 
@@ -111,7 +124,12 @@ export const getBulkImportStatus = (result = {}, importType = 'students') => {
     || metrics.restored > 0
     || metrics.assigned > 0
     || metrics.classesCreated > 0
+    || metrics.classesReused > 0
     || metrics.parentsCreated > 0
+    || metrics.parentsReused > 0
+    || metrics.studentsLinkedToParents > 0
+    || metrics.gradesCreated > 0
+    || metrics.gradesReused > 0
   ) {
     return 'partial';
   }
@@ -1768,6 +1786,11 @@ export default function UsersClassesManagement() {
         );
       } else if (status === 'partial') {
         const assignmentGap = importType === 'students' && metrics.assigned < metrics.imported;
+        const parentLinkGap = (
+          importType === 'students'
+          && metrics.hasStudentParentLinkCounter
+          && metrics.studentsLinkedToParents < metrics.imported
+        );
         const rowsNeedReview = Math.max(
           metrics.failed,
           metrics.skipped,
@@ -1776,8 +1799,8 @@ export default function UsersClassesManagement() {
         );
         toast.warning(
           isRTL
-            ? `تم حفظ ${metrics.imported} سجل، مع وجود ${rowsNeedReview} صف يحتاج للمراجعة${assignmentGap ? ` و${metrics.imported - metrics.assigned} طالب غير مسند.` : '.'}`
-            : `${metrics.imported} records were saved; ${rowsNeedReview} rows need review${assignmentGap ? ` and ${metrics.imported - metrics.assigned} students remain unassigned.` : '.'}`
+            ? `تم حفظ ${metrics.imported} سجل، مع وجود ${rowsNeedReview} صف يحتاج للمراجعة${assignmentGap ? ` و${metrics.imported - metrics.assigned} طالب غير مسند` : ''}${parentLinkGap ? ` و${metrics.imported - metrics.studentsLinkedToParents} طالب غير مرتبط بولي أمر` : ''}.`
+            : `${metrics.imported} records were saved; ${rowsNeedReview} rows need review${assignmentGap ? `, ${metrics.imported - metrics.assigned} students remain unassigned` : ''}${parentLinkGap ? `, and ${metrics.imported - metrics.studentsLinkedToParents} students are not linked to a parent` : ''}.`
         );
       } else {
         nassaqError(
@@ -1797,7 +1820,12 @@ export default function UsersClassesManagement() {
         || metrics.restored > 0
         || metrics.assigned > 0
         || metrics.classesCreated > 0
+        || metrics.classesReused > 0
         || metrics.parentsCreated > 0
+        || metrics.parentsReused > 0
+        || metrics.studentsLinkedToParents > 0
+        || metrics.gradesCreated > 0
+        || metrics.gradesReused > 0
       );
       if (hasPersistedData || (result.success !== false && metrics.totalRows > 0)) {
         fetchAllData();
@@ -2298,7 +2326,12 @@ export default function UsersClassesManagement() {
                               restored: 'طلاب استُعيدوا',
                               assigned: 'طلاب أُسندوا لفصل',
                               classesCreated: 'فصول أُنشئت',
+                              classesReused: 'فصول أُعيد استخدامها',
                               parentsCreated: 'أولياء أمور أُنشئوا',
+                              parentsReused: 'أولياء أمور أُعيد استخدامهم',
+                              studentsLinkedToParents: 'طلاب مرتبطون بأولياء أمور',
+                              gradesCreated: 'صفوف دراسية أُنشئت',
+                              gradesReused: 'صفوف دراسية أُعيد استخدامها',
                               skipped: 'صفوف متخطاة',
                               failed: 'أخطاء الصفوف',
                             }
@@ -2310,7 +2343,12 @@ export default function UsersClassesManagement() {
                               restored: 'Students restored',
                               assigned: 'Students assigned',
                               classesCreated: 'Classes created',
+                              classesReused: 'Classes reused',
                               parentsCreated: 'Parents created',
+                              parentsReused: 'Parents reused',
+                              studentsLinkedToParents: 'Students linked to parents',
+                              gradesCreated: 'Grades created',
+                              gradesReused: 'Grades reused',
                               skipped: 'Rows skipped',
                               failed: 'Row errors',
                             };
@@ -2323,7 +2361,12 @@ export default function UsersClassesManagement() {
                               ['restored', labels.restored, metrics.restored, 'teal'],
                               ['assigned', labels.assigned, metrics.assigned, 'violet'],
                               ['classes_created', labels.classesCreated, metrics.classesCreated, 'indigo'],
+                              ['classes_reused', labels.classesReused, metrics.classesReused, 'blue'],
                               ['parents_created', labels.parentsCreated, metrics.parentsCreated, 'amber'],
+                              ['parents_reused', labels.parentsReused, metrics.parentsReused, 'orange'],
+                              ['students_linked_to_parents', labels.studentsLinkedToParents, metrics.hasStudentParentLinkCounter ? metrics.studentsLinkedToParents : '—', 'teal'],
+                              ['grades_created', labels.gradesCreated, metrics.gradesCreated, 'indigo'],
+                              ['grades_reused', labels.gradesReused, metrics.gradesReused, 'sky'],
                               ['skipped', labels.skipped, metrics.skipped, 'orange'],
                               ['failed', labels.failed, metrics.failed, 'rose'],
                             ]
@@ -2345,6 +2388,11 @@ export default function UsersClassesManagement() {
                             rose: 'bg-rose-50 dark:bg-rose-950/20 border-rose-100 dark:border-rose-900/30 text-rose-600 dark:text-rose-400',
                           };
                           const assignmentGap = isStudentResult && metrics.assigned < metrics.imported;
+                          const parentLinkGap = (
+                            isStudentResult
+                            && metrics.hasStudentParentLinkCounter
+                            && metrics.studentsLinkedToParents < metrics.imported
+                          );
                           const statusLabel = status === 'success'
                             ? (t('done') || 'ناجح')
                             : status === 'partial'
@@ -2390,8 +2438,12 @@ export default function UsersClassesManagement() {
                                     <span>
                                       {isStudentResult
                                         ? (isRTL
-                                          ? `تم حفظ ${metrics.imported} طالباً وتعيينهم جميعاً إلى الفصول دون أخطاء.`
-                                          : `${metrics.imported} students were saved and assigned to classes without errors.`)
+                                          ? metrics.hasStudentParentLinkCounter
+                                            ? `تم حفظ ${metrics.imported} طالباً وتعيينهم جميعاً إلى الفصول وربطهم جميعاً بأولياء أمورهم دون أخطاء.`
+                                            : `تم حفظ ${metrics.imported} طالباً وتعيينهم جميعاً إلى الفصول دون أخطاء.`
+                                          : metrics.hasStudentParentLinkCounter
+                                            ? `${metrics.imported} students were saved, assigned to classes, and linked to parents without errors.`
+                                            : `${metrics.imported} students were saved and assigned to classes without errors.`)
                                         : (isRTL
                                           ? `تم استيراد كافة السجلات (${metrics.imported}) بنجاح دون أي أخطاء.`
                                           : `All records (${metrics.imported}) were imported successfully without errors.`)}
@@ -2411,14 +2463,14 @@ export default function UsersClassesManagement() {
                                           </p>
                                           <p className="mt-0.5">
                                             {isRTL
-                                              ? `تم إسناد ${metrics.assigned} من ${metrics.imported} طالباً${assignmentGap ? ' فقط' : ''}. أُنشئت ${metrics.classesCreated} فصول و${metrics.parentsCreated} أولياء أمور.`
-                                              : `${metrics.assigned} of ${metrics.imported} students assigned${assignmentGap ? ' only' : ''}. ${metrics.classesCreated} classes and ${metrics.parentsCreated} parents created.`}
+                                              ? `تم إسناد ${metrics.assigned} من ${metrics.imported} طالباً${assignmentGap ? ' فقط' : ''}${metrics.hasStudentParentLinkCounter ? ` وربط ${metrics.studentsLinkedToParents} طالباً بأولياء أمورهم${parentLinkGap ? ' فقط' : ''}` : ' (عداد ربط أولياء الأمور غير متاح في هذه الاستجابة)'}. أُنشئت ${metrics.classesCreated} فصول وأُعيد استخدام ${metrics.classesReused}، وأُنشئ ${metrics.parentsCreated} أولياء أمور وأُعيد استخدام ${metrics.parentsReused}.`
+                                              : `${metrics.assigned} of ${metrics.imported} students assigned${assignmentGap ? ' only' : ''}${metrics.hasStudentParentLinkCounter ? `; ${metrics.studentsLinkedToParents} linked to parents${parentLinkGap ? ' only' : ''}` : ' (parent-link counter not reported)'}. ${metrics.classesCreated} classes created, ${metrics.classesReused} reused; ${metrics.parentsCreated} parents created, ${metrics.parentsReused} reused.`}
                                           </p>
-                                          {(metrics.failed > 0 || metrics.skipped > 0 || assignmentGap) && (
+                                          {(metrics.failed > 0 || metrics.skipped > 0 || assignmentGap || parentLinkGap) && (
                                             <p className="text-[11px] text-amber-700 dark:text-amber-400/90 mt-0.5">
                                               {isRTL
-                                                ? `تحتاج ${metrics.failed} أخطاء و${metrics.skipped} صفوف متخطاة${assignmentGap ? ' ومراجعة الطلاب غير المسندين' : ''}.`
-                                                : `${metrics.failed} errors and ${metrics.skipped} skipped rows need review${assignmentGap ? ', including unassigned students' : ''}.`}
+                                                ? `تحتاج ${metrics.failed} أخطاء و${metrics.skipped} صفوف متخطاة${assignmentGap ? ' ومراجعة الطلاب غير المسندين' : ''}${parentLinkGap ? ' ومراجعة الطلاب غير المرتبطين بأولياء أمور' : ''}.`
+                                                : `${metrics.failed} errors and ${metrics.skipped} skipped rows need review${assignmentGap ? ', including unassigned students' : ''}${parentLinkGap ? ', including students without a parent link' : ''}.`}
                                             </p>
                                           )}
                                         </>

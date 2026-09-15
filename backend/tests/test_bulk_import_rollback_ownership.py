@@ -1,10 +1,13 @@
 """Rollback ownership regressions for the principal student import."""
 
 from copy import deepcopy
+import os
 from types import SimpleNamespace
+import uuid
 
 import pytest
 
+from engines.sql_utils import gd_find_one, gd_insert
 from src.modules.bulk_import.controllers import bulk_import_export_routes as routes
 
 
@@ -135,7 +138,6 @@ async def test_reused_parent_and_shared_user_survive_rollback(monkeypatch):
         "parents": [{
             "id": "existing-parent",
             "school_id": "school-a",
-            "user_id": "shared-user",
             "email": "shared@example.test",
             "student_ids": ["new-student", "old-student"],
         }],
@@ -190,10 +192,10 @@ async def test_created_user_is_preserved_when_shared_by_another_school(monkeypat
         ],
         "parents": [
             {"id": "created-parent", "school_id": "school-a",
-             "user_id": "shared-user", "email": "shared@example.test",
+             "email": "shared@example.test",
              "student_ids": ["school-a-student"]},
             {"id": "other-parent", "school_id": "school-b",
-             "user_id": "shared-user", "email": "shared@example.test",
+             "email": "shared@example.test",
              "student_ids": ["school-b-student"]},
         ],
         "users": [{
@@ -237,6 +239,53 @@ async def test_created_user_is_preserved_when_shared_by_another_school(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_created_user_without_email_is_preserved_fail_closed(monkeypatch):
+    """A missing parent email cannot authorize account deletion."""
+    rows = {
+        "students": [{
+            "id": "student-with-parent", "school_id": "school-a",
+            "parent_id": "created-parent",
+        }],
+        "parents": [{
+            "id": "created-parent", "school_id": "school-a",
+            "student_ids": ["student-with-parent"],
+        }],
+        "users": [{
+            "id": "created-user", "role": "parent",
+            "tenant_id": "school-a",
+        }],
+        "guardian_links": [{
+            "id": "link-created", "student_id": "student-with-parent",
+            "parent_ref": "created-user", "tenant_id": "school-a",
+        }],
+        "bulk_import_batches": [],
+        "audit_logs": [],
+        "classes": [],
+        "parent_invitations": [],
+    }
+    _patch_db(monkeypatch)
+    database = _db(rows)
+
+    async with database.session.begin_nested():
+        result = await routes._rollback_import_batch_mutations(
+            database,
+            "batch-without-email",
+            {
+                "student_ids": ["student-with-parent"],
+                "created_parent_ids": ["created-parent"],
+                "created_parent_user_ids": ["created-user"],
+                "ownership_version": 2,
+            },
+            "school-a",
+            {"id": "principal"},
+        )
+
+    assert result["rolled_back_parents"] == 1
+    assert result["rolled_back_users"] == 0
+    assert rows["users"][0]["id"] == "created-user"
+
+
+@pytest.mark.asyncio
 async def test_legacy_manifest_never_grants_parent_or_user_deletion(monkeypatch):
     rows = {
         "students": [{
@@ -245,7 +294,7 @@ async def test_legacy_manifest_never_grants_parent_or_user_deletion(monkeypatch)
         }],
         "parents": [{
             "id": "legacy-parent", "school_id": "school-a",
-            "user_id": "legacy-user", "student_ids": ["legacy-student"],
+            "email": "legacy@example.test", "student_ids": ["legacy-student"],
         }],
         "users": [{
             "id": "legacy-user", "email": "legacy@example.test",
@@ -310,3 +359,44 @@ async def test_rollback_savepoint_restores_rows_when_finalization_fails(monkeypa
     assert database.session.rows["students"] == [
         {"id": "new-student", "school_id": "school-a"}
     ]
+
+
+@pytest.mark.asyncio
+async def test_ownership_version_round_trips_through_real_batch_model(
+    _db_session, tenant_a
+):
+    """The rollback safety bit must survive gd_insert and a fresh ORM read.
+
+    This intentionally writes only one temporary batch row.  The shared test
+    fixture rolls the transaction back, and the explicit TESTING gate keeps a
+    developer from accidentally pointing this persistence check at production.
+    """
+    if os.environ.get("TESTING") != "1":
+        pytest.skip("refusing real DB persistence check outside TESTING")
+
+    batch_id = str(uuid.uuid4())
+    await gd_insert(
+        _db_session,
+        "bulk_import_batches",
+        {
+            "id": batch_id,
+            "school_id": tenant_a,
+            "import_type": "students",
+            "imported_count": 0,
+            "student_ids": [],
+            "created_class_ids": [],
+            "created_parent_ids": [],
+            "created_parent_user_ids": [],
+            "ownership_version": 2,
+            "status": "active",
+        },
+    )
+    await _db_session.flush()
+
+    reread = await gd_find_one(
+        _db_session,
+        "bulk_import_batches",
+        {"id": batch_id, "school_id": tenant_a},
+    )
+    assert reread is not None
+    assert reread["ownership_version"] == 2

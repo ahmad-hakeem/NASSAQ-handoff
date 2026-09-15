@@ -51,6 +51,8 @@ _MSG_EMAIL_TAKEN = "البريد الإلكتروني مستخدم مسبقاً 
 _MSG_EMAIL_CONFLICT = "رقم الهاتف والبريد الإلكتروني يخصان حسابين مختلفين"
 _MSG_NAME_REQUIRED = "اسم ولي الأمر مطلوب لإنشاء حساب ولي الأمر"
 _MSG_GUARDIAN_REQUIRED = "أدخل اسم ولي الأمر ورقم هاتفه"
+_MSG_PARENT_UNAVAILABLE = "حساب ولي الأمر مغلق أو غير نشط ولا يمكن ربط طالب جديد به"
+_BLOCKED_PARENT_STATUSES = frozenset({"closed", "inactive", "suspended"})
 
 
 def _utcnow_iso() -> str:
@@ -64,6 +66,36 @@ def _clean(value: Optional[str]) -> Optional[str]:
         v = value.strip()
         return v or None
     return value
+
+
+def _parent_record_is_unavailable(parent: Optional[dict]) -> bool:
+    """Return whether an existing parent must not be reused.
+
+    ``parents`` has no persisted lifecycle ``status`` column.  Its
+    ``is_active`` flag is the supported account-state signal, and this check is
+    deliberately read-only: linking a student must never silently reopen an
+    inactive account.
+    """
+    if not parent:
+        return False
+    return parent.get("is_active") is False
+
+
+def _assert_parent_record_available(parent: Optional[dict]) -> None:
+    if _parent_record_is_unavailable(parent):
+        raise HTTPException(status_code=409, detail=_MSG_PARENT_UNAVAILABLE)
+
+
+def _assert_parent_user_available(user: Optional[dict]) -> None:
+    """Reject a closed/inactive login account instead of reusing it."""
+    if not user:
+        return
+    status = _clean(user.get("status"))
+    if (
+        (status and str(status).lower() in _BLOCKED_PARENT_STATUSES)
+        or user.get("is_active") is False
+    ):
+        raise HTTPException(status_code=409, detail=_MSG_PARENT_UNAVAILABLE)
 
 
 async def find_or_create_parent(
@@ -112,6 +144,8 @@ async def find_or_create_parent(
         })
 
     if existing_parent:
+        _assert_parent_record_available(existing_parent)
+
         # Re-derive the parent's user id by email when the parents row does
         # not carry one (parents has no user_id column; it is in-memory only).
         matched_user_id = existing_parent.get("user_id")
@@ -121,8 +155,14 @@ async def find_or_create_parent(
                 "role": parent_role_value,
             })
             if linked_user:
+                _assert_parent_user_available(linked_user)
                 matched_user_id = linked_user.get("id")
                 existing_parent["user_id"] = matched_user_id
+        elif matched_user_id:
+            linked_user = await gd_find_one(
+                session, "users", {"id": matched_user_id, "role": parent_role_value}
+            )
+            _assert_parent_user_available(linked_user)
 
         # Email-consistency guard: the parent was matched by national_id or
         # phone. If the caller ALSO supplied an email that belongs to a
@@ -160,6 +200,7 @@ async def find_or_create_parent(
         existing_user = await gd_find_one(session, "users", {"email": parent_data["email"]})
         if existing_user and existing_user.get("role") != parent_role_value:
             raise HTTPException(status_code=409, detail=_MSG_EMAIL_TAKEN)
+        _assert_parent_user_available(existing_user)
 
     full_name = parent_data.get("full_name") or (
         existing_user.get("full_name") if existing_user else None
@@ -235,7 +276,11 @@ async def ensure_parent_user_account(
     user-mint logic of :func:`find_or_create_parent`. Refuses to bind an
     email owned by a non-parent account (409).
     """
+    _assert_parent_record_available(parent)
+
     if parent.get("user_id"):
+        linked_user = await gd_find_one(session, "users", {"id": parent["user_id"]})
+        _assert_parent_user_available(linked_user)
         return parent["user_id"]
 
     email = parent.get("email")
@@ -244,6 +289,7 @@ async def ensure_parent_user_account(
         if existing_user:
             if existing_user.get("role") != parent_role_value:
                 raise HTTPException(status_code=409, detail=_MSG_EMAIL_TAKEN)
+            _assert_parent_user_available(existing_user)
             return existing_user.get("id")
 
     user_id = str(uuid.uuid4())
@@ -341,6 +387,7 @@ async def link_or_update_real_school_guardian(
     # 2. If the student ALREADY has a parent record in this school, update in-place
     #    unless the phone/email explicitly matches a DIFFERENT existing parent in the school.
     if current_parent:
+        _assert_parent_record_available(current_parent)
         target_parent = current_parent
 
         # Check if the updated phone belongs to another existing parent in this school (sibling merge)
@@ -350,6 +397,7 @@ async def link_or_update_real_school_guardian(
                 "school_id": school_id,
             })
             if other_parent and other_parent.get("id") != current_parent["id"]:
+                _assert_parent_record_available(other_parent)
                 target_parent = other_parent
                 # Remove student from old parent student_ids
                 old_sids = [sid for sid in (current_parent.get("student_ids") or []) if sid != student_id]

@@ -677,7 +677,42 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             current_user = {"id": current_user_or_id, "phone": parent_phone, "tenant_id": school_id}
 
         from src.common.utils.parent_children_resolution import resolve_parent_children
-        return await resolve_parent_children(current_user, school_id)
+        return await resolve_parent_children(
+            current_user,
+            school_id,
+            allow_cross_school_guardian_links=True,
+        )
+
+    async def _enrich_children_for_their_schools(
+        children: List[dict],
+        fallback_school_id: Optional[str],
+    ) -> List[dict]:
+        """Enrich mixed-school children without dropping foreign classes.
+
+        A reused parent account may legitimately have children in more than
+        one school.  ``enrich_children_with_class_names`` intentionally pins
+        each classes query to one school, so call it once per child's
+        effective school rather than passing the parent's historical tenant
+        for the entire list.
+        """
+        from src.common.utils.parent_children_resolution import enrich_children_with_class_names
+
+        by_school: dict[str, List[dict]] = {}
+        for child in children:
+            child_school_id = child.get("school_id") or fallback_school_id
+            if not child_school_id:
+                # A student without a school cannot be enriched safely; leave
+                # its denormalized class_name untouched rather than issuing an
+                # unscoped classes query.
+                continue
+            by_school.setdefault(child_school_id, []).append(child)
+        for child_school_id, school_children in by_school.items():
+            await enrich_children_with_class_names(
+                school_children,
+                db.session,
+                child_school_id,
+            )
+        return children
 
     # ============= DASHBOARD =============
 
@@ -692,8 +727,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         children = await _find_children(current_user, parent_phone, school_id)
 
-        from src.common.utils.parent_children_resolution import enrich_children_with_class_names
-        children = await enrich_children_with_class_names(children, db.session, school_id)
+        children = await _enrich_children_for_their_schools(children, school_id)
 
         # ------------------------------------------------------------------
         # Batched enrichment (was a textbook N+1: per child ~5-6 queries —
@@ -928,8 +962,7 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
 
         students = await _find_children(current_user, parent_phone, school_id)
 
-        from src.common.utils.parent_children_resolution import enrich_children_with_class_names
-        students = await enrich_children_with_class_names(students, db.session, school_id)
+        students = await _enrich_children_for_their_schools(students, school_id)
 
         school_name_cache = {}
         children = []
@@ -1024,50 +1057,27 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
     # ============= CHILD DETAILS =============
 
     async def _verify_parent_access(parent_id: str, parent_phone: Optional[str], child_id: str, school_id: Optional[str] = None, *, current_user: Optional[dict] = None):
-        parent_record_id = (current_user or {}).get("parent_id")
-        parent_email = (current_user or {}).get("email")
-        or_conds = _parent_or_conditions(parent_id, parent_phone, parent_record_id, parent_email)
-        student_query = {"id": child_id}
-        if or_conds:
-            student_query["$or"] = or_conds
-        if school_id:
-            student_query["school_id"] = school_id
-        child = await gd_find_one(db.session, "students", student_query)
-        if child:
-            return child
-        # Fallback 1: guardian_links (optional join table — fail safe if
-        # unreachable so by-id endpoints don't 500 in partial-schema
-        # environments; the canonical lookup above is the access boundary).
-        refs = [pid for pid in (parent_id, parent_record_id) if pid]
-        if refs:
-            link_query = {"parent_ref": {"$in": refs}, "student_id": child_id, "is_active": True}
-            if school_id:
-                link_query["tenant_id"] = school_id
-            link = None
-            try:
-                link = await gd_find_one(db.session, "guardian_links", link_query)
-            except _LEGACY_LINKAGE_DB_ERRORS as exc:
-                logger.debug("guardian_links by-id lookup degraded for parent %s: %s",
-                             parent_id, exc)
-            if link:
-                fallback_q = {"id": child_id}
-                if school_id:
-                    fallback_q["school_id"] = school_id
-                return await gd_find_one(db.session, "students", fallback_q)
-        # Fallback 2: parents.student_ids array (legacy linkage path).
-        if parent_record_id:
-            try:
-                parent_rec = await gd_find_one(db.session, "parents", {"id": parent_record_id})
-            except _LEGACY_LINKAGE_DB_ERRORS as exc:
-                logger.debug("parents.student_ids by-id lookup degraded for parent %s: %s",
-                             parent_id, exc)
-                parent_rec = None
-            if parent_rec and child_id in (parent_rec.get("student_ids") or []):
-                fallback_q = {"id": child_id}
-                if school_id:
-                    fallback_q["school_id"] = school_id
-                return await gd_find_one(db.session, "students", fallback_q)
-        return None
+        # Keep list and by-id authorization on the same canonical resolver.
+        # In particular, the resolver's narrowly validated
+        # guardian_links.parent_ref exception is what permits a reused/global
+        # parent account to reach a child in another school.
+        resolver_user = current_user or {
+            "id": parent_id,
+            "phone": parent_phone,
+            "role": "parent",
+            "tenant_id": school_id,
+        }
+        from src.common.utils.parent_children_resolution import resolve_parent_children
+
+        children = await resolve_parent_children(
+            resolver_user,
+            school_id,
+            allow_cross_school_guardian_links=True,
+        )
+        return next(
+            (child for child in children if child.get("id") == child_id),
+            None,
+        )
 
     @router.get("/child/{child_id}")
     async def get_child_details(

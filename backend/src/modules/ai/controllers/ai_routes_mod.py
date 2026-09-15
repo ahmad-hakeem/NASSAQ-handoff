@@ -444,7 +444,11 @@ async def _verify_parent_child_access(
     """Verify the requested child is in the parent's canonical allow-list
     AND is in the authenticated tenant. Uses the same shared resolver as
     the parent portal so IDOR coverage is identical."""
-    allowed = await resolve_parent_children(current_user, school_id or "")
+    allowed = await resolve_parent_children(
+        current_user,
+        school_id or "",
+        allow_cross_school_guardian_links=False,
+    )
     return any(s.get("id") == child_id for s in allowed)
 
 
@@ -747,7 +751,14 @@ async def _prepare_hakim_chat(
         # `parents.id` and `guardian_links.parent_ref` may carry either
         # a `users.id` or a `parents.id`. Tenant is pinned to the
         # authenticated `school_id`, never a client-supplied value.
-        allowed_students = await resolve_parent_children(current_user, school_id or "")
+        allowed_students = await resolve_parent_children(
+            current_user,
+            school_id or "",
+            # Hakim's context and hydration queries are deliberately pinned to
+            # the authenticated tenant.  The parent portal enables the
+            # narrower cross-school guardian_links exception explicitly.
+            allow_cross_school_guardian_links=False,
+        )
         allowed_ids = {s["id"] for s in allowed_students}
 
         # Graceful "no linked students" path — never let the AI hallucinate.

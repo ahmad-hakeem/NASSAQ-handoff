@@ -52,7 +52,14 @@ class ImportResult(BaseModel):
     restored: int = 0
     assigned: int = 0
     classes_created: int = 0
+    classes_reused: int = 0
     parents_created: int = 0
+    parents_reused: int = 0
+    students_linked_to_parents: int = 0
+    grades_created: int = 0
+    grades_reused: int = 0
+    validation_errors: int = 0
+    relationship_errors: int = 0
     skipped: int = 0
     existing: int = 0
     existing_student_ids: List[str] = Field(default_factory=list)
@@ -62,6 +69,35 @@ class ImportResult(BaseModel):
     restored_student_ids: List[str] = Field(default_factory=list)
     created_class_ids: List[str] = Field(default_factory=list)
     created_parent_ids: List[str] = Field(default_factory=list)
+
+
+async def _parent_user_reference_counts(session, user: dict) -> tuple[int | None, int]:
+    """Return durable references that prevent deleting a parent user.
+
+    ``parents`` is a per-school contact table and intentionally has no
+    ``user_id`` column.  Passing ``{"user_id": ...}`` through ``gd_count`` is
+    unsafe because unknown predicates are ignored for typed ORM collections.
+    Resolve the parent-side reference by its durable email and use the
+    canonical ``guardian_links.parent_ref`` relationship for the user-side
+    reference instead.
+
+    A parent user without an email cannot be proven unreferenced, so callers
+    treat ``None`` as a fail-closed result.
+    """
+    email = user.get("email")
+    if not email:
+        return None, 0
+    parent_email_count = await gd_count(
+        session,
+        "parents",
+        {"email": email},
+    )
+    guardian_link_count = await gd_count(
+        session,
+        "guardian_links",
+        {"parent_ref": user.get("id")},
+    )
+    return parent_email_count, guardian_link_count
 
 
 async def _rollback_import_batch_mutations(
@@ -197,18 +233,13 @@ async def _rollback_import_batch_mutations(
             user_id = user.get("id")
             if not user_id:
                 continue
-            parent_refs = await gd_count(
-                db.session, "parents", {"user_id": user_id}
+            email_refs, link_refs = await _parent_user_reference_counts(
+                db.session, user
             )
-            link_refs = await gd_count(
-                db.session, "guardian_links", {"parent_ref": user_id}
-            )
-            email_refs = 0
-            if user.get("email"):
-                email_refs = await gd_count(
-                    db.session, "parents", {"email": user["email"]}
-                )
-            if not parent_refs and not link_refs and not email_refs:
+            # No email means the relationship cannot be verified through the
+            # real-school parent table.  Keep the account rather than
+            # guessing from an absent/phantom parents.user_id column.
+            if email_refs is not None and not email_refs and not link_refs:
                 safe_user_ids.append(user_id)
         if safe_user_ids:
             rolled_back_users_count = await gd_delete_many(
@@ -343,7 +374,8 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
             elif import_type == ImportType.STUDENTS:
                 columns = {
                     'الاسم الأول (مطلوب)': ['أحمد', 'محمد'],
-                    'اسم الأب': ['علي', 'خالد'],
+                    'اسم الأب (مطلوب)': ['علي', 'خالد'],
+                    'اسم الجد (مطلوب)': ['صالح', 'ناصر'],
                     'اسم العائلة (مطلوب)': ['السعيد', 'المالكي'],
                     'رقم الهوية (مطلوب)': ['1234567890', '0987654321'],
                     'تاريخ الميلاد (YYYY-MM-DD)': ['2015-05-15', '2014-08-20'],
@@ -517,7 +549,14 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
                     "restored": result.get("restored", 0) if import_type == ImportType.STUDENTS else 0,
                     "assigned": result.get("assigned", 0) if import_type == ImportType.STUDENTS else 0,
                     "classes_created": result.get("classes_created", 0) if import_type == ImportType.STUDENTS else 0,
+                     "classes_reused": result.get("classes_reused", 0) if import_type == ImportType.STUDENTS else 0,
                     "parents_created": result.get("parents_created", 0) if import_type == ImportType.STUDENTS else 0,
+                     "parents_reused": result.get("parents_reused", 0) if import_type == ImportType.STUDENTS else 0,
+                     "students_linked_to_parents": result.get("students_linked_to_parents", 0) if import_type == ImportType.STUDENTS else 0,
+                     "grades_created": result.get("grades_created", 0) if import_type == ImportType.STUDENTS else 0,
+                     "grades_reused": result.get("grades_reused", 0) if import_type == ImportType.STUDENTS else 0,
+                     "validation_errors": result.get("validation_errors", 0) if import_type == ImportType.STUDENTS else 0,
+                     "relationship_errors": result.get("relationship_errors", 0) if import_type == ImportType.STUDENTS else 0,
                     "skipped": result.get("skipped", 0) if import_type == ImportType.STUDENTS else 0,
                     "filename": file.filename,
                     "batch_id": batch_id
@@ -538,7 +577,10 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
                     key: result.get(key, [] if key.endswith("_ids") else 0)
                     for key in (
                         "created", "updated", "restored", "assigned",
-                        "classes_created", "parents_created", "skipped",
+                        "classes_created", "classes_reused", "parents_created",
+                        "parents_reused", "students_linked_to_parents",
+                        "grades_created", "grades_reused", "validation_errors",
+                        "relationship_errors", "skipped",
                         "existing", "student_ids", "created_student_ids",
                         "existing_student_ids",
                         "updated_student_ids", "restored_student_ids",

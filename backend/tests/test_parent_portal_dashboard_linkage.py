@@ -178,7 +178,7 @@ async def test_child_by_id_route_resolves_when_guardian_links_lookup_explodes(cl
     """
     seeded = await _seed_parent_with_child(tenant_a, link_child=True)
 
-    from routes import parent_portal_routes as ppr
+    from src.modules.portals.controllers import parent_portal_routes as ppr
     real_gd_find_one = ppr.gd_find_one
 
     async def _explode_on_guardian_links(session, collection, *args, **kwargs):
@@ -244,7 +244,7 @@ async def test_child_by_id_route_resolves_when_parents_lookup_explodes(client, t
     """
     seeded = await _seed_parent_with_child(tenant_a, link_child=True)
 
-    from routes import parent_portal_routes as ppr
+    from src.modules.portals.controllers import parent_portal_routes as ppr
     real_gd_find_one = ppr.gd_find_one
 
     async def _explode_on_parents(session, collection, *args, **kwargs):
@@ -280,7 +280,7 @@ async def test_dashboard_still_2xx_when_guardian_links_lookup_explodes(client, t
     child via `students.parent_id` instead of 500ing the whole response."""
     seeded = await _seed_parent_with_child(tenant_a, link_child=True)
 
-    from routes import parent_portal_routes as ppr
+    from src.modules.portals.controllers import parent_portal_routes as ppr
     real_gd_find = ppr.gd_find
 
     async def _explode_on_guardian_links(session, collection, *args, **kwargs):

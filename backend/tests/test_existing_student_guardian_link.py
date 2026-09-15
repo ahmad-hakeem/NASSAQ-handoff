@@ -147,6 +147,39 @@ async def test_principal_links_full_guardian_to_empty_student(client):
     assert student_row.get("parent_email") == email
 
 
+@pytest.mark.asyncio
+async def test_matching_inactive_parent_is_rejected_without_reactivation(client):
+    """A phone match must not silently reuse or reopen an inactive parent."""
+    school_id = f"sch_{uuid.uuid4().hex[:8]}"
+    await _mk_school(school_id)
+    principal = await _mk_principal(school_id)
+    sid = await _mk_empty_guardian_student(school_id)
+    phone = f"05{uuid.uuid4().int % 100000000:08d}"
+    parent_id = str(uuid.uuid4())
+    await gd_insert(db.session, "parents", {
+        "id": parent_id,
+        "full_name": "ولي أمر غير نشط",
+        "phone": phone,
+        "school_id": school_id,
+        "student_ids": [],
+        "is_active": False,
+    })
+    h = _headers(principal["id"], principal["role"], school_id)
+
+    response = await client.put(
+        f"/students/{sid}",
+        json={"parent_name": "محاولة ربط", "parent_phone": phone},
+        headers=h,
+    )
+
+    assert response.status_code == 409, response.text
+    parent = await gd_find_one(db.session, "parents", {"id": parent_id})
+    assert parent.get("is_active") is False
+    student = await gd_find_one(db.session, "students", {"id": sid})
+    assert student.get("parent_id") is None
+    assert not await gd_find(db.session, "guardian_links", {"student_id": sid}, limit=5)
+
+
 # ---------------------------------------------------------------------------
 # 2) Idempotency
 # ---------------------------------------------------------------------------
