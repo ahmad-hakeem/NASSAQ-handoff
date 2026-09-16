@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Production restore — preflight review, 16 September 2026</title>
+<style>
+body{margin:0;background:#f5f6f8;color:#172033;font:16px/1.6 system-ui,sans-serif}main{max-width:1080px;margin:24px auto;padding:30px;background:white}h1,h2{line-height:1.3}h2{margin-top:32px}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid #d5dae2;padding:9px;text-align:left;vertical-align:top}th{background:#eef2f6}code,pre{font-family:ui-monospace,monospace;overflow-wrap:anywhere}pre{white-space:pre-wrap;background:#f0f3f7;padding:16px;font-size:13px}.stop{background:#fff0ef;border-left:5px solid #b42318;padding:16px}.note{background:#fff6df;padding:14px}.small{font-size:13px;color:#4c5868}@media(max-width:650px){main{padding:16px;margin:0}table{display:block;overflow:auto}}@media print{main{margin:0;padding:0}tr{break-inside:avoid}}
+</style>
+<main>
+<h1>Production restore: preflight and codebase review</h1>
+<p>Review date: 16 September 2026. Evidence captured through 17:07:11 UTC. Executor: Replit Agent, with two read-only code/backup reviewers.</p>
+<div class="stop"><strong>Final decision: Restore was not performed because preflight validation failed.</strong><br>No SQL from the supplied dump was executed. No production restore, migration, connection termination, maintenance switch, or publish was performed by this review.</div>
+<p>This report follows the supplied restoration objective. It is a failed-preflight report, not a backup certificate, successful restore result, or production approval. The user's objective authorizes investigation subject to safety gates; no maintenance window or approved cutover reference was supplied.</p>
+
+<h2>1. Actions performed and scope</h2>
+<ol>
+<li>Read the complete 512-line objective and the requested using-superpowers and systematic-debugging guidance.</li>
+<li>Reviewed the dump locally as untrusted text, using metadata and aggregate-only inspection. Did not display user records, connection strings, or backup payloads.</li>
+<li>Calculated the file's SHA-256 checksum; independently repeated the checksum and confirmed the same result.</li>
+<li>Reviewed startup/build configuration, physical-schema guards, maintenance/job behavior, restore documentation, and available test scaffolding.</li>
+<li>Queried production through the read-only production tool for identity metadata and six critical row counts in one statement. Queried the same six counts and migration marker in development using SELECT only.</li>
+<li>Retrieved published-app metadata and consulted official Replit recovery documentation.</li>
+<li>Stopped before backup execution, isolated SQL execution, or production cutover because required safety gates did not pass.</li>
+</ol>
+<p>Application code, deployment settings, secrets, development data, and production data were not changed by these actions. Only this report was added. Production may still receive ordinary application traffic; this review does not assert that other actors made no changes.</p>
+
+<h2>2. Supplied backup identity and static inspection</h2>
+<table>
+<tr><th>Item</th><th>Observation</th></tr>
+<tr><td>Requested file</td><td><code>restore-temp/production_backup_20260916_184346.sql</code></td></tr>
+<tr><td>Existence/readability/size</td><td>Readable, non-empty; 98,459,540 bytes, approximately 93.90 MiB. SQL dump size need not match live database storage size.</td></tr>
+<tr><td>SHA-256</td><td><code>42c397a108f428368b1526d9b430d6f954103756672652b065e19c4bb9d0b86f</code></td></tr>
+<tr><td>Format/version header</td><td>UTF-8 PostgreSQL plain SQL dump; source server 16.14; pg_dump 16.14. Same PostgreSQL major version as observed production; actual SQL/extension compatibility remains untested.</td></tr>
+<tr><td>Completeness markers</td><td>Dump-complete footer at line 119263; 78 COPY sections with terminators. These are structural evidence, not proof of successful restoration or full source coverage.</td></tr>
+<tr><td>Migration marker</td><td><code>b2c3d4e5f6a7</code>; one public.alembic_version row.</td></tr>
+<tr><td>Object inventory</td><td>public and _system schema content; 78 CREATE TABLE statements; 78 COPY sections; 214 ALTER TABLE ONLY statements; 281 CREATE INDEX statements including 9 unique indexes; 3 sequences; 3 functions; 3 triggers.</td></tr>
+<tr><td>Extensions</td><td>pg_trgm and pgcrypto. Availability and versions on a restore target must be checked separately.</td></tr>
+<tr><td>Static dangerous-command scan</td><td>No DROP TABLE/SCHEMA, TRUNCATE, INSERT, CREATE ROLE/USER/DATABASE, GRANT/REVOKE, ALTER SYSTEM, executable psql backslash commands, COPY PROGRAM, or scanned external-execution patterns detected. COPY end markers are expected. Pattern scanning is not a complete SQL security audit.</td></tr>
+<tr><td>Permissions and origin</td><td>No ownership/source manifest or independent expected checksum supplied. The new checksum fingerprints the received bytes; it does not authenticate their source. Permissions/roles are not proven restorable by the dump's lack of GRANT/REVOKE statements.</td></tr>
+<tr><td>File protection</td><td>Mode 0600; plaintext, not an encrypted backup. Untracked and not matched by a Git ignore rule at inspection time. Do not stage, commit, publicly upload, or include this SQL file in build artifacts. File mode alone does not prove restricted collaborator access or encryption-at-rest compliance.</td></tr>
+</table>
+<p class="note">The filename is not proof that this file came from this production project or that its timestamp describes the database snapshot. Its origin remains unverified.</p>
+
+<h2>3. Target identity and comparison</h2>
+<p>Production evidence timestamp: <code>2026-09-16 17:05:29.777925+00</code>. The tool exposes a <strong>read replica</strong>, not a confirmed primary cutover endpoint.</p>
+<table>
+<tr><th>Target fact</th><th>Observed result / limitation</th></tr>
+<tr><td>Database/schema</td><td>neondb / public; _system metadata also exists.</td></tr>
+<tr><td>Engine</td><td>PostgreSQL 16.15 (b357239)</td></tr>
+<tr><td>Provider/project</td><td>Replit-managed database reporting Neon project <code>young-frog-67858077</code>; observed replica branch <code>br-small-grass-andqjg71</code>. Primary branch/endpoint mapping is not verified.</td></tr>
+<tr><td>Database size</td><td>200,720,384 bytes, approximately 191.42 MiB.</td></tr>
+<tr><td>Read-only status</td><td>pg_is_in_recovery=true; transaction_read_only=on.</td></tr>
+<tr><td>Observed connections</td><td>1 on the queried replica. This is <strong>not</strong> the production-primary connection count and cannot establish a drained primary.</td></tr>
+<tr><td>Production migration marker</td><td><code>tch01sch02null</code></td></tr>
+<tr><td>Published application</td><td>Autoscale; publishing metadata reports a successful build at https://nassaqapp.com, with https://nassaqapp.replit.app as an additional URL. Exact running source revision and HTTP/role health were not verified in this review.</td></tr>
+<tr><td>Retention and rollback</td><td>Not verified. Previously supplied destination <code>Nassaq-backup/production-2026-09-16/</code> identifies a path only; storage service, access policy, encryption/key custody, audit logging and retention duration remain unspecified.</td></tr>
+</table>
+<table>
+<tr><th>Table</th><th>Supplied dump</th><th>Production replica</th><th>Current development</th></tr>
+<tr><td>schools</td><td>72</td><td>61</td><td>1,228</td></tr>
+<tr><td>users</td><td>1,708</td><td>222</td><td>2,172</td></tr>
+<tr><td>teachers</td><td>248</td><td>119</td><td>825</td></tr>
+<tr><td>students</td><td>3,701</td><td>796</td><td>767</td></tr>
+<tr><td>parents</td><td>1,428</td><td>32</td><td>533</td></tr>
+<tr><td>classes</td><td>205</td><td>75</td><td>669</td></tr>
+</table>
+<p>Development migration marker: <code>d4e5f6a7b8c9</code>. Neither comparison proves the dump's origin. Differences may reflect a historical snapshot or another environment; recovery intent and provenance must be established. A larger row count does not prove that all current production records are included. These are preflight observations, not snapshot-aligned restore validation counts.</p>
+
+<h2>4. Compatibility and codebase findings</h2>
+<ol>
+<li><strong>Blocker — required school data is absent.</strong> Both the CREATE TABLE definition (line 1440) and COPY header (line 90823) omit <code>configuration</code>, <code>location</code>, <code>setup_completed</code>, <code>setup_steps_completed</code>, and <code>principal_mobile</code>. Restoring this dump alone cannot recover their current production values. Merely adding empty columns afterward would not preserve the data.</li>
+<li><strong>Blocker — current workspace code rejects incompatible physical schemas.</strong> <code>backend/app/lifecycle.py:124–178</code> performs fatal managed-deployment schema validation. Missing protected columns conflict with this contract. Managed-production online Alembic is explicitly blocked by <code>backend/src/core/database/preserved_school_columns.py:80–105</code>. Do not disable these guards to make the dump boot.</li>
+<li><strong>Blocker — no verified global write pause.</strong> Review found no enforced system-wide maintenance barrier covering requests and workers. Startup schedules write-capable maintenance and background loops (<code>backend/app/lifecycle.py:196–439</code>); timetable generation also uses background jobs (<code>backend/src/modules/scheduling/controllers/scheduling_smart_engine_routes.py:183–197,273–295,339–380</code>). An operator must stop or drain all writer instances and jobs; a single process restart is insufficient.</li>
+<li><strong>Legacy entrypoint risk, not the active publishing path.</strong> <code>entrypoint.sh:9–15</code> still invokes <code>alembic upgrade head</code>. However, the current <code>.replit</code> publishing run command starts uvicorn directly and does <strong>not</strong> call this entrypoint. <code>build.sh:18–19</code> keeps database migrations out of the build. The unused script should not be selected for a restored-copy startup without separate review.</li>
+<li><strong>Runbook is not an executed recovery procedure.</strong> <code>docs/runbooks/database-backup-restore.md:74–109</code> contains operator restore examples and a stale build-migration description. Those examples are not target-identity guards or an atomic production recovery mechanism. No production restore script was created or executed here.</li>
+<li><strong>Tests do not certify this dump.</strong> Migration graph, temporary-database migration, and read-only health test scaffolding exists (<code>backend/tests/test_alembic_migrations_integrity.py</code>, <code>backend/tests/test_alembic_migrations_run.py</code>, <code>backend/tests/test_health_probes.py</code>). None was presented as evidence of restoring this file. No restored-copy test was run.</li>
+</ol>
+<p>Required post-restore migrations are <strong>not approved</strong>. Establish a validated source schema first, then compare it with the intended application revision. Do not infer migration order from revision strings, blindly upgrade to head, or restore the platform-managed _system migration ledger without provider guidance.</p>
+
+<h2>5. Phase-by-phase results</h2>
+<table>
+<tr><th>Requirement</th><th>Result</th></tr>
+<tr><td>Static file preflight</td><td>Partial: readable, checksum and structural inventory recorded. Source authenticity, complete SQL safety, and application compatibility not validated.</td></tr>
+<tr><td>Fresh pre-restore production backup</td><td>NOT CREATED. No path/checksum or verified rollback snapshot exists from this review.</td></tr>
+<tr><td>Isolated restore of supplied file and rollback backup</td><td>NOT RUN. No SQL execution, temporary restored database, restore start/end time, or restore exit code.</td></tr>
+<tr><td>Foreign keys, orphans, duplicate identities, tenant links, sequences, timetable links, configuration</td><td>NOT VALIDATED on a restored database. Declared objects in text are not proof of valid relationships.</td></tr>
+<tr><td>All business-data counts</td><td>All 78 COPY sections counted statically. Six core tables compared with current environments. Logical collections within generic_documents were not validated or matched to a source manifest.</td></tr>
+<tr><td>Files and external assets</td><td>NOT VERIFIED. Inline data must be accounted for, and any external references require an independently protected object backup or verified retained versions. No file resolvability or external object inventory test ran.</td></tr>
+<tr><td>Maintenance window / write pause / connection drain</td><td>NOT ENABLED or scheduled; duration not applicable. No background jobs or application workers were stopped.</td></tr>
+<tr><td>Production restore / migrations / cutover</td><td>NOT PERFORMED. No production writes were issued by the reviewers.</td></tr>
+<tr><td>Health, login and role-by-role smoke tests</td><td>NOT RUN against a restored copy or as post-restore production tests. Login may itself write sessions/audit records; a “read-only” smoke harness must account for these effects.</td></tr>
+<tr><td>Reopening / post-restore monitoring</td><td>NOT APPLICABLE: no maintenance or restore occurred. Publishing status metadata is not a substitute for post-restore monitoring.</td></tr>
+</table>
+
+<h2>6. Recovery and rollback readiness</h2>
+<p><strong>Not ready.</strong> No destructive command is authorized by these failed checks. Agent production access is read-only; final production recovery must be performed by an authorized operator using supported Replit recovery controls or coordinated provider support, not a script that bypasses the agent restriction.</p>
+<ol>
+<li>Confirm which project/database produced the supplied file, its actual snapshot time, and the intended recovery outcome. Explain the population differences without sharing personal records.</li>
+<li>Protect the plaintext dump from source control and public/build artifacts. Establish private encrypted retention with controlled key custody, access logs and a defined retention period.</li>
+<li>Create a fresh, complete, verified pre-restore backup of the correct current production source. Validate its restore independently. This is the required rollback point; the supplied dump cannot serve as its substitute.</li>
+<li>Validate the desired recovery file in a genuinely isolated environment with no production secrets, outbound integrations, startup repair jobs or schedulers. Review untrusted SQL before execution.</li>
+<li>Validate the schema, all business relationships, files and role flows against the intended app version. Resolve missing protected data through an explicit approved reconciliation plan, not empty replacement columns.</li>
+<li>Only after all gates pass, have the operator schedule maintenance, stop all writers, capture the final consistent rollback state, verify the exact primary identity and perform the supported recovery procedure.</li>
+<li>If cutover fails, retain maintenance, stop further changes, restore the independently tested pre-restore state, and repeat integrity and application verification before reopening. No such rollback has been tested here.</li>
+</ol>
+<p>The publishing secrets-service error from the earlier screenshot is not evidence that production data needs restoring. This review does not establish that a database restore would fix that publishing error.</p>
+
+<h2>7. Complete static COPY row-count inventory</h2>
+<p class="small">Aggregates only. Zero physical rows do not prove a business feature has no records when the app also uses generic_documents.</p>
+<pre>_system.replit_database_migrations_v1=15
+public.academic_terms=22; academic_years=36; ai_insights=0; ai_interventions=4
+alembic_version=1; approval_events=25; approval_requests=0
+assessments=0; assessment_submissions=0; attendance=5947; audit_logs=9123
+behaviour_records=331; behaviour_types=11; bulk_action_history=0; bulk_import_batches=20
+calendar_events=16; classes=205; counters=4; daily_tasks=72; _deployment_markers=0
+educational_stages=0; events=56; generic_documents=67192; grade_levels=18; hakim_insights=0
+impersonation_sessions=121; issue_activity_log=888; issue_comments=17; issue_duplicates_map=3
+issue_versions=1; lesson_plans=50; lookup_options=0; messages=28
+mfa_email_otps=0; mfa_factors=11; mfa_pending_challenges=6; mfa_recovery_codes=20
+mfa_webauthn_challenges=0; noor_import_drafts=1; noor_import_history=23; notifications=2125
+notifications_preferences=0; notifications_tenant_backfill_779=0; parent_invitations=0
+parents=1428; physical_classrooms=0; platform_settings=0; product_issues=83
+public_hakim_rate_counters=154; rate_limit_counters=3; registration_requests=59
+revoked_token_families=2; revoked_tokens=112; schedule_sessions=74; schools=72
+school_settings=34; session_event_log=8136; session_interactions=2170; session_notes=203
+skills_types=16; students=3701; student_skills=227; subjects=581; system_settings=2
+teacher_assignments=2576; teacher_class_assignments=32; teacher_record_backfill_794=12
+teachers=248; teacher_sessions=0; time_slots=100; timetable_constraints=1
+timetable_runs=204; timetables=88; users=1708; user_sessions=4392
+workspace_collaborators=0; workspace_quota=22
+(All entries after the first are in public.)</pre>
+<h2>References</h2>
+<ul>
+<li>User objective: <code>attached_assets/Pasted-Objective-Safely-restore-the-Production-database-from-t_1789578087241.txt</code></li>
+<li><a href="https://docs.replit.com/features/data-and-storage/data-recovery">Replit: Data recovery</a></li>
+<li><a href="https://docs.replit.com/features/data-and-storage/development-and-production">Replit: Development and production databases</a></li>
+</ul>
+</main>
+</html>

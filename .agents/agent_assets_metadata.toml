@@ -189,3 +189,17 @@ mtime_ms = 1789508319791
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:76d3d322-060b-41e8-b1b6-757b9374d907/5b004a8c-1dca-4a08-af26-e011ec7878a1/4e3f6609-2c27-4cd0-89c6-74ee92ac0f8c"
 storage_version_token = "1789508387774341"
 content_type = "text/html"
+
+[[outputs]]
+id = "BMMg9bT0tFbxLWoDIgLLg"
+uri = "file://docs/reports/production-restore-preflight-2026-09-16.html"
+type = "text"
+title = "Production restore — preflight review"
+description = "Read-only codebase and backup review, SHA-256, row-count comparison, compatibility blockers, and uncompleted recovery prerequisites. Contains metadata only, not backup records."
+logical_id = "9ac3551d-0ff0-429c-8ac5-206c4db8cbb3"
+content_hash = "sha256:7c2007aa9f917d66a98812f81833cb95d3aa594e23401646fec946eb1c5b5f8a"
+size = 17893
+mtime_ms = 1789578521740
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:76d3d322-060b-41e8-b1b6-757b9374d907/9ac3551d-0ff0-429c-8ac5-206c4db8cbb3/be171e45-58d3-4860-8f08-55b0cc540e56"
+storage_version_token = "1789578544035640"
+content_type = "text/html"

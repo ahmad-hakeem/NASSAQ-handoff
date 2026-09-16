@@ -12,5 +12,6 @@ test_reports/
 memory/
 .git/lfs/
 backups/
+restore-temp/*.sql
 
 backend/backups/
