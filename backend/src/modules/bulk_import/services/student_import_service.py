@@ -230,32 +230,6 @@ async def acquire_school_import_lock(session, school_id: str) -> None:
     )
 
 
-async def _supports_batch_ownership_version(session) -> bool:
-    """Detect the optional ownership marker without requiring a migration.
-
-    Deployments that predate the ownership migration must keep importing
-    successfully.  Their manifests intentionally remain legacy/unsafe for
-    destructive parent cleanup; once the column is present, new manifests
-    carry version 2 and rollback can use the proven ownership lists.
-    """
-    # Unit-test sessions model persistence with an in-memory ``rows`` store.
-    if hasattr(session, "rows"):
-        return True
-    try:
-        result = await session.execute(text("""
-            SELECT EXISTS (
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_name = 'bulk_import_batches'
-                  AND column_name = 'ownership_version'
-            )
-        """))
-        scalar = getattr(result, "scalar", None)
-        return bool(scalar() if callable(scalar) else False)
-    except Exception:
-        return False
-
-
 def _canonical_grade(value: Any) -> Optional[dict]:
     raw = normalise_cell(value)
     if raw is None:
@@ -1113,12 +1087,6 @@ async def import_students(
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
             }
-            # The ownership migration is deliberately optional for this
-            # import path.  Without it the row is still committed, but
-            # rollback will treat the manifest as legacy and preserve all
-            # parent/user resources.
-            if await _supports_batch_ownership_version(db.session):
-                batch_manifest["ownership_version"] = 2
             await gd_insert(db.session, "bulk_import_batches", batch_manifest)
         except Exception:
             # The import itself is already committed at row savepoint scope;

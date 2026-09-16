@@ -1,9 +1,10 @@
-"""Schema-only compatibility metadata for legacy ``schools`` columns.
+"""Historical compatibility metadata for legacy ``schools`` columns.
 
 These columns intentionally do *not* belong to the ORM model.  They remain
-database-owned compatibility storage while older tenants are being preserved;
-application serializers and authentication code must not start reading or
-writing them again.
+database-owned compatibility storage for the old additive migration and
+Alembic anti-drop protection.  They are historical and optional for startup:
+restored databases may omit them, and current application writes use the
+canonical ``principal_phone`` field instead.
 
 The type instances are kept here (rather than duplicating them in the
 migration and Alembic environment) so the migration, autogenerate guard, and
@@ -20,8 +21,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 
 # SQLAlchemy type definitions for the columns as they existed in the
-# production schema.  ``String()`` deliberately has no length: principal
-# mobile values are unbounded VARCHAR, not a newly-imposed phone limit.
+# production schema.  ``String()`` deliberately has no length: historical
+# principal mobile values are unbounded VARCHAR, not a newly-imposed limit.
 PRESERVED_SCHOOL_COLUMNS: Mapping[str, sa.types.TypeEngine[Any]] = {
     "configuration": JSONB(astext_type=sa.Text()),
     "location": JSONB(astext_type=sa.Text()),

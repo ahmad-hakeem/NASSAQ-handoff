@@ -207,16 +207,20 @@ def _sqlalchemy_type_name(type_: Any) -> str:
 
 
 def _expected_schema_contracts() -> dict[tuple[str, str], _SchemaContract]:
-    """Build required columns from ORM metadata plus compatibility contracts."""
+    """Build startup-required columns from ORM metadata and live contracts.
+
+    Historical ``schools`` compatibility columns stay in their separate
+    registry for the old additive migration and Alembic anti-drop guard, but
+    they are optional to this read-only startup contract.  Restored databases
+    may therefore omit those five columns.
+    """
 
     # Importing pg_models registers every mapped entity without touching the
-    # database.  The five compatibility columns intentionally remain outside
-    # this metadata and are supplied by the explicit registry below.
+    # database.
     import pg_models as _  # noqa: F401
 
     from src.core.database.preserved_school_columns import (
         KNOWN_PHYSICAL_COLUMN_TYPES,
-        PRESERVED_SCHOOL_COLUMNS,
     )
 
     contracts: dict[tuple[str, str], _SchemaContract] = {}
@@ -248,14 +252,6 @@ def _expected_schema_contracts() -> dict[tuple[str, str], _SchemaContract]:
             require_no_server_default=existing.require_no_server_default,
         )
 
-    for name, type_ in PRESERVED_SCHOOL_COLUMNS.items():
-        contracts[("schools", name)] = _SchemaContract(
-            table_name="schools",
-            column_name=name,
-            postgres_type=_sqlalchemy_type_name(type_),
-            nullable=True,
-            require_no_server_default=True,
-        )
     return contracts
 
 

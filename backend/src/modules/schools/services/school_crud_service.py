@@ -86,7 +86,7 @@ def normalize_school(
         "name": s.get("name") or s.get("name_ar") or s.get("name_en") or "",
         "code": s.get("code") or s.get("license_number") or s.get("id") or "",
         "email": s.get("email") or "",
-        "phone": s.get("phone") or s.get("principal_phone") or s.get("principal_mobile") or "",
+        "phone": s.get("phone") or s.get("principal_phone") or "",
         "address": s.get("address") or "",
         "city": s.get("city") or "",
         "region": s.get("region") or "",
@@ -109,7 +109,9 @@ def normalize_school(
         "principal_name": s.get("principal_name"),
         "principal_email": s.get("principal_email"),
         "principal_phone": s.get("principal_phone") or s.get("phone"),
-        "principal_mobile": s.get("principal_mobile") or s.get("phone") or s.get("principal_phone"),
+        # Public DTO compatibility alias; the physical value is always
+        # backed by the canonical principal_phone column.
+        "principal_mobile": s.get("principal_phone") or s.get("phone"),
         "entity_kind": preview["entity_kind"],
         "can_preview_as_principal": preview["can_preview_as_principal"],
         "preview_block_reason": preview["preview_block_reason"],
@@ -218,7 +220,6 @@ class SchoolCrudService:
                 "principal_name": school_data.principal_name,
                 "principal_email": school_data.principal_email,
                 "principal_phone": school_data.principal_phone or getattr(school_data, 'principal_mobile', None),
-                "principal_mobile": school_data.principal_mobile or school_phone,
                 "educational_pathway": school_data.educational_pathway,
                 "created_at": created_at,
                 "updated_at": created_at,
@@ -372,7 +373,6 @@ class SchoolCrudService:
                 "principal_name": school_data.principal_name or "",
                 "principal_email": school_data.principal_email or "",
                 "principal_phone": school_data.principal_phone or getattr(school_data, 'principal_mobile', None) or "",
-                "principal_mobile": school_data.principal_mobile or school_phone,
                 "educational_pathway": school_data.educational_pathway or "",
                 "created_at": created_at,
                 "updated_at": created_at,
@@ -503,7 +503,6 @@ class SchoolCrudService:
             "principal_name": school_data.principal_name or school.get("principal_name") or "",
             "principal_email": school_data.principal_email or school.get("principal_email") or "",
             "principal_phone": school_data.principal_phone or getattr(school_data, 'principal_mobile', None) or school.get("principal_phone") or "",
-            "principal_mobile": school_data.principal_mobile or school_phone or "",
             "educational_pathway": school_data.educational_pathway or "",
             "updated_at": now,
         }
@@ -564,7 +563,6 @@ class SchoolCrudService:
             "principal_name": school_data.principal_name or school.get("principal_name") or "",
             "principal_email": school_data.principal_email or school.get("principal_email") or "",
             "principal_phone": school_data.principal_phone or getattr(school_data, 'principal_mobile', None) or school.get("principal_phone") or "",
-            "principal_mobile": school_data.principal_mobile or school_phone or "",
             "educational_pathway": school_data.educational_pathway or "",
             "updated_at": now,
         }

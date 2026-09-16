@@ -362,10 +362,10 @@ async def test_rollback_savepoint_restores_rows_when_finalization_fails(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_ownership_version_round_trips_through_real_batch_model(
+async def test_removed_ownership_marker_does_not_round_trip_through_batch_model(
     _db_session, tenant_a
 ):
-    """The rollback safety bit must survive gd_insert and a fresh ORM read.
+    """The removed marker is not selected or inserted by the current ORM.
 
     This intentionally writes only one temporary batch row.  The shared test
     fixture rolls the transaction back, and the explicit TESTING gate keeps a
@@ -387,7 +387,6 @@ async def test_ownership_version_round_trips_through_real_batch_model(
             "created_class_ids": [],
             "created_parent_ids": [],
             "created_parent_user_ids": [],
-            "ownership_version": 2,
             "status": "active",
         },
     )
@@ -399,4 +398,4 @@ async def test_ownership_version_round_trips_through_real_batch_model(
         {"id": batch_id, "school_id": tenant_a},
     )
     assert reread is not None
-    assert reread["ownership_version"] == 2
+    assert "ownership_version" not in reread

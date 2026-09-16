@@ -236,6 +236,14 @@ class SchoolCreate(BaseModel):
         from src.common.utils.school_type import normalize_school_type
         return normalize_school_type(v)
 
+    @model_validator(mode="after")
+    def _principal_mobile_alias(self):
+        if self.principal_mobile is not None and self.principal_phone is None:
+            self.principal_phone = self.principal_mobile
+        if self.principal_phone is not None:
+            self.principal_mobile = self.principal_phone
+        return self
+
 class SchoolResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
     id: str

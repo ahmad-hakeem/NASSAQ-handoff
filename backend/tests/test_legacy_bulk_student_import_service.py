@@ -7,6 +7,7 @@ failed row is rolled back while a prior successful row remains committed.
 """
 
 from copy import deepcopy
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -59,6 +60,13 @@ class _Session:
 
 def _fake_db(session):
     return SimpleNamespace(session=session)
+
+
+def test_importer_does_not_probe_or_write_ownership_marker() -> None:
+    """Current imports must remain usable without the removed batch column."""
+    source = inspect.getsource(importer)
+    assert "ownership_version" not in source
+    assert "_supports_batch_ownership_version" not in source
 
 
 @pytest.mark.asyncio
@@ -263,7 +271,7 @@ async def test_manifest_distinguishes_new_parent_row_from_reused_global_user(mon
     assert result["created_parent_ids"] == ["parent-row"]
     assert result["created_parent_user_ids"] == []
     manifest = session.rows["bulk_import_batches"][0]
-    assert manifest["ownership_version"] == 2
+    assert "ownership_version" not in manifest
     assert manifest["created_parent_ids"] == ["parent-row"]
     assert manifest["created_parent_user_ids"] == []
 

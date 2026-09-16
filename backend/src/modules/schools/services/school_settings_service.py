@@ -178,7 +178,12 @@ class SchoolSettingsService:
             update_data["stage"] = school_info.stage
         if school_info.principal_name is not None:
             update_data["principal_name"] = school_info.principal_name
-        resolved_phone = school_info.principal_mobile or school_info.principal_phone
+        # ``""`` is an intentional clear operation, not a missing alias.
+        resolved_phone = (
+            school_info.principal_mobile
+            if school_info.principal_mobile is not None
+            else school_info.principal_phone
+        )
         if resolved_phone is not None:
             update_data["principal_phone"] = resolved_phone
         if school_info.educational_pathway is not None:

@@ -62,6 +62,9 @@ KNOWN_DB_ONLY_COLUMNS: frozenset[tuple[str, str]] = frozenset({
     # registry is also consumed by Alembic's include_object callback, so
     # autogenerate cannot turn this intentional drift into DROP COLUMN ops.
     *{("schools", name) for name in PRESERVED_SCHOOL_COLUMNS},
+    # Historical ownership marker from pre-restore batches.  Current imports
+    # do not probe or write it, but old databases may retain the data column.
+    ("bulk_import_batches", "ownership_version"),
 })
 
 

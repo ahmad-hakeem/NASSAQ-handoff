@@ -11,9 +11,17 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import insert, select
 from sqlalchemy.dialects import postgresql
 
 from src.core.database import db as database
+from src.modules.bulk_import.entities.bulk_import_entity import BulkImportBatch
+from src.modules.schools.entities.schools_entity import School
+from src.modules.schools.dto.school_dto import (
+    SchoolCreate,
+    SchoolInfoUpdate,
+    SchoolUpdate,
+)
 from src.core.database.preserved_school_columns import (
     KNOWN_PHYSICAL_COLUMN_TYPES,
     PRESERVED_SCHOOL_COLUMNS,
@@ -112,6 +120,159 @@ def test_preserved_school_registry_is_exact_and_has_no_defaults() -> None:
     # The registry stores types only; nullable/no-default are enforced by the
     # managed verifier and additive migration, not by ORM Column objects.
     assert len(PRESERVED_SCHOOL_COLUMNS) == 5
+
+
+def test_restored_columns_are_optional_to_startup_and_absent_from_batch_orm() -> None:
+    """The restored dump may omit six legacy/optional columns safely."""
+    contracts = database.expected_schema_contracts()
+    absent = {
+        ("schools", "configuration"),
+        ("schools", "location"),
+        ("schools", "setup_completed"),
+        ("schools", "setup_steps_completed"),
+        ("schools", "principal_mobile"),
+        ("bulk_import_batches", "ownership_version"),
+    }
+    assert absent.isdisjoint(contracts)
+
+    assert "ownership_version" not in BulkImportBatch.__table__.columns
+    orm_statements = (
+        select(School),
+        insert(School).values(id="school", name="School", code="school"),
+        select(BulkImportBatch),
+        insert(BulkImportBatch).values(
+            id="batch",
+            school_id="school",
+            import_type="students",
+        ),
+    )
+    for statement in orm_statements:
+        sql = str(statement.compile(dialect=postgresql.dialect())).lower()
+        assert "ownership_version" not in sql
+        assert "principal_mobile" not in sql
+        assert "setup_completed" not in sql
+        assert "setup_steps_completed" not in sql
+        assert "configuration" not in sql
+        assert "location" not in sql
+
+
+@pytest.mark.parametrize(
+    ("model", "kwargs"),
+    (
+        (SchoolCreate, {"name": "School"}),
+        (SchoolUpdate, {}),
+        (SchoolInfoUpdate, {}),
+    ),
+)
+def test_principal_mobile_dto_alias_is_backed_by_principal_phone(model, kwargs) -> None:
+    dto = model(principal_mobile="0500000000", **kwargs)
+    assert dto.principal_phone == "0500000000"
+    assert dto.principal_mobile == dto.principal_phone
+
+
+@pytest.mark.parametrize("model", (SchoolUpdate, SchoolInfoUpdate))
+def test_principal_mobile_empty_string_clears_canonical_phone(model) -> None:
+    dto = model(principal_mobile="")
+    assert dto.principal_phone == ""
+    assert dto.principal_mobile == ""
+
+
+@pytest.mark.asyncio
+async def test_school_info_consumer_persists_empty_principal_phone_clear(monkeypatch) -> None:
+    from src.modules.schools.services import school_settings_service as service
+
+    updates = []
+
+    async def _resolve(*_args, **_kwargs):
+        return "school"
+
+    async def _update(_session, collection, _filters, values):
+        updates.append((collection, values))
+        return 1
+
+    monkeypatch.setattr(service, "resolve_school_context", _resolve)
+    monkeypatch.setattr(service, "gd_update_one", _update)
+
+    result = await service.SchoolSettingsService.update_school_info_direct(
+        object(),
+        SchoolInfoUpdate(principal_mobile=""),
+        {},
+    )
+
+    assert result["success"] is True
+    assert len(updates) == 2
+    assert updates[0][0] == "schools"
+    assert updates[0][1]["principal_phone"] == ""
+    assert updates[1][0] == "users"
+    assert updates[1][1]["phone"] == ""
+
+
+@pytest.mark.asyncio
+async def test_startup_gate_allows_missing_restored_columns_but_rejects_required(
+    monkeypatch,
+) -> None:
+    """Optional restored columns do not weaken genuinely required checks."""
+    required = database._SchemaContract(
+        table_name="schools",
+        column_name="name",
+        postgres_type="character varying",
+        nullable=False,
+    )
+    monkeypatch.setattr(
+        database,
+        "_expected_schema_contracts",
+        lambda: {("schools", "name"): required},
+    )
+
+    class _Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return [
+                {
+                    "table_name": "schools",
+                    "column_name": "name",
+                    "type_name": "character varying",
+                    "nullable": False,
+                    "column_default": None,
+                }
+            ]
+
+    class _Connection:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def execute(self, *_args, **_kwargs):
+            return _Result()
+
+    monkeypatch.setattr(
+        database,
+        "engine",
+        SimpleNamespace(connect=lambda: _Connection()),
+    )
+    ready = await database.verify_physical_schema()
+    assert ready["ok"] is True
+
+    class _MissingRequiredResult(_Result):
+        def all(self):
+            return []
+
+    class _MissingRequiredConnection(_Connection):
+        async def execute(self, *_args, **_kwargs):
+            return _MissingRequiredResult()
+
+    monkeypatch.setattr(
+        database,
+        "engine",
+        SimpleNamespace(connect=lambda: _MissingRequiredConnection()),
+    )
+    rejected = await database.verify_physical_schema()
+    assert rejected["ok"] is False
+    assert rejected["missing_columns"] == ["schools.name"]
 
 
 def test_known_physical_contracts_are_exact_not_global_narrowing() -> None:

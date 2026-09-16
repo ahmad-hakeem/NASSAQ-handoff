@@ -716,17 +716,17 @@ async def test_actual_uploaded_workbook_import_and_live_routes():
                 batch.get("created_parent_user_ids") or []
             ),
         }
-        assert ownership_findings == {
-            # ``parents.user_id`` is not a real development-schema column.
-            # Parent ownership is proven by parent email plus the canonical
-            # guardian_links.parent_ref user reference instead.
-            "parents_user_id_column": False,
-            "parent_rows_with_user_id": 0,
-            "bulk_import_batches_ownership_version_column": True,
-            "persisted_ownership_version": True,
-            "persisted_created_parent_ids": 10,
-            "persisted_created_parent_user_ids": expected_new_parent_users,
-        }, (
+        assert ownership_findings["parents_user_id_column"] is False
+        assert ownership_findings["parent_rows_with_user_id"] == 0
+        # The physical marker is historical and may remain on an older
+        # development database, but current ORM inserts must never depend on
+        # or persist it.
+        assert ownership_findings["persisted_ownership_version"] is False
+        assert ownership_findings["persisted_created_parent_ids"] == 10
+        assert (
+            ownership_findings["persisted_created_parent_user_ids"]
+            == expected_new_parent_users
+        ), (
             "live ownership/schema mismatch (aggregate only): "
             f"{ownership_findings}"
         )

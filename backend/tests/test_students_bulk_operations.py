@@ -480,7 +480,7 @@ async def test_bulk_import_batches_tracking_and_rollback(
     s1_id = str(uuid.uuid4())
     s2_id = str(uuid.uuid4())
 
-    # Parent 1: only has s1 -> should be deleted on rollback
+    # Parent 1: only has s1.  Without an ownership marker it must survive.
     p1_id = str(uuid.uuid4())
     u1_id = str(uuid.uuid4())
     await gd_insert(_db_session, "users", {
@@ -592,7 +592,6 @@ async def test_bulk_import_batches_tracking_and_rollback(
         "created_class_ids": [new_cid],
         "created_parent_ids": [p1_id],
         "created_parent_user_ids": [u1_id],
-        "ownership_version": 2,
         "status": "active",
         "created_at": now_dt,
         "updated_at": now_dt,
@@ -613,8 +612,8 @@ async def test_bulk_import_batches_tracking_and_rollback(
     assert rb_data["success"] is True
     assert rb_data["rolled_back_students"] == 2
     assert rb_data["rolled_back_classes"] == 1
-    assert rb_data["rolled_back_parents"] == 1
-    assert rb_data["rolled_back_users"] == 1
+    assert rb_data["rolled_back_parents"] == 0
+    assert rb_data["rolled_back_users"] == 0
 
     # Verify students are removed completely so they can be re-imported cleanly
     s1 = await gd_find_one(_db_session, "students", {"id": s1_id})
@@ -622,11 +621,13 @@ async def test_bulk_import_batches_tracking_and_rollback(
     assert s1 is None
     assert s2 is None
 
-    # Verify parent 1 and user 1 were deleted (had no other children)
-    deleted_p1 = await gd_find_one(_db_session, "parents", {"id": p1_id})
-    deleted_u1 = await gd_find_one(_db_session, "users", {"id": u1_id})
-    assert deleted_p1 is None
-    assert deleted_u1 is None
+    # The restored schema has no ownership marker.  Student rollback remains
+    # available, but parent/user cleanup is fail-closed without proven
+    # ownership.
+    preserved_p1 = await gd_find_one(_db_session, "parents", {"id": p1_id})
+    preserved_u1 = await gd_find_one(_db_session, "users", {"id": u1_id})
+    assert preserved_p1 is not None
+    assert preserved_u1 is not None
 
     # Verify parent 2 was PRESERVED because they have other_sid
     preserved_p2 = await gd_find_one(_db_session, "parents", {"id": p2_id})

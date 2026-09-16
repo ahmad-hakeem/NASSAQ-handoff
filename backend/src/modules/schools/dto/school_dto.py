@@ -2,7 +2,7 @@
 NASSAQ - School Models & DTOs
 All school/tenant-related Pydantic models for CRUD, info updates, status, and credentials.
 """
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator, model_validator
 from typing import List, Optional, Union
 from datetime import datetime
 from src.common.dto.enums import SchoolStatus
@@ -56,6 +56,14 @@ class SchoolCreate(BaseModel):
         _normalize_school_type_field
     )
 
+    @model_validator(mode="after")
+    def _principal_mobile_alias(self):
+        if self.principal_mobile is not None and self.principal_phone is None:
+            self.principal_phone = self.principal_mobile
+        if self.principal_phone is not None:
+            self.principal_mobile = self.principal_phone
+        return self
+
 
 class SchoolResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
@@ -94,6 +102,14 @@ class SchoolResponse(BaseModel):
     preview_block_reason: Optional[str] = None
     setup_score: int = 0
 
+    @model_validator(mode="after")
+    def _principal_mobile_alias(self):
+        if self.principal_mobile is not None and self.principal_phone is None:
+            self.principal_phone = self.principal_mobile
+        if self.principal_phone is not None:
+            self.principal_mobile = self.principal_phone
+        return self
+
 
 class SchoolPaginatedResponse(BaseModel):
     model_config = ConfigDict(extra="ignore", from_attributes=True)
@@ -119,12 +135,21 @@ class SchoolUpdate(BaseModel):
     calendar_system: Optional[str] = None
     school_type: Optional[str] = None
     stage: Optional[str] = None
+    principal_phone: Optional[str] = None
     principal_mobile: Optional[str] = None
     educational_pathway: Optional[str] = None
 
     _normalize_school_type = field_validator("school_type", mode="before")(
         _normalize_school_type_field
     )
+
+    @model_validator(mode="after")
+    def _principal_mobile_alias(self):
+        if self.principal_mobile is not None and self.principal_phone is None:
+            self.principal_phone = self.principal_mobile
+        if self.principal_phone is not None:
+            self.principal_mobile = self.principal_phone
+        return self
 
 
 class SchoolInfoUpdate(BaseModel):
@@ -147,6 +172,14 @@ class SchoolInfoUpdate(BaseModel):
     @classmethod
     def _normalize_type(cls, v):
         return normalize_school_type(v)
+
+    @model_validator(mode="after")
+    def _principal_mobile_alias(self):
+        if self.principal_mobile is not None and self.principal_phone is None:
+            self.principal_phone = self.principal_mobile
+        if self.principal_phone is not None:
+            self.principal_mobile = self.principal_phone
+        return self
 
 
 class SchoolStatusChangeRequest(BaseModel):
