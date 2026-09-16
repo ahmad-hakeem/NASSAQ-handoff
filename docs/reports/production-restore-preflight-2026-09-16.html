@@ -39,7 +39,7 @@ body{margin:0;background:#f5f6f8;color:#172033;font:16px/1.6 system-ui,sans-seri
 <tr><td>Permissions and origin</td><td>No ownership/source manifest or independent expected checksum supplied. The new checksum fingerprints the received bytes; it does not authenticate their source. Permissions/roles are not proven restorable by the dump's lack of GRANT/REVOKE statements.</td></tr>
 <tr><td>File protection</td><td>Mode 0600; plaintext, not an encrypted backup. Untracked and not matched by a Git ignore rule at inspection time. Do not stage, commit, publicly upload, or include this SQL file in build artifacts. File mode alone does not prove restricted collaborator access or encryption-at-rest compliance.</td></tr>
 </table>
-<p class="note">The filename is not proof that this file came from this production project or that its timestamp describes the database snapshot. Its origin remains unverified.</p>
+<p class="note">Owner confirmation received after the initial review: the supplied backup is “production and trusted.” This records the owner's attestation, not independent source verification. The exact originating project/database identifier and snapshot time remain unspecified. This confirmation does not establish schema compatibility, a successful isolated restore, or rollback readiness.</p>
 
 <h2>3. Target identity and comparison</h2>
 <p>Production evidence timestamp: <code>2026-09-16 17:05:29.777925+00</code>. The tool exposes a <strong>read replica</strong>, not a confirmed primary cutover endpoint.</p>
@@ -95,7 +95,7 @@ body{margin:0;background:#f5f6f8;color:#172033;font:16px/1.6 system-ui,sans-seri
 <h2>6. Recovery and rollback readiness</h2>
 <p><strong>Not ready.</strong> No destructive command is authorized by these failed checks. Agent production access is read-only; final production recovery must be performed by an authorized operator using supported Replit recovery controls or coordinated provider support, not a script that bypasses the agent restriction.</p>
 <ol>
-<li>Confirm which project/database produced the supplied file, its actual snapshot time, and the intended recovery outcome. Explain the population differences without sharing personal records.</li>
+<li>The owner confirms a trusted production source. Establish the exact originating project/database and snapshot time, and explain the population differences as part of the intended recovery outcome without sharing personal records.</li>
 <li>Protect the plaintext dump from source control and public/build artifacts. Establish private encrypted retention with controlled key custody, access logs and a defined retention period.</li>
 <li>Create a fresh, complete, verified pre-restore backup of the correct current production source. Validate its restore independently. This is the required rollback point; the supplied dump cannot serve as its substitute.</li>
 <li>Validate the desired recovery file in a genuinely isolated environment with no production secrets, outbound integrations, startup repair jobs or schedulers. Review untrusted SQL before execution.</li>
