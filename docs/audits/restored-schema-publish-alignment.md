@@ -71,3 +71,26 @@ The deployment/database guidance describes automatic schema comparison on
 Publish; no supported skip-schema-comparison switch was verified. Do not add
 migration commands to builds or startup, overwrite production data, or run
 historical additive migrations to resolve this discrepancy.
+
+## Main-workspace verification after merge — 2026-09-16
+
+The task-local removal described above had not changed main's development
+database: a subsequent read-only inspection found all six columns still
+present, and the actual Publish planner proposed six additions.
+
+With renewed explicit user approval, the six columns were removed from main
+development only. The verified backup is
+`.local/private-backups/schema-alignment/main-development-columns-2026-09-16.json`
+(permission-restricted and git-ignored). A single transaction locked both
+tables and compared their affected values and column metadata with the backup
+before executing the six RESTRICT drops. Production was not mutated.
+
+Final checks:
+- All six columns are absent in both main development and production.
+- Actual Publish comparison: `hasDiff: false`, `statementsToExecute: []`,
+  no warnings or structural-data-loss flags.
+- Focused schema-safety and import-undo tests: 25 passed; the database-writing
+  persistence test was deliberately deselected.
+
+This supersedes the pending main-workspace schema comparison above. It does
+not certify a future preview build or publish; neither was initiated here.
