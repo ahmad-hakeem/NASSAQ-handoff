@@ -4,6 +4,7 @@ NASSAQ — Application startup and shutdown hooks.
 import os
 import uuid
 import logging
+import time
 from datetime import datetime, timezone, timedelta as _td
 
 from dependencies import db, hash_password
@@ -32,6 +33,40 @@ async def _run_with_session(label: str, coro_fn):
             return None
         finally:
             db.set_session(None)
+
+
+def _init_observability_sync() -> None:
+    """Load and initialise the optional error sink in a worker thread."""
+    from services.observability import init_observability
+
+    init_observability()
+
+
+async def _deferred_observability_init() -> None:
+    """Best-effort observability setup, kept off startup and the event loop."""
+    import asyncio as _asyncio
+
+    try:
+        await _asyncio.to_thread(_init_observability_sync)
+    except _asyncio.CancelledError:
+        logger.info("Deferred observability init cancelled (shutdown)")
+        raise
+    except Exception as obs_err:  # observability must never block boot
+        logger.warning(f"Observability init skipped: {obs_err}")
+
+
+def _schedule_deferred_observability() -> None:
+    """Schedule optional observability without extending ASGI startup."""
+    import asyncio as _asyncio
+
+    deferred = _deferred_observability_init()
+    try:
+        global _observability_task
+        _observability_task = _asyncio.create_task(deferred)
+        logger.info("Deferred observability initialization scheduled")
+    except Exception as e:
+        deferred.close()
+        logger.warning(f"Could not schedule deferred observability init: {e}")
 
 
 async def _seed_platform_admins():
@@ -101,14 +136,8 @@ async def _seed_platform_admins():
 async def startup_tasks():
     from config import config
 
-    # Optional error/alert sink — no-op unless SENTRY_DSN is configured.
-    try:
-        from services.observability import init_observability
-
-        init_observability()
-    except Exception as obs_err:  # never block boot on observability
-        logger.warning(f"Observability init skipped: {obs_err}")
-
+    startup_started = time.monotonic()
+    logger.info("Startup phase begin (monotonic=%.3f)", startup_started)
     issues = config.validate()
     if issues:
         for issue in issues:
@@ -122,6 +151,8 @@ async def startup_tasks():
         logger.error(f"DEPLOYMENT SAFETY: Pre-flight checks FAILED: {failed}")
 
     managed_deployment = is_replit_managed_deployment()
+    gate_started = time.monotonic()
+    logger.info("Startup phase schema gate start (monotonic=%.3f)", gate_started)
     try:
         schema_status = await init_pg_tables()
         logger.info("PostgreSQL tables verified on startup")
@@ -167,8 +198,10 @@ async def startup_tasks():
             logger.critical(msg)
             raise RuntimeError(msg)
     except RuntimeError:
+        logger.info("Startup phase schema gate end (monotonic=%.3f)", time.monotonic())
         raise
     except Exception as e:
+        logger.info("Startup phase schema gate end (monotonic=%.3f)", time.monotonic())
         if schema_verification_is_fatal(
             production=config.is_production(),
             managed=managed_deployment,
@@ -176,6 +209,11 @@ async def startup_tasks():
             logger.critical(f"DEPLOYMENT SAFETY: PostgreSQL schema verification failed in production: {e}")
             raise
         logger.warning(f"PostgreSQL init on startup: {e}")
+    except BaseException:
+        logger.info("Startup phase schema gate end (monotonic=%.3f)", time.monotonic())
+        raise
+    else:
+        logger.info("Startup phase schema gate end (monotonic=%.3f)", time.monotonic())
 
     try:
         from src.core.database.db import get_sync_engine
@@ -192,6 +230,8 @@ async def startup_tasks():
     approval_engine.register(TeacherApprovalHandler())
     approval_engine.register(SchoolApprovalHandler())
     logger.info(f"Approval engine initialized with {len(approval_engine.get_registered_types())} handler(s)")
+
+    _schedule_deferred_observability()
 
     # Non-critical startup maintenance is deferred to a background task so the
     # ASGI lifespan startup returns promptly and the app begins serving (and
@@ -445,6 +485,7 @@ async def startup_tasks():
 _revoked_token_cleanup_task = None
 _rate_limit_sweep_task = None
 _scheduled_dispatch_task = None
+_observability_task = None
 
 
 async def _rate_limit_sweep_loop(initial_delay_s: float = 60.0,
@@ -1241,6 +1282,14 @@ async def shutdown_tasks():
         _scheduled_dispatch_task = None
     except Exception as e:
         logger.debug(f"Scheduled dispatch loop cancellation: {e}")
+
+    # Cancel deferred observability setup if shutdown wins the race.
+    try:
+        global _observability_task
+        await _cancel_background_task(_observability_task)
+        _observability_task = None
+    except Exception as e:
+        logger.debug(f"Deferred observability cancellation: {e}")
 
     # Cancel the deferred startup-maintenance task if it's still running.
     try:
