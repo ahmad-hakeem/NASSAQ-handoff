@@ -16,10 +16,6 @@ import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 
-import pandas as pd
-import arabic_reshaper
-from bidi.algorithm import get_display
-
 from sqlalchemy import select, and_
 
 from pg_models import Student, Attendance, GenericDocument
@@ -37,23 +33,13 @@ def _chunked(items, size: int = 500):
     for start in range(0, len(seq), size):
         yield seq[start:start + size]
 
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import mm
-from reportlab.lib.enums import TA_RIGHT, TA_CENTER
-from reportlab.platypus import (
-    SimpleDocTemplate, Table, LongTable, TableStyle, Paragraph, Spacer,
-    HRFlowable,
-)
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-
-
 def _reshape_ar(text: str) -> str:
     if not text:
         return text
     try:
+        import arabic_reshaper
+        from bidi.algorithm import get_display
+
         reshaped = arabic_reshaper.reshape(str(text))
         return get_display(reshaped)
     except Exception as e:
@@ -86,6 +72,9 @@ FONTS_DIR = os.path.join(os.path.dirname(__file__), "..", "fonts")
 
 
 def _register_arabic_fonts():
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
     regular = os.path.join(FONTS_DIR, "Amiri-Regular.ttf")
     bold = os.path.join(FONTS_DIR, "Amiri-Bold.ttf")
     if os.path.exists(regular) and "Amiri" not in pdfmetrics.getRegisteredFontNames():
@@ -93,17 +82,40 @@ def _register_arabic_fonts():
     if os.path.exists(bold) and "Amiri-Bold" not in pdfmetrics.getRegisteredFontNames():
         pdfmetrics.registerFont(TTFont("Amiri-Bold", bold))
 
+    global FONT_NAME, FONT_BOLD
+    FONT_NAME = "Amiri" if "Amiri" in pdfmetrics.getRegisteredFontNames() else "Helvetica"
+    FONT_BOLD = "Amiri-Bold" if "Amiri-Bold" in pdfmetrics.getRegisteredFontNames() else "Helvetica-Bold"
 
-_register_arabic_fonts()
 
-FONT_NAME = "Amiri" if "Amiri" in pdfmetrics.getRegisteredFontNames() else "Helvetica"
-FONT_BOLD = "Amiri-Bold" if "Amiri-Bold" in pdfmetrics.getRegisteredFontNames() else "Helvetica-Bold"
+def _ensure_pdf_setup():
+    """Load ReportLab and initialize its palette only for PDF consumers."""
+    if "NASSAQ_NAVY" in globals():
+        return
+    _register_arabic_fonts()
+    from reportlab.lib import colors
 
-NASSAQ_NAVY = colors.HexColor("#1E3A5F")
-NASSAQ_TURQUOISE = colors.HexColor("#2DD4BF")
-HEADER_BG = NASSAQ_NAVY
-HEADER_FG = colors.white
-ALT_ROW = colors.HexColor("#F0F9FF")
+    globals().update({
+        "NASSAQ_NAVY": colors.HexColor("#1E3A5F"),
+        "NASSAQ_TURQUOISE": colors.HexColor("#2DD4BF"),
+        "HEADER_BG": colors.HexColor("#1E3A5F"),
+        "HEADER_FG": colors.white,
+        "ALT_ROW": colors.HexColor("#F0F9FF"),
+    })
+
+
+def __getattr__(name):
+    """Preserve legacy PDF helper imports without eager ReportLab loading."""
+    if name in {
+        "FONT_NAME", "FONT_BOLD", "NASSAQ_NAVY", "NASSAQ_TURQUOISE",
+        "HEADER_BG", "HEADER_FG", "ALT_ROW",
+    }:
+        _ensure_pdf_setup()
+        return globals()[name]
+    if name == "LongTable":
+        _ensure_pdf_setup()
+        from reportlab.platypus import LongTable
+        return LongTable
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 REPORT_TITLES = {
     "school_attendance": ("تقرير الحضور المدرسي", "School Attendance Report"),
@@ -121,6 +133,11 @@ REPORT_TITLES = {
 
 
 def _ar_styles():
+    _ensure_pdf_setup()
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(
         "ArabicTitle", fontName=FONT_BOLD, fontSize=18,
@@ -150,6 +167,12 @@ def _xml_escape(text):
 
 
 def _make_cell_para(text, is_header=False):
+    _ensure_pdf_setup()
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import Paragraph
+
     safe_text = _xml_escape(text)
     reshaped = _reshape_ar(safe_text) if isinstance(text, str) else safe_text
     style = ParagraphStyle(
@@ -164,6 +187,10 @@ def _make_cell_para(text, is_header=False):
 
 
 def _build_table(headers, rows, col_widths=None):
+    _ensure_pdf_setup()
+    from reportlab.lib import colors
+    from reportlab.platypus import LongTable, TableStyle
+
     header_cells = [_make_cell_para(h, is_header=True) for h in headers]
     row_cells = [[_make_cell_para(c) for c in row] for row in rows]
     data = [header_cells] + row_cells
@@ -195,6 +222,9 @@ def _safe(v, default="—"):
 
 
 def _ar_para(text, style):
+    _ensure_pdf_setup()
+    from reportlab.platypus import Paragraph
+
     return Paragraph(_reshape_ar(str(text)), style)
 
 
@@ -267,6 +297,15 @@ class ExportEngine:
         return buf, media, filename
 
     def _to_pdf(self, report_type, data, period, generated, school_id):
+        _ensure_pdf_setup()
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import (
+            HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+        )
+
         buf = io.BytesIO()
         doc = SimpleDocTemplate(
             buf, pagesize=A4,
@@ -324,6 +363,9 @@ class ExportEngine:
         return buf
 
     def _pdf_kv_table(self, story, items, styles):
+        from reportlab.lib.units import mm
+        from reportlab.platypus import Spacer
+
         rows = [[str(v), str(k)] for k, v in items]
         t = _build_table(["القيمة", "البيان"], rows, col_widths=[60 * mm, 100 * mm])
         story.append(t)
@@ -508,6 +550,9 @@ class ExportEngine:
             story.append(_build_table(headers, rows))
 
     def _pdf_student_performance(self, story, data, styles):
+        from reportlab.lib.units import mm
+        from reportlab.platypus import Spacer
+
         student = data.get("student", {})
         if student:
             story.append(_ar_para("بيانات الطالب", styles["ArabicSection"]))
@@ -635,6 +680,8 @@ class ExportEngine:
         return buf
 
     def _to_xlsx(self, report_type, data, period, generated):
+        import pandas as pd
+
         buf = io.BytesIO()
         frames = self._flatten_to_frames(report_type, data)
         # Disable xlsxwriter's automatic string-to-formula / string-to-url
@@ -682,6 +729,8 @@ class ExportEngine:
         return buf
 
     def _flatten_to_frames(self, report_type, data):
+        import pandas as pd
+
         frames = []
 
         summary = data.get("summary")
