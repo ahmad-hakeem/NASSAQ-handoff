@@ -80,6 +80,30 @@ describe('getApiErrorMessage', () => {
     expect(getApiErrorMessage(error, 'fallback')).toBe('canonical wins');
   });
 
+  it('reads a structured message nested in canonical error.detail', () => {
+    const error = {
+      response: {
+        data: {
+          error: {
+            code: 'TEACHER_RESTORE_AVAILABLE',
+            detail: {
+              message: 'يمكن استعادة حساب المعلم السابق',
+              teacher_id: 'teacher-1',
+            },
+          },
+        },
+      },
+    };
+    expect(getApiErrorMessage(error, 'fallback')).toBe('يمكن استعادة حساب المعلم السابق');
+  });
+
+  it('reads a string nested in canonical error.detail', () => {
+    const error = {
+      response: { data: { error: { code: 'X', detail: 'canonical nested detail' } } },
+    };
+    expect(getApiErrorMessage(error, 'fallback')).toBe('canonical nested detail');
+  });
+
   it('falls back to a top-level message when no error/detail present', () => {
     const error = { response: { data: { success: false, message: 'top level message' } } };
     expect(getApiErrorMessage(error, 'fallback')).toBe('top level message');

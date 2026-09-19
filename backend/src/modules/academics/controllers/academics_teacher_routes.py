@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 import uuid, os, logging, json, random, re, io, base64
+from sqlalchemy import select, or_, func
 
 logger = logging.getLogger("nassaq.academics")
 
@@ -26,6 +27,7 @@ from dependencies import (
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_pull
 from engines.entity_counts import reconcile_school_counts
 from src.core.guards.tenant_guard import require_request_school_id
+from pg_models import Teacher, User
 
 
 from shared_models import (
@@ -483,6 +485,90 @@ class TeacherWizardCreate(BaseModel):
     subjects: Optional[dict] = None
     schedule: Optional[dict] = None
 
+
+def _normalise_teacher_email(value: Optional[str]) -> Optional[str]:
+    """Canonical form used by authentication for identity comparisons."""
+    return value.strip().lower() if value and value.strip() else None
+
+
+def _normalise_teacher_phone(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    digits = re.sub(r"\D", "", value)
+    # Treat the common Saudi local/international spellings as one identity.
+    if digits.startswith("00966"):
+        digits = digits[2:]
+    if digits.startswith("966") and len(digits) == 12:
+        digits = "0" + digits[3:]
+    return digits or None
+
+
+def _normalise_teacher_national_id(value: Optional[str]) -> Optional[str]:
+    return re.sub(r"\D", "", value) or None if value else None
+
+
+def _teacher_identity_matches(teacher: dict, user: dict, *, email: str, phone: str,
+                              national_id: Optional[str]) -> bool:
+    """Fail closed unless every submitted identity names the retained account."""
+    if _normalise_teacher_email(teacher.get("email")) != email:
+        return False
+    if _normalise_teacher_email(user.get("email")) != email:
+        return False
+    if _normalise_teacher_phone(teacher.get("phone")) != phone:
+        return False
+    if _normalise_teacher_phone(user.get("phone")) != phone:
+        return False
+    if national_id is not None:
+        return _normalise_teacher_national_id(teacher.get("national_id")) == national_id
+    return True
+
+
+async def _restorable_teacher_for_wizard(
+    school_id: str, *, email: str, phone: str, national_id: Optional[str],
+) -> Optional[str]:
+    """Return the sole authorised restore target, otherwise fail closed.
+
+    A user collision alone is deliberately insufficient.  The user and teacher
+    must be mutually linked, teacher-role, in this school, and the submitted
+    identity fields must all agree with both retained rows.
+    """
+    user_rows = (await db.session.execute(
+        select(User).where(or_(
+            func.lower(func.trim(User.email)) == email,
+            User.phone == phone,
+        ))
+    )).scalars().all()
+    eligible: set[str] = set()
+    for user_obj in user_rows:
+        user = {c.name: getattr(user_obj, c.name) for c in user_obj.__table__.columns}
+        linked = (await db.session.execute(
+            select(Teacher).where(or_(
+                Teacher.user_id == user["id"],
+                Teacher.id == user.get("teacher_id"),
+            ))
+        )).scalars().all()
+        # Any ambiguous or stale linkage is security-sensitive, not a restore hint.
+        if len(linked) != 1:
+            continue
+        teacher_obj = linked[0]
+        teacher = {c.name: getattr(teacher_obj, c.name) for c in teacher_obj.__table__.columns}
+        if (
+            teacher.get("user_id") != user["id"]
+            or user.get("teacher_id") != teacher.get("id")
+            or user.get("role") != UserRole.TEACHER.value
+            or user.get("tenant_id") != school_id
+            or teacher.get("school_id") != school_id
+            or teacher.get("is_active") is not False
+            or teacher.get("deleted_at") is None
+            or user.get("is_active") is not False
+        ):
+            continue
+        if _teacher_identity_matches(
+            teacher, user, email=email, phone=phone, national_id=national_id
+        ):
+            eligible.add(teacher["id"])
+    return next(iter(eligible)) if len(eligible) == 1 else None
+
 @router.post("/teachers/create")
 async def create_teacher_wizard(
     data: TeacherWizardCreate,
@@ -552,15 +638,35 @@ async def create_teacher_wizard(
         raise HTTPException(status_code=400, detail="البريد الإلكتروني مطلوب")
     if not phone:
         raise HTTPException(status_code=400, detail="رقم الهاتف مطلوب")
-    
+
+    canonical_email = _normalise_teacher_email(email)
+    canonical_phone = _normalise_teacher_phone(phone)
+    canonical_national_id = _normalise_teacher_national_id(national_id)
+
+    restore_teacher_id = await _restorable_teacher_for_wizard(
+        school_id,
+        email=canonical_email,
+        phone=canonical_phone,
+        national_id=canonical_national_id,
+    )
+    if restore_teacher_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "TEACHER_RESTORE_AVAILABLE",
+                "message": "هذا المعلم محذوف سابقاً. أكّد استعادة حسابه الحالي بدلاً من إنشاء حساب جديد.",
+                "teacher_id": restore_teacher_id,
+            },
+        )
+
     # Check if email exists
-    existing = await gd_find_one(db.session, "users", {"email": email})
+    existing = await gd_find_one(db.session, "users", {"email": canonical_email})
     if existing:
         raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
 
     # Check if phone exists (uniqueness across users)
     if phone:
-        existing_phone = await gd_find_one(db.session, "users", {"phone": phone})
+        existing_phone = await gd_find_one(db.session, "users", {"phone": canonical_phone})
         if existing_phone:
             raise HTTPException(status_code=400, detail="رقم الهاتف مسجل مسبقاً")
 
@@ -568,7 +674,7 @@ async def create_teacher_wizard(
     if national_id:
         existing_nid = await gd_find_one(
             db.session, "teachers",
-            {"national_id": national_id, "school_id": school_id}
+            {"national_id": canonical_national_id, "school_id": school_id}
         )
         if existing_nid:
             raise HTTPException(status_code=400, detail="رقم الهوية الوطنية مسجل مسبقاً")
@@ -589,9 +695,9 @@ async def create_teacher_wizard(
         "user_id": user_id,
         "full_name": full_name,
         "full_name_en": full_name_en or full_name,
-        "email": email,
-        "phone": phone,
-        "national_id": national_id,
+        "email": canonical_email,
+        "phone": canonical_phone,
+        "national_id": canonical_national_id,
         "gender": gender,
         "nationality": nationality,
         "date_of_birth": date_of_birth,
@@ -616,7 +722,7 @@ async def create_teacher_wizard(
     # Create user document
     user_doc = {
         "id": user_id,
-        "email": email,
+        "email": canonical_email,
         "password_hash": hash_password(temp_password),
         "full_name": full_name,
         "full_name_en": full_name_en or full_name,
@@ -627,7 +733,7 @@ async def create_teacher_wizard(
         "tenant_id": school_id,
         "school_id": school_id,
         "teacher_id": teacher_id,
-        "phone": phone,
+        "phone": canonical_phone,
         "permissions": [
             "view_students", "manage_attendance", "manage_grades",
             "view_schedule", "manage_behavior", "view_reports"
@@ -943,59 +1049,83 @@ async def delete_teacher(
     """
     from src.common.utils.tenant_scope import assert_school_access
     from src.core.guards.tenant_guard import is_independent_teacher, independent_workspace_id
-    if is_independent_teacher(current_user):
-        wsid = independent_workspace_id(current_user)
-        teacher = await gd_find_one(
-            db.session,
-            "teachers",
-            {"id": teacher_id, "school_id": wsid, "is_active": {"$ne": False}},
+    async with db.session.begin_nested():
+        stmt = select(Teacher).where(Teacher.id == teacher_id).with_for_update()
+        teacher_obj = (await db.session.execute(stmt)).scalars().first()
+        teacher = (
+            {c.name: getattr(teacher_obj, c.name) for c in teacher_obj.__table__.columns}
+            if teacher_obj else None
         )
-    else:
-        teacher = await gd_find_one(
-            db.session,
-            "teachers",
-            {"id": teacher_id, "is_active": {"$ne": False}},
-        )
-    if not teacher:
-        raise HTTPException(status_code=404, detail="المعلم غير موجود")
-    if not is_independent_teacher(current_user):
-        assert_school_access(current_user, teacher.get("school_id"))
+        if (
+            not teacher or teacher.get("is_active") is False
+            or (is_independent_teacher(current_user) and teacher.get("school_id") != independent_workspace_id(current_user))
+        ):
+            raise HTTPException(status_code=404, detail="المعلم غير موجود")
+        if not is_independent_teacher(current_user):
+            assert_school_access(current_user, teacher.get("school_id"))
 
-    school_id = teacher.get("school_id")
-    user_id = teacher.get("user_id")
-    now_iso = datetime.now(timezone.utc).isoformat()
+        school_id = teacher.get("school_id")
+        user_id = teacher.get("user_id")
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+        cleanup: Dict[str, Any] = {}
+        await gd_update_one(db.session, "teachers", {"id": teacher_id}, {
+            "is_active": False, "deleted_at": now_iso, "deleted_by": current_user["id"],
+        })
+        for collection in (
+            "teacher_assignments", "teacher_class_assignments", "teacher_subjects",
+            "timetable_sessions", "class_sessions",
+        ):
+            cleanup[collection] = await gd_update_many(
+                db.session, collection,
+                {"teacher_id": teacher_id, "is_active": {"$ne": False}},
+                {"is_active": False},
+            )
 
-    cleanup: Dict[str, Any] = {}
-    await gd_update_one(
-        db.session,
-        "teachers",
-        {"id": teacher_id},
-        {"is_active": False, "deleted_at": now_iso, "deleted_by": current_user["id"]},
-    )
+        if user_id:
+            # Resolve only the mutually-linked, same-school teacher account.
+            linked = (await db.session.execute(
+                select(User).where(or_(User.id == user_id, User.teacher_id == teacher_id)).with_for_update()
+            )).scalars().all()
+            if (
+                len(linked) != 1 or linked[0].id != user_id
+                or linked[0].teacher_id != teacher_id
+                or linked[0].tenant_id != school_id
+                or linked[0].role != UserRole.TEACHER.value
+            ):
+                raise HTTPException(status_code=409, detail="تعذر التحقق من ارتباط حساب المعلم")
+            await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": False})
+            cleanup["user_account"] = 1
 
-    await reconcile_school_counts(db.session, school_id)
+            from src.modules.schools.services.system_settings_service import revoke_session_refresh_chain
+            sessions = await gd_find(db.session, "user_sessions", {
+                "user_id": user_id, "revoked_at": None,
+            }, limit=500)
+            for session_row in sessions:
+                # Keep the access token dead after a later account restore;
+                # deactivating the user alone only protects the deleted period.
+                access_jti = session_row.get("jti")
+                if access_jti:
+                    access_exp = session_row.get("expires_at") or (
+                        now + timedelta(minutes=ACCESS_TOKEN_EXPIRE)
+                    )
+                    await gd_insert(db.session, "revoked_tokens", {
+                        "jti": access_jti,
+                        "expires_at": (
+                            access_exp.isoformat()
+                            if hasattr(access_exp, "isoformat") else str(access_exp)
+                        ),
+                        "revoked_at": now_iso,
+                    })
+                await revoke_session_refresh_chain(db.session, session_row, now, user_id)
+            cleanup["auth_sessions"] = await gd_update_many(
+                db.session, "user_sessions",
+                {"user_id": user_id, "revoked_at": None},
+                {"revoked_at": now_iso},
+            )
 
-    cleanup["teacher_assignments"] = await gd_update_many(
-        db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": {"$ne": False}}, {"is_active": False}
-    )
-    cleanup["teacher_class_assignments"] = await gd_update_many(
-        db.session, "teacher_class_assignments", {"teacher_id": teacher_id, "is_active": {"$ne": False}}, {"is_active": False}
-    )
-    cleanup["teacher_subjects"] = await gd_update_many(
-        db.session, "teacher_subjects", {"teacher_id": teacher_id, "is_active": {"$ne": False}}, {"is_active": False}
-    )
-    cleanup["timetable_sessions"] = await gd_update_many(
-        db.session, "timetable_sessions", {"teacher_id": teacher_id, "is_active": {"$ne": False}}, {"is_active": False}
-    )
-    cleanup["class_sessions"] = await gd_update_many(
-        db.session, "class_sessions", {"teacher_id": teacher_id, "is_active": {"$ne": False}}, {"is_active": False}
-    )
-
-    if user_id:
-        await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": False})
-        cleanup["user_account"] = 1
-
-    audit_log = {
+        await reconcile_school_counts(db.session, school_id)
+        audit_log = {
         "id": str(uuid.uuid4()),
         "school_id": school_id,
         "action": "delete",
@@ -1007,11 +1137,8 @@ async def delete_teacher(
         "performed_by_name": current_user.get("full_name", ""),
         "timestamp": now_iso,
         "ip_address": None,
-    }
-    try:
+        }
         await gd_insert(db.session, "audit_logs", audit_log)
-    except Exception as _audit_err:
-        logger.warning(f"Failed to record teacher delete audit log: {_audit_err}")
 
     return {
         "message": "تم حذف المعلم بنجاح",
@@ -1048,33 +1175,47 @@ async def restore_teacher(
         if not caller_tenant:
             raise HTTPException(status_code=403, detail="غير مصرح")
         base_filter["school_id"] = caller_tenant
-    teacher = await gd_find_one(db.session, "teachers", base_filter)
-    if not teacher:
-        raise HTTPException(status_code=404, detail="المعلم غير موجود")
+    async with db.session.begin_nested():
+        stmt = select(Teacher).where(Teacher.id == teacher_id).with_for_update()
+        teacher_obj = (await db.session.execute(stmt)).scalars().first()
+        teacher = (
+            {c.name: getattr(teacher_obj, c.name) for c in teacher_obj.__table__.columns}
+            if teacher_obj else None
+        )
+        if not teacher or any(
+            teacher.get(k) != v for k, v in base_filter.items()
+            if k not in ("deleted_at",)
+        ) or teacher.get("deleted_at") is None:
+            raise HTTPException(status_code=404, detail="المعلم غير موجود")
 
-    now_iso = datetime.now(timezone.utc).isoformat()
-    await gd_update_one(
-        db.session,
-        "teachers",
-        {"id": teacher_id},
-        {"is_active": True, "deleted_at": None, "deleted_by": None},
-    )
-    user_id = teacher.get("user_id")
-    if user_id:
-        await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": True})
+        now_iso = datetime.now(timezone.utc).isoformat()
+        user_id = teacher.get("user_id")
+        if user_id:
+            linked = (await db.session.execute(
+                select(User).where(or_(User.id == user_id, User.teacher_id == teacher_id)).with_for_update()
+            )).scalars().all()
+            if (
+                len(linked) != 1 or linked[0].id != user_id
+                or linked[0].teacher_id != teacher_id
+                or linked[0].tenant_id != teacher.get("school_id")
+                or linked[0].role != UserRole.TEACHER.value
+            ):
+                raise HTTPException(status_code=409, detail="تعذر التحقق من ارتباط حساب المعلم")
+            await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": True})
+        await gd_update_one(db.session, "teachers", {"id": teacher_id}, {
+            "is_active": True, "deleted_at": None, "deleted_by": None,
+        })
 
-    school_id = teacher.get("school_id")
-    await reconcile_school_counts(db.session, school_id)
-
-    inactive_dependents = {
+        school_id = teacher.get("school_id")
+        await reconcile_school_counts(db.session, school_id)
+        inactive_dependents = {
         "teacher_assignments": await gd_count(db.session, "teacher_assignments", {"teacher_id": teacher_id, "is_active": False}),
         "teacher_class_assignments": await gd_count(db.session, "teacher_class_assignments", {"teacher_id": teacher_id, "is_active": False}),
         "teacher_subjects": await gd_count(db.session, "teacher_subjects", {"teacher_id": teacher_id, "is_active": False}),
         "timetable_sessions": await gd_count(db.session, "timetable_sessions", {"teacher_id": teacher_id, "is_active": False}),
         "class_sessions": await gd_count(db.session, "class_sessions", {"teacher_id": teacher_id, "is_active": False}),
-    }
-
-    audit_log = {
+        }
+        audit_log = {
         "id": str(uuid.uuid4()),
         "school_id": school_id,
         "action": "restore",
@@ -1091,15 +1232,13 @@ async def restore_teacher(
         "performed_by_name": current_user.get("full_name", ""),
         "timestamp": now_iso,
         "ip_address": None,
-    }
-    try:
+        }
         await gd_insert(db.session, "audit_logs", audit_log)
-    except Exception as _audit_err:
-        logger.warning(f"Failed to record teacher restore audit log: {_audit_err}")
 
     return {
         "message": "تمت استعادة المعلم بنجاح",
         "success": True,
+        "restored_existing": True,
         "inactive_dependents": inactive_dependents,
     }
 

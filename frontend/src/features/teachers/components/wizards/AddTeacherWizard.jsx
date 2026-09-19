@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { useAuth } from '@/shared/contexts/AuthContext';
@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from '@/shared/components/ui/dialog';
 import { toast } from 'sonner';
-import { getFormErrorMessage } from '@/shared/models/utils/apiError';
+import { getApiErrorCode, getFormErrorMessage } from '@/shared/models/utils/apiError';
 import {
   User,
   Phone,
@@ -124,7 +124,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
   const { t } = useTranslation();
   const { isRTL } = useTheme();
   const { token, api } = useAuth();
-  const { nassaqError } = useNassaqAlert();
+  const { nassaqError, nassaqConfirm } = useNassaqAlert();
 
   const handleCloseDialog = (val) => {
     if (val === true) return;
@@ -136,6 +136,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submissionLock = useRef(false);
   const [errors, setErrors] = useState({});
   const [result, setResult] = useState(null);
 
@@ -214,6 +215,8 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
   };
 
   const handleSubmit = async () => {
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setSubmitting(true);
     try {
       const payload = { basic_info: basicData, qualifications: qualData, subjects: subjectData, schedule: scheduleData };
@@ -227,6 +230,31 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
         nassaqError(response.data.error || (t('errorOccurred')));
       }
     } catch (error) {
+      if (getApiErrorCode(error) === 'TEACHER_RESTORE_AVAILABLE') {
+        const serverData = error.response?.data;
+        const structuredDetail = serverData?.error?.detail ?? serverData?.detail;
+        const teacherId =
+          structuredDetail?.teacher_id ??
+          serverData?.error?.teacher_id ??
+          serverData?.teacher_id;
+        if (teacherId) {
+          const serverMessage = getFormErrorMessage(error, { t });
+          const restoreMessage = isRTL
+            ? `${serverMessage ? `${serverMessage}\n\n` : ''}هل تريد استعادة حساب المعلم السابق؟ ستتم إعادة استخدام الحساب وسجله السابقين دون تغيير. لن تُطبّق البيانات الجديدة التي أدخلتها في هذا المعالج، وستبقى الإسنادات السابقة غير نشطة.`
+            : `${serverMessage ? `${serverMessage}\n\n` : ''}Restore the prior teacher account? The prior account and history will be reused unchanged. The new information entered in this wizard will not be applied, and old assignments will remain inactive.`;
+          // The create request is finished before the separate, explicit
+          // restoration decision is offered.
+          submissionLock.current = false;
+          setSubmitting(false);
+          nassaqConfirm(restoreMessage, () => handleRestore(teacherId), {
+            title: isRTL ? 'استعادة حساب المعلم السابق' : 'Restore prior teacher account',
+            confirmText: isRTL ? 'نعم، استعد الحساب السابق' : 'Yes, restore prior account',
+            cancelText: t('cancel'),
+            onCancel: () => {},
+          });
+          return;
+        }
+      }
       let errorMessage = getFormErrorMessage(error, { t });
       if (!errorMessage) {
         const detail = error.response?.data?.detail;
@@ -237,6 +265,30 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
       }
       nassaqError(errorMessage);
     } finally {
+      submissionLock.current = false;
+      setSubmitting(false);
+    }
+  };
+
+  const handleRestore = async (teacherId) => {
+    if (submissionLock.current) return;
+    submissionLock.current = true;
+    setSubmitting(true);
+    try {
+      const response = await apiClient.post(`/teachers/${teacherId}/restore`);
+      if (response.data?.success) {
+        const restoredResult = { ...response.data, restored_existing: true };
+        setResult(restoredResult);
+        setCurrentStep(6);
+        toast.success(response.data.message || (isRTL ? 'تمت استعادة حساب المعلم' : 'Teacher account restored'));
+        if (onSuccess) onSuccess(restoredResult);
+      } else {
+        nassaqError(response.data?.error || t('errorOccurred'));
+      }
+    } catch (error) {
+      nassaqError(getFormErrorMessage(error, { t, fallback: t('error') }));
+    } finally {
+      submissionLock.current = false;
       setSubmitting(false);
     }
   };
@@ -249,6 +301,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
     setScheduleData({ contract_type: 'permanent', available_days: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'] });
     setErrors({});
     setResult(null);
+    submissionLock.current = false;
     setSubmitting(false);
   };
 
@@ -584,7 +637,18 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                   <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-green-600 mx-auto flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/20">
                     <CheckCircle2 className="h-8 w-8 text-white" />
                   </div>
-                  <h2 className="text-xl font-bold text-emerald-600 font-cairo mb-1">{t('teacherAdded')}</h2>
+                  <h2 className="text-xl font-bold text-emerald-600 font-cairo mb-1">
+                    {result.restored_existing
+                      ? (isRTL ? 'تمت استعادة حساب المعلم' : 'Teacher account restored')
+                      : t('teacherAdded')}
+                  </h2>
+                  {result.restored_existing && (
+                    <p className="text-sm text-muted-foreground">
+                      {isRTL
+                        ? 'تم الحفاظ على الحساب والسجل وكلمة المرور الحالية. بقيت الإسنادات السابقة غير نشطة.'
+                        : 'The prior account, history, and existing password were preserved. Old assignments remain inactive.'}
+                    </p>
+                  )}
                 </div>
 
                 <div className="p-4 rounded-xl border-2 border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20">
@@ -597,7 +661,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                       <Copy className="h-4 w-4" />
                     </Button>
                   </div>
-                  {result.user_account?.created && (
+                  {!result.restored_existing && result.user_account?.created && (
                     <div className="space-y-2 p-3 bg-white dark:bg-background rounded-lg text-sm">
                       <p className="font-semibold text-xs text-emerald-800 dark:text-emerald-300">{t('loginCredentials2')}</p>
                       <div className="flex items-center justify-between">
@@ -617,14 +681,14 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                   )}
                 </div>
 
-                <Button variant="outline" className="w-full h-10 rounded-lg" onClick={() => {
+                {!result.restored_existing && <Button variant="outline" className="w-full h-10 rounded-lg" onClick={() => {
                   const message = generateWelcomeMessage();
                   navigator.clipboard.writeText(message);
                   toast.success(isRTL ? 'تم نسخ رسالة الترحيب' : 'Welcome message copied!');
                 }}>
                   <Copy className="h-4 w-4 me-2" />
                   {t('copyWelcomeMessage')}
-                </Button>
+                </Button>}
 
                 <div className="flex justify-center gap-3 pt-2">
                   <Button variant="outline" className="rounded-lg" onClick={() => handleCloseDialog(false)}>{t('close')}</Button>

@@ -1330,7 +1330,11 @@ export default function UsersClassesManagement() {
       return;
     }
     const typeLabels = { student: t('studentLower'), teacher: t('teacherLower'), parent: t('parentLower'), class: t('classLower') };
-    const msg = t('confirmDeleteEntity', { label: typeLabels[type] });
+    const msg = type === 'teacher'
+      ? (isRTL
+        ? 'هل تريد إلغاء تنشيط حساب هذا المعلم؟ سيُمنع من تسجيل الدخول، مع الاحتفاظ بحسابه وسجله السابقين لإمكانية استعادته لاحقاً. هذا ليس حذفاً نهائياً.'
+        : 'Deactivate this teacher account? Sign-in will be disabled, while the account and prior history are retained for a possible future restore. This is not a permanent deletion.')
+      : t('confirmDeleteEntity', { label: typeLabels[type] });
     nassaqConfirm(msg, async () => {
       try {
         const endpoints = { student: `/students/${item.id}`, teacher: `/teachers/${item.id}`, parent: `/parents/${item.id}` };
@@ -1354,7 +1358,15 @@ export default function UsersClassesManagement() {
         }
         nassaqError(errMsg);
       }
-    }, { title: t('confirmPermanentDelete'), confirmText: t('yesDeletePermanently'), cancelText: t('cancel') });
+    }, {
+      title: type === 'teacher'
+        ? (isRTL ? 'تأكيد إلغاء تنشيط المعلم' : 'Confirm teacher deactivation')
+        : t('confirmPermanentDelete'),
+      confirmText: type === 'teacher'
+        ? (isRTL ? 'نعم، ألغِ التنشيط' : 'Yes, deactivate')
+        : t('yesDeletePermanently'),
+      cancelText: t('cancel'),
+    });
   };
 
   const handleView = (item, type) => {

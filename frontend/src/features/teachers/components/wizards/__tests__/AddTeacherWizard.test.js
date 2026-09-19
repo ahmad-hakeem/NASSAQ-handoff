@@ -13,6 +13,7 @@ import { AddTeacherWizard } from '../AddTeacherWizard';
 
 const mockApi = { get: jest.fn(), post: jest.fn() };
 const mockNassaqError = jest.fn();
+const mockNassaqConfirm = jest.fn();
 
 jest.mock('react-router-dom', () => ({
   Link: ({ children, to, ...props }) => <a href={to} {...props}>{children}</a>,
@@ -28,7 +29,7 @@ jest.mock('@/shared/contexts/AuthContext', () => ({
 }));
 
 jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
-  useNassaqAlert: () => ({ nassaqError: mockNassaqError }),
+  useNassaqAlert: () => ({ nassaqError: mockNassaqError, nassaqConfirm: mockNassaqConfirm }),
 }));
 
 jest.mock('sonner', () => ({
@@ -227,5 +228,133 @@ describe('AddTeacherWizard - Confirm & Save', () => {
       resolvePost({ data: { success: true, teacher_id: 'T-200', user_account: { created: true } } });
     });
     expect(await screen.findByText('T-200')).toBeInTheDocument();
+  });
+
+  test('restore offer can be cancelled without sending a restore request', async () => {
+    mockApi.post.mockRejectedValueOnce({
+      response: {
+        data: {
+          error: {
+            code: 'TEACHER_RESTORE_AVAILABLE',
+            detail: { message: 'يمكن استعادة الحساب السابق', teacher_id: 'deleted-1' },
+          },
+        },
+      },
+    });
+
+    await renderWizard();
+    await fillThroughReview();
+    fireEvent.click(screen.getByText('confirmSave'));
+
+    await waitFor(() => expect(mockNassaqConfirm).toHaveBeenCalledTimes(1));
+    expect(mockApi.post).toHaveBeenCalledTimes(1);
+    const [message, , options] = mockNassaqConfirm.mock.calls[0];
+    expect(message).toMatch(/prior account and history/i);
+    expect(message).toMatch(/new information.*not.*applied/i);
+    expect(message).toMatch(/assignments.*inactive/i);
+    options.onCancel?.();
+    expect(mockApi.post).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('confirmSave').closest('button')).not.toBeDisabled();
+  });
+
+  test('confirming restore posts only to restore endpoint and shows restore-specific success without credentials', async () => {
+    mockApi.post
+      .mockRejectedValueOnce({
+        response: {
+          data: {
+            error: {
+              code: 'TEACHER_RESTORE_AVAILABLE',
+              detail: { message: 'يمكن استعادة الحساب السابق', teacher_id: 'deleted-2' },
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          success: true,
+          teacher_id: 'deleted-2',
+          restored_existing: true,
+          message: 'تمت الاستعادة',
+          inactive_dependents: 3,
+          user_account: { created: true, temp_password: 'must-not-render' },
+        },
+      });
+
+    const { onSuccess } = await renderWizard();
+    await fillThroughReview();
+    fireEvent.click(screen.getByText('confirmSave'));
+    await waitFor(() => expect(mockNassaqConfirm).toHaveBeenCalled());
+
+    await act(async () => {
+      await mockNassaqConfirm.mock.calls[0][1]();
+    });
+
+    expect(mockApi.post).toHaveBeenLastCalledWith('/teachers/deleted-2/restore');
+    expect(await screen.findByText(/restored/i)).toBeInTheDocument();
+    expect(screen.getByText(/existing password/i)).toBeInTheDocument();
+    expect(screen.queryByText('must-not-render')).not.toBeInTheDocument();
+    expect(screen.queryByText('loginCredentials2')).not.toBeInTheDocument();
+    expect(onSuccess).toHaveBeenCalledWith(expect.objectContaining({ restored_existing: true }));
+  });
+
+  test('failed restore stays on review and permits retry', async () => {
+    mockApi.post
+      .mockRejectedValueOnce({
+        response: { data: { error: { code: 'TEACHER_RESTORE_AVAILABLE', detail: { message: 'restore?', teacher_id: 'deleted-3' } } } },
+      })
+      .mockRejectedValueOnce({
+        response: { data: { error: { message: 'تعذر استعادة المعلم' } } },
+      });
+
+    await renderWizard();
+    await fillThroughReview();
+    fireEvent.click(screen.getByText('confirmSave'));
+    await waitFor(() => expect(mockNassaqConfirm).toHaveBeenCalled());
+    await act(async () => {
+      await mockNassaqConfirm.mock.calls[0][1]();
+    });
+
+    expect(mockNassaqError).toHaveBeenCalledWith('تعذر استعادة المعلم');
+    expect(screen.getByText('confirmSave')).toBeInTheDocument();
+    expect(screen.getByText('confirmSave').closest('button')).not.toBeDisabled();
+  });
+
+  test('ordinary active duplicate remains the normal error and does not offer restore', async () => {
+    mockApi.post.mockRejectedValue({
+      response: { data: { error: { code: 'TEACHER_ALREADY_EXISTS', message: 'المعلم مسجل بالفعل' } } },
+    });
+    await renderWizard();
+    await fillThroughReview();
+    fireEvent.click(screen.getByText('confirmSave'));
+    await waitFor(() => expect(mockNassaqError).toHaveBeenCalledWith('المعلم مسجل بالفعل'));
+    expect(mockNassaqConfirm).not.toHaveBeenCalled();
+  });
+
+  test('restore request disables actions, blocks dismissal, and cannot be double-submitted', async () => {
+    let resolveRestore;
+    mockApi.post
+      .mockRejectedValueOnce({
+        response: { data: { error: { code: 'TEACHER_RESTORE_AVAILABLE', detail: { message: 'restore?', teacher_id: 'deleted-4' } } } },
+      })
+      .mockReturnValueOnce(new Promise((resolve) => { resolveRestore = resolve; }));
+
+    const { onOpenChange } = await renderWizard();
+    await fillThroughReview();
+    fireEvent.click(screen.getByText('confirmSave'));
+    await waitFor(() => expect(mockNassaqConfirm).toHaveBeenCalled());
+    act(() => {
+      mockNassaqConfirm.mock.calls[0][1]();
+      mockNassaqConfirm.mock.calls[0][1]();
+    });
+
+    await waitFor(() => expect(screen.getByText('confirmSave').closest('button')).toBeDisabled());
+    fireEvent.click(screen.getByText('confirmSave'));
+    fireEvent.click(screen.getByTestId('dialog-dismiss'));
+    expect(mockApi.post).toHaveBeenCalledTimes(2);
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveRestore({ data: { success: true, teacher_id: 'deleted-4', restored_existing: true } });
+    });
   });
 });

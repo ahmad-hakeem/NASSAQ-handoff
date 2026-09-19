@@ -68,6 +68,13 @@ export function getApiErrorMessage(error, fallback = undefined) {
     const envMsg = data?.error?.message;
     if (typeof envMsg === 'string' && envMsg.trim()) return envMsg;
 
+    const envelopeDetail = data?.error?.detail;
+    if (typeof envelopeDetail === 'string' && envelopeDetail.trim()) return envelopeDetail;
+    if (envelopeDetail && typeof envelopeDetail === 'object') {
+      const m = envelopeDetail.message || envelopeDetail.msg;
+      if (typeof m === 'string' && m.trim()) return m;
+    }
+
     const detail = data?.detail;
     if (typeof detail === 'string' && detail.trim()) return detail;
     if (Array.isArray(detail)) {
