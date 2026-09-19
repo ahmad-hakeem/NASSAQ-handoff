@@ -392,6 +392,9 @@ async def update_teacher_credentials(
         user = {
             "id": new_user_id, "email": email, "password_hash": hash_password(pwd),
             "full_name": teacher.get("full_name", ""), "full_name_en": teacher.get("full_name_en", ""),
+            # Teacher profile is authoritative for mobile. Keep the duplicated
+            # login contact populated when healing legacy profiles.
+            "phone": teacher.get("phone"),
             "role": "teacher", "tenant_id": tenant_id, "teacher_id": teacher_id,
             "is_active": True, "must_change_password": True, "created_at": now, "updated_at": now
         }

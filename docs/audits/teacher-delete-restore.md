@@ -1,5 +1,66 @@
 # Teacher deletion and re-registration
 
+## Follow-up findings — 2026-09-19
+
+The earlier correction missed a real legacy shape: `teachers.phone` is populated
+while the reciprocally linked `users.phone` is NULL. Requiring the submitted
+mobile to match both rows rejected an otherwise valid retained account, then
+the full national-ID uniqueness check returned the misleading duplicate error.
+The credentials-recovery writer could create this shape by omitting the phone
+when creating a missing login account; it now copies the teacher's phone.
+
+The deployed frontend also lacks the explicit restore-confirmation code. Public
+asset fingerprints prove the older UI is still live, but do not expose the
+exact deployed commit. See `teacher-production-consistency.md`.
+
+The corrected resolver treats a missing duplicate user phone as no contradictory
+evidence, not as a matching identity by itself. It still requires proven
+same-school ownership and rejects populated conflicts, foreign contacts,
+ambiguous links and administrative suspension. Explicit restoration may repair
+a proven one-sided link and fill only a missing duplicate phone. It never
+changes credentials, MFA or submitted profile details. A legitimate profile
+without any account can be explicitly restored as profile-only; matching or
+ambiguous accounts require review rather than automatic merging.
+
+Global normalized user-only collisions are checked even when no teacher profile
+matches. Create uses identity locks and an atomic savepoint; invalid normalized
+input returns a controlled 400. Suspension follows the actual user-status API
+and retained pre-delete audit state. The UI hides internal cleanup keys and
+preserves same-school lists on failed refreshes without retaining another
+school's data.
+
+### Before/after relationship map
+
+| Record / field owner | Before deletion | After deletion | After confirmed account restore |
+|---|---|---|---|
+| Teacher: national ID, profile mobile, email | Active | Retained, inactive, deletion metadata | Same row, active |
+| User: login email, optional duplicate mobile | Active (unless already suspended) | Retained, inactive | Same verified row; missing duplicate mobile filled |
+| Reciprocal account links | Retained IDs | Retained IDs | Only proven missing side may be repaired |
+| Teaching/class/subject/session assignments | Existing state | Inactive, retained | Remain inactive for review |
+| Attendance, grades, messages, reports/history | Retained | Not purged | Not purged |
+| Recorded authentication sessions | Usable until revoked/expired | Revoked | Not revived |
+| Audit | Existing history | Delete + previous login activation state | Restore entry added |
+
+### Final verification
+
+- 49 backend tests passed across lifecycle and subject/delete/restore suites.
+  Includes real create/delete/re-add, legacy NULL mobile, partial links,
+  suspension, malformed input, normalized orphan-user conflicts, profile-only
+  restoration, failed-write rollback and retained-token rejection.
+- A two-independent-session database race creates exactly one teacher/user.
+- 51 focused frontend tests passed, including stale-scope and failed-refresh
+  handling.
+- A read-only transaction checked the three recently deleted development
+  teachers with a populated profile phone: all resolve to their own retained
+  restore candidate. None was reactivated during that check.
+- Publish schema comparison reported no pending statements or data-loss diff.
+- No production write, migration or bulk cleanup was performed. Publishing and
+  post-publish verification remain necessary; this is not a live-fix claim.
+
+The following sections document the original implementation and retention
+policy; the follow-up findings and verification above supersede its initial
+eligibility limitations and test counts.
+
 ## Root cause and active route
 
 The principal's Add Teacher wizard submits to `POST /api/teachers/create`.

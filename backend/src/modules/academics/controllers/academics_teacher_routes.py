@@ -10,6 +10,7 @@ from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 import uuid, os, logging, json, random, re, io, base64
 from sqlalchemy import select, or_, func
+from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger("nassaq.academics")
 
@@ -509,65 +510,274 @@ def _normalise_teacher_national_id(value: Optional[str]) -> Optional[str]:
 
 def _teacher_identity_matches(teacher: dict, user: dict, *, email: str, phone: str,
                               national_id: Optional[str]) -> bool:
-    """Fail closed unless every submitted identity names the retained account."""
+    """Check the authoritative profile and reject only real user-row conflicts.
+
+    ``teachers`` owns national ID and mobile.  Older create paths did not
+    always copy mobile to ``users.phone``; NULL therefore supplies no
+    contradictory identity evidence.  A populated, different user phone still
+    fails closed.
+    """
     if _normalise_teacher_email(teacher.get("email")) != email:
         return False
     if _normalise_teacher_email(user.get("email")) != email:
         return False
     if _normalise_teacher_phone(teacher.get("phone")) != phone:
         return False
-    if _normalise_teacher_phone(user.get("phone")) != phone:
+    user_phone = _normalise_teacher_phone(user.get("phone"))
+    if user_phone is not None and user_phone != phone:
         return False
     if national_id is not None:
         return _normalise_teacher_national_id(teacher.get("national_id")) == national_id
     return True
 
 
+def _teacher_identity_error(code: str, message: str) -> HTTPException:
+    """Identity errors are safe for tenant callers and disclose no owner data."""
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={"code": code, "message": message},
+    )
+
+
+def _phone_search_values(phone: str) -> set[str]:
+    values = {phone}
+    if phone.startswith("05") and len(phone) == 10:
+        values.update({"966" + phone[1:], "00966" + phone[1:]})
+    return values
+
+
+async def _lock_teacher_identity(
+    school_id: str, *, email: Optional[str], phone: Optional[str],
+    national_id: Optional[str],
+) -> None:
+    """Serialize only requests which compete for one identity key."""
+    identity_lock_keys = set()
+    if email:
+        identity_lock_keys.add(f"teacher-email:{email}")
+    if phone:
+        identity_lock_keys.add(f"teacher-phone:{phone}")
+    if national_id:
+        identity_lock_keys.add(f"teacher-nid:{school_id}:{national_id}")
+    for lock_key in sorted(identity_lock_keys):
+        await db.session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtext(lock_key)))
+        )
+
+
+async def _has_known_administrative_suspension(
+    user: dict, teacher_id: str,
+) -> bool:
+    """Use canonical status and reliable audit history for legacy rows."""
+    if user.get("status") not in (None, "active"):
+        return True
+    latest_delete = await gd_find(
+        db.session,
+        "audit_logs",
+        {"entity_type": "teacher", "entity_id": teacher_id, "action": "delete"},
+        order_by="timestamp",
+        desc_order=True,
+        limit=1,
+    )
+    if latest_delete:
+        previous = latest_delete[0].get("previous_state") or {}
+        if previous.get("user_was_active") is False:
+            return True
+    latest_status = await gd_find(
+        db.session,
+        "audit_logs",
+        {
+            "target_id": user["id"],
+            "action": {"$in": ["user_suspended", "user_activated"]},
+        },
+        order_by="timestamp",
+        desc_order=True,
+        limit=1,
+    )
+    if latest_status:
+        return latest_status[0].get("action") == "user_suspended"
+    return False
+
+
 async def _restorable_teacher_for_wizard(
     school_id: str, *, email: str, phone: str, national_id: Optional[str],
 ) -> Optional[str]:
-    """Return the sole authorised restore target, otherwise fail closed.
+    """Resolve one globally unambiguous, same-school retained identity.
 
-    A user collision alone is deliberately insufficient.  The user and teacher
-    must be mutually linked, teacher-role, in this school, and the submitted
-    identity fields must all agree with both retained rows.
+    Candidate discovery starts from the authoritative teacher profile (not
+    ``users.phone``), then verifies account ownership and global contact
+    collisions.  Ambiguity is surfaced for manual review instead of falling
+    through to a misleading generic duplicate.
     """
-    user_rows = (await db.session.execute(
+    digits = lambda column: func.regexp_replace(column, r"\D", "", "g")
+    phone_values = _phone_search_values(phone)
+    teacher_predicates = [
+        func.lower(func.trim(Teacher.email)) == email,
+        digits(Teacher.phone).in_(phone_values),
+    ]
+    if national_id:
+        teacher_predicates.append(digits(Teacher.national_id) == national_id)
+    teacher_objs = (await db.session.execute(
+        select(Teacher).where(or_(*teacher_predicates))
+    )).scalars().all()
+    teachers = [
+        {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
+        for obj in teacher_objs
+    ]
+    user_predicates = [
+        func.lower(func.trim(User.email)) == email,
+        digits(User.phone).in_(phone_values),
+    ]
+    contact_users = (await db.session.execute(
+        select(User).where(or_(*user_predicates))
+    )).scalars().all()
+
+    exact = [
+        row for row in teachers
+        if row.get("school_id") == school_id
+        and _normalise_teacher_email(row.get("email")) == email
+        and _normalise_teacher_phone(row.get("phone")) == phone
+        and (
+            national_id is None
+            or _normalise_teacher_national_id(row.get("national_id")) == national_id
+        )
+    ]
+    if len(exact) > 1:
+        raise _teacher_identity_error(
+            "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+            "تعذر تحديد حساب معلم واحد بشكل آمن. يلزم مراجعة الإدارة.",
+        )
+    if not exact:
+        if national_id and any(
+            row.get("school_id") == school_id
+            and _normalise_teacher_national_id(row.get("national_id")) == national_id
+            for row in teachers
+        ):
+            raise _teacher_identity_error(
+                "TEACHER_NATIONAL_ID_CONFLICT",
+                "رقم الهوية مرتبط ببيانات معلم مختلفة ويلزم مراجعته.",
+            )
+        if any(
+            _normalise_teacher_phone(row.get("phone")) == phone for row in teachers
+        ):
+            raise _teacher_identity_error(
+                "TEACHER_MOBILE_CONFLICT",
+                "رقم الجوال مرتبط بحساب آخر ولا يمكن استخدامه.",
+            )
+        if teachers:
+            raise _teacher_identity_error(
+                "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+                "توجد هوية محتفظ بها تتطلب مراجعة الإدارة.",
+            )
+        if contact_users:
+            if any(
+                _normalise_teacher_phone(row.phone) == phone
+                for row in contact_users
+            ):
+                raise _teacher_identity_error(
+                    "TEACHER_MOBILE_CONFLICT",
+                    "رقم الجوال مرتبط بحساب آخر ولا يمكن استخدامه.",
+                )
+            raise _teacher_identity_error(
+                "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+                "بيانات الدخول مرتبطة بحساب محتفظ به ويلزم مراجعة الإدارة.",
+            )
+        return None
+
+    teacher = exact[0]
+    # A matching contact/profile anywhere else makes ownership ambiguous.
+    for row in teachers:
+        if row["id"] == teacher["id"]:
+            continue
+        if _normalise_teacher_phone(row.get("phone")) == phone:
+            raise _teacher_identity_error(
+                "TEACHER_MOBILE_CONFLICT",
+                "رقم الجوال مرتبط بحساب آخر ولا يمكن استخدامه.",
+            )
+        raise _teacher_identity_error(
+            "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+            "توجد هوية محتفظ بها تتطلب مراجعة الإدارة.",
+        )
+
+    linked_objs = (await db.session.execute(
         select(User).where(or_(
-            func.lower(func.trim(User.email)) == email,
-            User.phone == phone,
+            User.id == teacher.get("user_id"),
+            User.teacher_id == teacher["id"],
         ))
     )).scalars().all()
-    eligible: set[str] = set()
-    for user_obj in user_rows:
-        user = {c.name: getattr(user_obj, c.name) for c in user_obj.__table__.columns}
-        linked = (await db.session.execute(
-            select(Teacher).where(or_(
-                Teacher.user_id == user["id"],
-                Teacher.id == user.get("teacher_id"),
-            ))
-        )).scalars().all()
-        # Any ambiguous or stale linkage is security-sensitive, not a restore hint.
-        if len(linked) != 1:
-            continue
-        teacher_obj = linked[0]
-        teacher = {c.name: getattr(teacher_obj, c.name) for c in teacher_obj.__table__.columns}
-        if (
-            teacher.get("user_id") != user["id"]
-            or user.get("teacher_id") != teacher.get("id")
-            or user.get("role") != UserRole.TEACHER.value
-            or user.get("tenant_id") != school_id
-            or teacher.get("school_id") != school_id
-            or teacher.get("is_active") is not False
-            or teacher.get("deleted_at") is None
-            or user.get("is_active") is not False
+    if len(linked_objs) != 1:
+        raise _teacher_identity_error(
+            "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+            "تعذر إثبات ملكية الحساب بشكل منفرد. يلزم مراجعة الإدارة.",
+        )
+    user_obj = linked_objs[0]
+    user = {c.name: getattr(user_obj, c.name) for c in user_obj.__table__.columns}
+    reverse_teacher_ids = set((await db.session.execute(
+        select(Teacher.id).where(or_(
+            Teacher.user_id == user["id"],
+            Teacher.id == user.get("teacher_id"),
+        ))
+    )).scalars().all())
+    if reverse_teacher_ids != {teacher["id"]}:
+        raise _teacher_identity_error(
+            "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+            "الحساب مرتبط بأكثر من ملف معلم ويلزم مراجعة الإدارة.",
+        )
+    # At most one side of the reciprocal link may be absent; disagreement is
+    # never repaired automatically.
+    if (
+        teacher.get("user_id") not in (None, user["id"])
+        or user.get("teacher_id") not in (None, teacher["id"])
+        or (teacher.get("user_id") is None and user.get("teacher_id") is None)
+        or user.get("role") != UserRole.TEACHER.value
+        or user.get("tenant_id") != school_id
+    ):
+        raise _teacher_identity_error(
+            "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+            "تعذر إثبات ارتباط حساب المعلم بالمدرسة. يلزم مراجعة الإدارة.",
+        )
+    if not _teacher_identity_matches(
+        teacher, user, email=email, phone=phone, national_id=national_id
+    ):
+        code = (
+            "TEACHER_MOBILE_CONFLICT"
+            if _normalise_teacher_phone(user.get("phone")) not in (None, phone)
+            else "TEACHER_ACCOUNT_REVIEW_REQUIRED"
+        )
+        raise _teacher_identity_error(
+            code, "بيانات الحساب المحتفظ به متعارضة ويلزم مراجعتها.",
+        )
+
+    if any(other.id != user["id"] for other in contact_users):
+        if any(
+            other.id != user["id"]
+            and _normalise_teacher_phone(other.phone) == phone
+            for other in contact_users
         ):
-            continue
-        if _teacher_identity_matches(
-            teacher, user, email=email, phone=phone, national_id=national_id
-        ):
-            eligible.add(teacher["id"])
-    return next(iter(eligible)) if len(eligible) == 1 else None
+            raise _teacher_identity_error(
+                "TEACHER_MOBILE_CONFLICT",
+                "رقم الجوال مرتبط بحساب آخر ولا يمكن استخدامه.",
+            )
+        raise _teacher_identity_error(
+            "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+            "بيانات الدخول مرتبطة بحساب آخر ويلزم مراجعة الإدارة.",
+        )
+
+    if teacher.get("is_active") is not False or teacher.get("deleted_at") is None:
+        raise _teacher_identity_error(
+            "TEACHER_ACTIVE_DUPLICATE",
+            "المعلم مسجل ونشط مسبقاً.",
+        )
+    # Deletion leaves status as active. Explicit suspension/lock states are
+    # administrative safeguards and must never be cleared by teacher restore.
+    if (
+        user.get("is_active") is not False
+        or await _has_known_administrative_suspension(user, teacher["id"])
+    ):
+        raise _teacher_identity_error(
+            "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+            "الحساب المحتفظ به غير قابل للاستعادة التلقائية ويلزم مراجعته.",
+        )
+    return teacher["id"]
 
 @router.post("/teachers/create")
 async def create_teacher_wizard(
@@ -642,6 +852,29 @@ async def create_teacher_wizard(
     canonical_email = _normalise_teacher_email(email)
     canonical_phone = _normalise_teacher_phone(phone)
     canonical_national_id = _normalise_teacher_national_id(national_id)
+    if (
+        not canonical_email
+        or "@" not in canonical_email
+        or not canonical_phone
+        or len(canonical_phone) < 7
+        or (national_id is not None and not canonical_national_id)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "TEACHER_IDENTITY_INVALID",
+                "message": "البريد الإلكتروني أو رقم الجوال أو الهوية غير صالح.",
+            },
+        )
+
+    # Serialize narrow identity keys. This closes the check-then-insert race
+    # without locking unrelated teacher creation requests.
+    await _lock_teacher_identity(
+        school_id,
+        email=canonical_email,
+        phone=canonical_phone,
+        national_id=canonical_national_id,
+    )
 
     restore_teacher_id = await _restorable_teacher_for_wizard(
         school_id,
@@ -744,8 +977,17 @@ async def create_teacher_wizard(
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     
-    await gd_insert(db.session, "teachers", teacher_doc)
-    await gd_insert(db.session, "users", user_doc)
+    try:
+        # If a database uniqueness constraint wins a race, the savepoint rolls
+        # back both rows rather than leaving an orphan teacher profile.
+        async with db.session.begin_nested():
+            await gd_insert(db.session, "teachers", teacher_doc)
+            await gd_insert(db.session, "users", user_doc)
+    except IntegrityError:
+        raise _teacher_identity_error(
+            "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+            "تزامن إنشاء حساب آخر بالهوية نفسها. يرجى المراجعة والمحاولة مجدداً.",
+        )
     
     # Reconcile school counts from live rows (Task #826) instead of nudging ±1.
     await reconcile_school_counts(db.session, school_id)
@@ -1069,6 +1311,7 @@ async def delete_teacher(
         now = datetime.now(timezone.utc)
         now_iso = now.isoformat()
         cleanup: Dict[str, Any] = {}
+        user_was_active: Optional[bool] = None
         await gd_update_one(db.session, "teachers", {"id": teacher_id}, {
             "is_active": False, "deleted_at": now_iso, "deleted_by": current_user["id"],
         })
@@ -1094,6 +1337,7 @@ async def delete_teacher(
                 or linked[0].role != UserRole.TEACHER.value
             ):
                 raise HTTPException(status_code=409, detail="تعذر التحقق من ارتباط حساب المعلم")
+            user_was_active = linked[0].is_active
             await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": False})
             cleanup["user_account"] = 1
 
@@ -1131,8 +1375,16 @@ async def delete_teacher(
         "action": "delete",
         "entity_type": "teacher",
         "entity_id": teacher_id,
-        "old_data": {"full_name": teacher.get("full_name"), "is_active": True},
-        "new_data": {"is_active": False, "deleted_at": now_iso, "deleted_by": current_user["id"]},
+        "previous_state": {
+            "full_name": teacher.get("full_name"),
+            "is_active": True,
+            "user_was_active": user_was_active,
+        },
+        "new_state": {
+            "is_active": False,
+            "deleted_at": now_iso,
+            "deleted_by": current_user["id"],
+        },
         "performed_by": current_user["id"],
         "performed_by_name": current_user.get("full_name", ""),
         "timestamp": now_iso,
@@ -1190,18 +1442,132 @@ async def restore_teacher(
 
         now_iso = datetime.now(timezone.utc).isoformat()
         user_id = teacher.get("user_id")
-        if user_id:
-            linked = (await db.session.execute(
-                select(User).where(or_(User.id == user_id, User.teacher_id == teacher_id)).with_for_update()
-            )).scalars().all()
+        canonical_email = _normalise_teacher_email(teacher.get("email"))
+        canonical_phone = _normalise_teacher_phone(teacher.get("phone"))
+        canonical_national_id = _normalise_teacher_national_id(teacher.get("national_id"))
+        identity_complete = bool(canonical_email and canonical_phone)
+        await _lock_teacher_identity(
+            teacher["school_id"],
+            email=canonical_email,
+            phone=canonical_phone,
+            national_id=canonical_national_id,
+        )
+        linked = (await db.session.execute(
+            select(User).where(or_(
+                User.id == user_id,
+                User.teacher_id == teacher_id,
+            )).with_for_update()
+        )).scalars().all()
+        # Profiles created by the wizard carry all identity fields. Re-run the
+        # same global ownership proof while holding both identity and row locks;
+        # a collision introduced after the create hint must block restoration.
+        if identity_complete:
+            if user_id is None and not linked:
+                # Some pre-account-era teacher profiles legitimately have
+                # complete contacts but no login account. Restore only after
+                # proving that this profile is the sole global teacher match
+                # and that no User claims either contact.
+                digits = lambda column: func.regexp_replace(column, r"\D", "", "g")
+                phone_values = _phone_search_values(canonical_phone)
+                teacher_predicates = [
+                    func.lower(func.trim(Teacher.email)) == canonical_email,
+                    digits(Teacher.phone).in_(phone_values),
+                ]
+                if canonical_national_id:
+                    teacher_predicates.append(
+                        digits(Teacher.national_id) == canonical_national_id
+                    )
+                matching_teacher_ids = set((await db.session.execute(
+                    select(Teacher.id).where(or_(*teacher_predicates))
+                )).scalars().all())
+                matching_user_id = (await db.session.execute(
+                    select(User.id).where(or_(
+                        func.lower(func.trim(User.email)) == canonical_email,
+                        digits(User.phone).in_(phone_values),
+                    )).limit(1)
+                )).scalar()
+                if matching_teacher_ids != {teacher_id} or matching_user_id:
+                    raise _teacher_identity_error(
+                        "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+                        "توجد مطالبة أخرى ببيانات هذا الملف ويلزم مراجعتها.",
+                    )
+            else:
+                verified_teacher_id = await _restorable_teacher_for_wizard(
+                    teacher["school_id"],
+                    email=canonical_email,
+                    phone=canonical_phone,
+                    national_id=canonical_national_id,
+                )
+                if verified_teacher_id != teacher_id:
+                    raise _teacher_identity_error(
+                        "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+                        "تعذر إثبات ملكية حساب المعلم بشكل منفرد.",
+                    )
+        else:
+            # An incomplete profile cannot safely prove a linked account's
+            # contact ownership. Profile-only rows remain explicitly
+            # restorable, but any link or matching account requires review.
+            if user_id or linked:
+                raise _teacher_identity_error(
+                    "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+                    "بيانات هوية الحساب المرتبط غير مكتملة ويلزم مراجعتها.",
+                )
+            possible_owner_predicates = []
+            if canonical_email:
+                possible_owner_predicates.append(
+                    func.lower(func.trim(User.email)) == canonical_email
+                )
+            if canonical_phone:
+                possible_owner_predicates.append(
+                    func.regexp_replace(User.phone, r"\D", "", "g").in_(
+                        _phone_search_values(canonical_phone)
+                    )
+                )
+            if possible_owner_predicates:
+                possible_owner = (await db.session.execute(
+                    select(User.id).where(or_(*possible_owner_predicates)).limit(1)
+                )).scalar()
+                if possible_owner:
+                    raise _teacher_identity_error(
+                        "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+                        "يوجد حساب محتمل لهذا الملف ويلزم إثبات الارتباط يدوياً.",
+                    )
+
+        account_restored = False
+        if user_id or linked:
             if (
-                len(linked) != 1 or linked[0].id != user_id
-                or linked[0].teacher_id != teacher_id
+                len(linked) != 1
+                or user_id not in (None, linked[0].id)
+                or linked[0].teacher_id not in (None, teacher_id)
                 or linked[0].tenant_id != teacher.get("school_id")
                 or linked[0].role != UserRole.TEACHER.value
             ):
-                raise HTTPException(status_code=409, detail="تعذر التحقق من ارتباط حساب المعلم")
-            await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": True})
+                raise _teacher_identity_error(
+                    "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+                    "تعذر التحقق من ارتباط حساب المعلم. يلزم مراجعة الإدارة.",
+                )
+            linked_user = {
+                c.name: getattr(linked[0], c.name)
+                for c in linked[0].__table__.columns
+            }
+            if await _has_known_administrative_suspension(linked_user, teacher_id):
+                raise _teacher_identity_error(
+                    "TEACHER_ACCOUNT_REVIEW_REQUIRED",
+                    "الحساب موقوف إدارياً ولا يمكن استعادته من شاشة المعلمين.",
+                )
+            user_updates = {
+                "is_active": True,
+                "teacher_id": teacher_id,
+            }
+            if linked[0].phone is None and teacher.get("phone"):
+                user_updates["phone"] = teacher["phone"]
+            await gd_update_one(db.session, "users", {"id": linked[0].id}, user_updates)
+            if user_id is None:
+                await gd_update_one(
+                    db.session, "teachers", {"id": teacher_id},
+                    {"user_id": linked[0].id},
+                )
+            account_restored = True
         await gd_update_one(db.session, "teachers", {"id": teacher_id}, {
             "is_active": True, "deleted_at": None, "deleted_by": None,
         })
@@ -1239,6 +1605,8 @@ async def restore_teacher(
         "message": "تمت استعادة المعلم بنجاح",
         "success": True,
         "restored_existing": True,
+        "account_restored": account_restored,
+        "profile_only": not account_restored,
         "inactive_dependents": inactive_dependents,
     }
 

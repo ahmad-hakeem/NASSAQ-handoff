@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -134,6 +134,21 @@ export const getBulkImportStatus = (result = {}, importType = 'students') => {
     return 'partial';
   }
   return 'failed';
+};
+
+export const getDeleteSuccessMessage = (type, isRTL, t, cleanup) => {
+  if (type === 'teacher') {
+    return isRTL
+      ? 'تم إلغاء تنشيط حساب المعلم مع الاحتفاظ بالحساب والسجل السابق لإمكانية استعادته لاحقاً.'
+      : 'Teacher account deactivated. The account and prior history were retained for a future restore.';
+  }
+  let message = t('deletedSuccessfully');
+  const parts = [];
+  Object.entries(cleanup || {}).forEach(([key, value]) => {
+    if (value > 0) parts.push(`${key}: ${value}`);
+  });
+  if (parts.length > 0) message += ` (${parts.join(', ')})`;
+  return message;
 };
 
 const THEME_COLORS = {
@@ -939,6 +954,8 @@ export default function UsersClassesManagement() {
   const [selectedParent, setSelectedParent] = useState(null);
   const [activeFilter, setActiveFilter] = useState(null);
   const [showInactiveClasses, setShowInactiveClasses] = useState(false);
+  const directoryScopeRef = useRef(null);
+  const directoryRequestRef = useRef(0);
 
   const studentsNoClass = useMemo(() => students.filter(s => !s.class_id && !s.class_name), [students]);
   const teachersNoSubject = useMemo(() => teachers.filter(t => !t.specialization && (!t.subject_ids || t.subject_ids.length === 0)), [teachers]);
@@ -1029,10 +1046,19 @@ export default function UsersClassesManagement() {
   // Single load effect: two separate effects here (one for [user, schoolContext],
   // one for [showInactiveClasses]) both fired on the initial mount, so every
   // directory endpoint was requested exactly twice per page load in production.
-  // Depend on user?.id (not the user object) so an /auth/me refresh that swaps
-  // the object identity without changing the signed-in user doesn't refetch.
+  // A layout effect clears a previous school's directory before the browser can
+  // paint it under a newly selected impersonation scope. Primitive identity and
+  // scope fields avoid object-identity refetches without missing real changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchAllData(); }, [user?.id, schoolContext, showInactiveClasses]);
+  useLayoutEffect(() => {
+    fetchAllData();
+  }, [
+    user?.id,
+    user?.tenant_id,
+    isImpersonating,
+    schoolContext?.school_id,
+    showInactiveClasses,
+  ]);
   useEffect(() => {
     if (activeTab && activeTab !== 'all') setSearchParams({ filter: activeTab });
     else setSearchParams({});
@@ -1048,15 +1074,24 @@ export default function UsersClassesManagement() {
   }, [searchParams]);
 
   const fetchAllData = async () => {
+    const scopeKey = isImpersonating && schoolContext?.school_id
+      ? `school:${schoolContext.school_id}`
+      : `tenant:${user?.tenant_id || ''}:user:${user?.id || ''}`;
+    const requestId = directoryRequestRef.current + 1;
+    directoryRequestRef.current = requestId;
+    const scopeChanged = directoryScopeRef.current !== scopeKey;
+    directoryScopeRef.current = scopeKey;
     setLoading(true);
-    // Task #511: defensive reset so previously-loaded data from another
-    // previewed school cannot momentarily render under a new (empty)
-    // school while the in-flight directory requests resolve.
-    setStudents([]);
-    setTeachers([]);
-    setClasses([]);
-    setGrades([]);
-    setParents([]);
+    if (scopeChanged) {
+      // Never retain another school's data. Same-school refreshes deliberately
+      // keep their current lists until each corresponding request succeeds.
+      setStudents([]);
+      setTeachers([]);
+      setClasses([]);
+      setGrades([]);
+      setParents([]);
+      setLatestBatch(null);
+    }
     try {
       const headers = {};
       if (isImpersonating && schoolContext?.school_id) headers['X-School-Context'] = schoolContext.school_id;
@@ -1075,6 +1110,9 @@ export default function UsersClassesManagement() {
             : api.get(e.url, requestConfig);
         })
       );
+      // A slower request from the previously previewed school must not overwrite
+      // the active school's directory after a scope switch.
+      if (directoryRequestRef.current !== requestId || directoryScopeRef.current !== scopeKey) return;
       const failed = [];
       const dataByKey = {};
       results.forEach((r, i) => {
@@ -1082,22 +1120,25 @@ export default function UsersClassesManagement() {
         if (r.status === 'fulfilled') {
           dataByKey[key] = Array.isArray(r.value.data) ? r.value.data : [];
         } else {
-          dataByKey[key] = [];
           failed.push(endpoints[i].url);
         }
       });
-      setStudents(dataByKey.students);
-      setTeachers(dataByKey.teachers);
-      setClasses(dataByKey.classes);
-      setGrades(dataByKey.grades);
-      setParents(dataByKey.parents);
+      if (dataByKey.students) setStudents(dataByKey.students);
+      if (dataByKey.teachers) setTeachers(dataByKey.teachers);
+      if (dataByKey.classes) setClasses(dataByKey.classes);
+      if (dataByKey.grades) setGrades(dataByKey.grades);
+      if (dataByKey.parents) setParents(dataByKey.parents);
 
       // Fetch latest bulk import batch
       try {
         const batchRes = await api.get('/bulk/batches/latest', { headers });
-        setLatestBatch(batchRes.data?.batch || null);
+        if (directoryRequestRef.current === requestId && directoryScopeRef.current === scopeKey) {
+          setLatestBatch(batchRes.data?.batch || null);
+        }
       } catch {
-        setLatestBatch(null);
+        if (directoryRequestRef.current === requestId && directoryScopeRef.current === scopeKey) {
+          setLatestBatch(null);
+        }
       }
 
       if (failed.length === endpoints.length) {
@@ -1105,10 +1146,17 @@ export default function UsersClassesManagement() {
       } else if (failed.length > 0) {
         console.warn('Partial data load failure for endpoints:', failed);
       }
+      if (failed.length > 0) {
+        nassaqWarning(isRTL
+          ? 'تعذّر تحديث بعض القوائم. تم الاحتفاظ بالبيانات المعروضة، ويمكنك المحاولة مرة أخرى.'
+          : 'Some lists could not be refreshed. The displayed data was kept; please try again.');
+      }
     } catch (error) {
       nassaqError(t('errorLoadingData'));
     } finally {
-      setLoading(false);
+      if (directoryRequestRef.current === requestId && directoryScopeRef.current === scopeKey) {
+        setLoading(false);
+      }
     }
   };
 
@@ -1340,15 +1388,7 @@ export default function UsersClassesManagement() {
         const endpoints = { student: `/students/${item.id}`, teacher: `/teachers/${item.id}`, parent: `/parents/${item.id}` };
         const ep = endpoints[type];
         const res = await api.delete(ep);
-        const cleanup = res.data?.cleanup;
-        let successMsg = t('deletedSuccessfully');
-        if (cleanup) {
-          const parts = [];
-          Object.entries(cleanup).forEach(([key, val]) => {
-            if (val > 0) parts.push(`${key}: ${val}`);
-          });
-          if (parts.length > 0) successMsg += ` (${parts.join(', ')})`;
-        }
+        const successMsg = getDeleteSuccessMessage(type, isRTL, t, res.data?.cleanup);
         toast.success(successMsg);
         fetchAllData();
       } catch (error) {

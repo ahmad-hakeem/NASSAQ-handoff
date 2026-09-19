@@ -597,7 +597,14 @@ async def update_user_status(
             raise HTTPException(status_code=403, detail="غير مصرح لك بتعديل بيانات هذا المستخدم")
 
     old_status = user.get("is_active", True)
-    await gd_update_one(db.session, "users", {"id": user_id}, {"is_active": status_data.is_active, "updated_at": datetime.now(timezone.utc).isoformat()})
+    await gd_update_one(db.session, "users", {"id": user_id}, {
+        "is_active": status_data.is_active,
+        # Keep the existing status column authoritative for lifecycle callers.
+        # Previously this API changed only is_active, making an administrative
+        # suspension indistinguishable from teacher soft-deletion.
+        "status": "active" if status_data.is_active else "suspended",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
 
     audit_log = {
         "id": str(uuid.uuid4()),

@@ -9,7 +9,7 @@
  * Guardrail: one page mount = exactly ONE request per endpoint.
  */
 import React from 'react';
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockSetSearchParams = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -27,6 +27,7 @@ jest.mock('sonner', () => ({
 const mockApiGet = jest.fn();
 const mockApi = { get: mockApiGet, post: jest.fn(), put: jest.fn(), delete: jest.fn() };
 const mockUser = { id: 'u1', role: 'school_admin', tenant_id: 'school-1' };
+const mockNassaqWarning = jest.fn();
 const mockAuthValue = {
   user: mockUser,
   api: mockApi,
@@ -47,7 +48,7 @@ jest.mock('@/shared/contexts/ThemeContext', () => ({
 jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({
     nassaqError: jest.fn(),
-    nassaqWarning: jest.fn(),
+    nassaqWarning: mockNassaqWarning,
     nassaqInfo: jest.fn(),
     nassaqConfirm: jest.fn(),
   }),
@@ -157,13 +158,18 @@ jest.mock('@/shared/components/ui/select', () => ({
   SelectValue: ({ placeholder }) => <span>{placeholder}</span>,
 }));
 
-const UsersClassesManagement = require('@/features/academics/pages/UsersClassesManagement').default;
+const managementModule = require('@/features/academics/pages/UsersClassesManagement');
+const UsersClassesManagement = managementModule.default;
+const { getDeleteSuccessMessage } = managementModule;
 
 const DIRECTORY_URLS = ['/students', '/teachers', '/classes', '/reference/grades', '/parents'];
 
 describe('UsersClassesManagement — single fetch per endpoint on mount', () => {
   beforeEach(() => {
     // CRA resetMocks:true wipes implementations — reinstall per test.
+    mockAuthValue.user = mockUser;
+    mockAuthValue.schoolContext = null;
+    mockAuthValue.isImpersonating = false;
     mockApiGet.mockResolvedValue({ data: [] });
   });
 
@@ -188,5 +194,124 @@ describe('UsersClassesManagement — single fetch per endpoint on mount', () => 
     // after the directory settles; it must also remain a single request.
     expect(countsByUrl['/bulk/batches/latest'] || 0).toBe(1);
     expect(mockApiGet.mock.calls.length).toBe(DIRECTORY_URLS.length + 1);
+  });
+
+  test('a same-school refresh preserves a list whose individual request fails and warns the user', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    mockApiGet.mockImplementation((url) => {
+      if (url === '/teachers') return Promise.resolve({ data: [{ id: 'teacher-1', full_name: 'Teacher Kept' }] });
+      return Promise.resolve({ data: [] });
+    });
+    render(<UsersClassesManagement />);
+    const teachersStat = screen.getByText('totalTeachers').closest('button');
+    await waitFor(() => expect(teachersStat).toHaveTextContent('1'));
+    fireEvent.click(teachersStat);
+    expect(await screen.findByText('Teacher Kept')).toBeInTheDocument();
+
+    mockApiGet.mockImplementation((url) => {
+      if (url === '/teachers') return Promise.reject(new Error('temporary failure'));
+      return Promise.resolve({ data: [] });
+    });
+    fireEvent.click(screen.getByTitle('refresh'));
+
+    await waitFor(() => expect(mockNassaqWarning).toHaveBeenCalled());
+    expect(screen.getByText('Teacher Kept')).toBeInTheDocument();
+    expect(warnSpy).toHaveBeenCalledWith('Partial data load failure for endpoints:', ['/teachers']);
+    warnSpy.mockRestore();
+  });
+
+  test('late responses from a prior school scope cannot replace the new school lists', async () => {
+    let resolveOldTeachers;
+    mockAuthValue.isImpersonating = true;
+    mockAuthValue.schoolContext = { school_id: 'old-school' };
+    mockApiGet.mockImplementation((url, config = {}) => {
+      const scope = config.headers?.['X-School-Context'];
+      if (url === '/teachers' && scope === 'old-school') {
+        return new Promise((resolve) => { resolveOldTeachers = resolve; });
+      }
+      if (url === '/teachers' && scope === 'new-school') {
+        return Promise.resolve({ data: [{ id: 'teacher-new', full_name: 'New School Teacher' }] });
+      }
+      return Promise.resolve({ data: [] });
+    });
+
+    const view = render(<UsersClassesManagement />);
+    await waitFor(() => expect(resolveOldTeachers).toBeDefined());
+
+    mockAuthValue.schoolContext = { school_id: 'new-school' };
+    view.rerender(<UsersClassesManagement />);
+    fireEvent.click(screen.getByText('totalTeachers').closest('button'));
+    expect(await screen.findByText('New School Teacher')).toBeInTheDocument();
+
+    resolveOldTeachers({ data: [{ id: 'teacher-old', full_name: 'Old School Teacher' }] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.queryByText('Old School Teacher')).not.toBeInTheDocument();
+    expect(screen.getByText('New School Teacher')).toBeInTheDocument();
+  });
+
+  test('turning impersonation off refetches without the retained school-context header', async () => {
+    mockAuthValue.isImpersonating = true;
+    mockAuthValue.schoolContext = { school_id: 'preview-school' };
+    mockApiGet.mockImplementation((url, config = {}) => {
+      if (url === '/teachers' && config.headers?.['X-School-Context'] === 'preview-school') {
+        return Promise.resolve({ data: [{ id: 'preview-teacher', full_name: 'Preview Teacher' }] });
+      }
+      if (url === '/teachers' && !config.headers?.['X-School-Context']) {
+        return Promise.resolve({ data: [{ id: 'tenant-teacher', full_name: 'Tenant Teacher' }] });
+      }
+      return Promise.resolve({ data: [] });
+    });
+
+    const view = render(<UsersClassesManagement />);
+    await waitFor(() => expect(screen.getByText('totalTeachers').closest('button')).toHaveTextContent('1'));
+
+    mockAuthValue.isImpersonating = false;
+    view.rerender(<UsersClassesManagement />);
+    fireEvent.click(screen.getByText('totalTeachers').closest('button'));
+
+    expect(await screen.findByText('Tenant Teacher')).toBeInTheDocument();
+    expect(screen.queryByText('Preview Teacher')).not.toBeInTheDocument();
+    expect(mockApiGet).toHaveBeenCalledWith('/teachers', expect.objectContaining({ headers: {} }));
+  });
+
+  test('a tenant change for the same user id refetches and rejects the prior tenant response', async () => {
+    let resolveOldTeachers;
+    mockAuthValue.user = { ...mockUser, tenant_id: 'tenant-old' };
+    mockApiGet.mockImplementation((url) => {
+      if (url !== '/teachers') return Promise.resolve({ data: [] });
+      if (mockAuthValue.user.tenant_id === 'tenant-old') {
+        return new Promise((resolve) => { resolveOldTeachers = resolve; });
+      }
+      return Promise.resolve({ data: [{ id: 'tenant-new-teacher', full_name: 'New Tenant Teacher' }] });
+    });
+
+    const view = render(<UsersClassesManagement />);
+    await waitFor(() => expect(resolveOldTeachers).toBeDefined());
+
+    mockAuthValue.user = { ...mockUser, tenant_id: 'tenant-new' };
+    view.rerender(<UsersClassesManagement />);
+    fireEvent.click(screen.getByText('totalTeachers').closest('button'));
+    expect(await screen.findByText('New Tenant Teacher')).toBeInTheDocument();
+
+    resolveOldTeachers({ data: [{ id: 'tenant-old-teacher', full_name: 'Old Tenant Teacher' }] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.queryByText('Old Tenant Teacher')).not.toBeInTheDocument();
+    expect(screen.getByText('New Tenant Teacher')).toBeInTheDocument();
+  });
+});
+
+describe('UsersClassesManagement — teacher deactivation copy', () => {
+  test('uses account/history language and never exposes backend cleanup keys', () => {
+    const cleanup = { teacher_assignments: 4, timetable_sessions: 9 };
+    const englishMessage = getDeleteSuccessMessage('teacher', false, stableT, cleanup);
+    const arabicMessage = getDeleteSuccessMessage('teacher', true, stableT, cleanup);
+
+    expect(englishMessage).toMatch(/account.*deactivated/i);
+    expect(englishMessage).toMatch(/history.*retained/i);
+    expect(arabicMessage).toMatch(/إلغاء تنشيط حساب المعلم/);
+    expect(arabicMessage).toMatch(/الاحتفاظ بالحساب والسجل السابق/);
+    expect(`${englishMessage} ${arabicMessage}`).not.toMatch(/teacher_assignments|timetable_sessions/);
   });
 });
