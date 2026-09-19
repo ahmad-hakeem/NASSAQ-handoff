@@ -28,6 +28,31 @@ import { useTheme, useTranslation } from '@/shared/contexts/ThemeContext';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
 import { SubjectsManager } from '@/features/academics/components/subjects/SubjectsManager';
 
+export function SchoolOperationalStatus({ status }) {
+  const { t } = useTranslation();
+  const isActive = status === 'active';
+  const StatusIcon = isActive ? CheckCircle2 : AlertTriangle;
+
+  return (
+    <div
+      className="flex items-center gap-2 text-sm text-slate-500"
+      data-testid="school-operational-status"
+    >
+      <StatusIcon
+        className={`h-3.5 w-3.5 ${isActive ? 'text-emerald-500' : 'text-red-400'}`}
+        data-testid="school-operational-status-icon"
+      />
+      <span>{t('statusColon')}</span>
+      <span
+        className={`font-semibold ${isActive ? 'text-emerald-600' : 'text-red-500'}`}
+        data-testid="school-operational-status-value"
+      >
+        {isActive ? t('activeFem') : t('inactiveFem')}
+      </span>
+    </div>
+  );
+}
+
 export function DynamicSettingsContent({ hook, dynamicTabs }) {
   const { t } = useTranslation();
   const { isRTL, direction } = useTheme();
@@ -210,13 +235,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                   <span>{t('licenseCode')}</span>
                   <span className="font-mono font-semibold text-slate-700">{schoolInfo.license_number || '—'}</span>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-slate-500">
-                  <CheckCircle2 className={`h-3.5 w-3.5 ${schoolInfo.is_active ? 'text-emerald-500' : 'text-red-400'}`} />
-                  <span>{t('statusColon')}</span>
-                  <span className={`font-semibold ${schoolInfo.is_active ? 'text-emerald-600' : 'text-red-500'}`}>
-                    {schoolInfo.is_active ? t('activeFem') : t('inactiveFem')}
-                  </span>
-                </div>
+                <SchoolOperationalStatus status={schoolInfo.status} />
                 {schoolInfo.updated_at && (
                   <div className="flex items-center gap-2 text-sm text-slate-500">
                     <RefreshCw className="h-3.5 w-3.5" />

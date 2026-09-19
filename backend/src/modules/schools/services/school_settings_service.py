@@ -10,7 +10,7 @@ import uuid
 import logging
 
 from dependencies import (
-    audit_engine, AuditAction,
+    audit_engine, AuditAction, SchoolStatus,
 )
 from engines.sql_utils import (
     gd_find, gd_find_one, gd_insert, gd_update_one, gd_delete_one,
@@ -143,7 +143,14 @@ class SchoolSettingsService:
             "principal_email": principal.get("email") if principal else school.get("principal_email", ""),
             "educational_pathway": school.get("educational_pathway", ""),
             "gender": school.get("gender") or "boys",
-            "status": school.get("status") or "active",
+            # Display-only projection of the authoritative lifecycle column.
+            # Never infer activation from missing/legacy values, setup, or users.
+            # "unknown" is a response sentinel, not a persisted lifecycle state.
+            "status": (
+                school["status"]
+                if school.get("status") in {status.value for status in SchoolStatus}
+                else "unknown"
+            ),
         }
 
     @staticmethod
