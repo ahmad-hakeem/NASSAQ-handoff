@@ -235,3 +235,73 @@ async def test_update_teacher_professional_info_persists_and_reflects(client, sc
     assert prof["contract_type"] == "contract"
     assert prof["years_of_experience"] == 10
     assert prof["employee_number"] == "EMP-5555"
+
+
+@pytest.mark.asyncio
+async def test_update_teacher_professional_info_distinguishes_omitted_and_cleared_fields(
+    client, school_principal_headers, tenant_a
+):
+    teacher_id = str(uuid.uuid4())
+    await gd_insert(db.session, "teachers", {
+        "id": teacher_id,
+        "school_id": tenant_a,
+        "tenant_id": tenant_a,
+        "full_name": "اختبار مسح المؤهلات",
+        "email": f"clear_{uuid.uuid4().hex[:8]}@test.com",
+        "academic_degree": "master",
+        "qualification": "master",
+        "teacher_rank": "expert",
+        "rank": "expert",
+        "years_of_experience": 7,
+        "is_active": True,
+    })
+    await db.session.flush()
+
+    response = await client.put(
+        f"/principal/teacher/{teacher_id}/professional-info",
+        json={"academic_degree": None, "teacher_rank": "", "years_of_experience": None},
+        headers=school_principal_headers,
+    )
+    assert response.status_code == 200, response.text
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    assert teacher["academic_degree"] is None
+    assert teacher["qualification"] is None
+    assert teacher["teacher_rank"] is None
+    assert teacher["rank"] is None
+    assert teacher["years_of_experience"] is None
+
+    response = await client.put(
+        f"/principal/teacher/{teacher_id}/professional-info",
+        json={"contract_type": "contract"},
+        headers=school_principal_headers,
+    )
+    assert response.status_code == 200, response.text
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    assert teacher["contract_type"] == "contract"
+    assert teacher["academic_degree"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [
+    {"academic_degree": "unsupported-degree"},
+    {"teacher_rank": "unsupported-rank"},
+    {"years_of_experience": -1},
+    {"years_of_experience": "not-a-number"},
+])
+async def test_update_teacher_professional_info_rejects_invalid_qualifications(
+    client, school_principal_headers, tenant_a, payload
+):
+    teacher_id = str(uuid.uuid4())
+    await gd_insert(db.session, "teachers", {
+        "id": teacher_id, "school_id": tenant_a, "tenant_id": tenant_a,
+        "full_name": "اختبار تحقق المؤهلات",
+        "email": f"invalid_edit_{uuid.uuid4().hex[:8]}@test.com",
+        "academic_degree": "master", "teacher_rank": "teacher",
+        "years_of_experience": 1, "is_active": True,
+    })
+    await db.session.flush()
+    response = await client.put(
+        f"/principal/teacher/{teacher_id}/professional-info",
+        json=payload, headers=school_principal_headers,
+    )
+    assert response.status_code == 422, response.text

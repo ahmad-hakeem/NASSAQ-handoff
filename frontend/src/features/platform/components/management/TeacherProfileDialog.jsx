@@ -81,7 +81,14 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
   const handleSaveProfessional = async () => {
     setSaving(true);
     try {
-      await api.put(`/principal/teacher/${teacher.id}/professional-info`, formData);
+      const professionalData = {
+        ...formData,
+        academic_degree: formData.academic_degree || null,
+        teacher_rank: formData.teacher_rank || null,
+        years_of_experience: formData.years_of_experience === '' ||
+          formData.years_of_experience == null ? null : formData.years_of_experience,
+      };
+      await api.put(`/principal/teacher/${teacher.id}/professional-info`, professionalData);
       toast.success(t('professionalInfoUpdated'));
       setEditing(false);
       setEditSection(null);
@@ -175,8 +182,9 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
     } else if (section === 'professional') {
       setFormData({
         ...p?.professional_info,
-        academic_degree: p?.professional_info?.academic_degree || teacher.academic_degree || teacher.qualification || '',
-        teacher_rank: p?.professional_info?.teacher_rank || teacher.teacher_rank || teacher.rank || '',
+        academic_degree: p?.professional_info?.academic_degree ?? teacher.academic_degree ?? teacher.qualification ?? '',
+        teacher_rank: p?.professional_info?.teacher_rank ?? teacher.teacher_rank ?? teacher.rank ?? '',
+        years_of_experience: p?.professional_info?.years_of_experience ?? teacher.years_of_experience ?? '',
         contract_type: p?.professional_info?.contract_type || teacher.contract_type || '',
       });
     }
@@ -338,7 +346,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                 <div className="flex justify-between items-center">
                   <h3 className="font-semibold text-sm">{t('professionalInfo')}</h3>
                   {!editing ? (
-                    <Button size="sm" variant="outline" onClick={() => startEdit('professional')}><Edit className="h-3.5 w-3.5 me-1" />{t('edit')}</Button>
+                    <Button data-testid="edit-professional" size="sm" variant="outline" onClick={() => startEdit('professional')}><Edit className="h-3.5 w-3.5 me-1" />{t('edit')}</Button>
                   ) : editSection === 'professional' ? (
                     <div className="flex gap-2">
                       <Button size="sm" onClick={handleSaveProfessional} disabled={saving}>{saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 me-1" />}{t('save')}</Button>
@@ -354,9 +362,10 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">{t('degree')}</Label>
-                      <Select value={formData.academic_degree || ''} onValueChange={(v) => setFormData(p => ({ ...p, academic_degree: v }))}>
+                      <Select value={formData.academic_degree || ''} onValueChange={(v) => setFormData(p => ({ ...p, academic_degree: v === '__clear__' ? '' : v }))}>
                         <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="__clear__">{t('clear') || (isRTL ? 'مسح' : 'Clear')}</SelectItem>
                           <SelectItem value="diploma">{t('diploma')}</SelectItem>
                           <SelectItem value="bachelor">{t('bachelors')}</SelectItem>
                           <SelectItem value="master">{t('masters')}</SelectItem>
@@ -366,9 +375,10 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">{t('rank')}</Label>
-                      <Select value={formData.teacher_rank || ''} onValueChange={(v) => setFormData(p => ({ ...p, teacher_rank: v }))}>
+                      <Select value={formData.teacher_rank || ''} onValueChange={(v) => setFormData(p => ({ ...p, teacher_rank: v === '__clear__' ? '' : v }))}>
                         <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="__clear__">{t('clear') || (isRTL ? 'مسح' : 'Clear')}</SelectItem>
                           <SelectItem value="teacher">{t('teacher')}</SelectItem>
                           <SelectItem value="senior_teacher">{t('seniorTeacher')}</SelectItem>
                           <SelectItem value="expert">{t('expert')}</SelectItem>
@@ -378,7 +388,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">{t('experience')}</Label>
-                      <Input type="number" value={formData.years_of_experience ?? ''} onChange={(e) => setFormData(p => ({ ...p, years_of_experience: parseInt(e.target.value) || 0 }))} className="h-8 text-sm" />
+                      <Input type="number" value={formData.years_of_experience ?? ''} onChange={(e) => setFormData(p => ({ ...p, years_of_experience: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} className="h-8 text-sm" />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">{t('contract')}</Label>

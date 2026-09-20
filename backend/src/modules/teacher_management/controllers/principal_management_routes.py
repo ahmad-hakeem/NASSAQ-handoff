@@ -5,7 +5,7 @@ Full CRUD + profile management for school principal on teacher/student/parent ac
 """
 from fastapi import APIRouter, HTTPException, Depends, Body, Query
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List, Dict
+from typing import Any, Optional, List, Dict
 from datetime import datetime, timezone
 import uuid
 import secrets
@@ -81,7 +81,9 @@ class UpdateTeacherProfessionalRequest(BaseModel):
     specialization: Optional[str] = None
     academic_degree: Optional[str] = None
     teacher_rank: Optional[str] = None
-    years_of_experience: Optional[int] = None
+    # Keep this permissive at the request boundary so an explicit blank can be
+    # treated as a clear (rather than as an omitted field).
+    years_of_experience: Optional[Any] = None
     contract_type: Optional[str] = None
     employee_number: Optional[str] = None
     department: Optional[str] = None
@@ -330,10 +332,74 @@ async def update_teacher_professional_info(
 
     updates = {}
     changes = {}
+    provided = data.model_fields_set
+
+    def optional_text(value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise HTTPException(status_code=422, detail="القيمة يجب أن تكون نصاً")
+        value = value.strip()
+        return value or None
+
+    def optional_experience(value):
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        if isinstance(value, bool):
+            raise HTTPException(status_code=422, detail="years_of_experience: يجب أن يكون عدداً صحيحاً")
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="years_of_experience: يجب أن يكون عدداً صحيحاً")
+        if isinstance(value, float) and value != parsed:
+            raise HTTPException(status_code=422, detail="years_of_experience: يجب أن يكون عدداً صحيحاً")
+        if parsed < 0:
+            raise HTTPException(status_code=422, detail="years_of_experience: يجب أن يكون صفراً أو أكثر")
+        return parsed
+
+    if "academic_degree" in provided:
+        degree_rows = await gd_find(
+            db.session, "lookup_options",
+            {"type": "academic_degree", "is_active": {"$ne": False}}, limit=20,
+        )
+        supported_degrees = {
+            row.get("code", row.get("id")) for row in degree_rows
+            if row.get("code", row.get("id"))
+        } or {"diploma", "bachelor", "master", "doctorate"}
+        degree = optional_text(data.academic_degree)
+        if degree is not None and degree not in supported_degrees:
+            raise HTTPException(status_code=422, detail="academic_degree غير مدعوم")
+
+    if "teacher_rank" in provided:
+        rank_rows = await gd_find(
+            db.session, "lookup_options",
+            {"type": "teacher_rank", "is_active": {"$ne": False}},
+            order_by="order", desc_order=False, limit=100,
+        )
+        if not rank_rows:
+            rank_rows = await gd_find(
+                db.session, "teacher_ranks", {"is_active": True},
+                order_by="order", desc_order=False, limit=100,
+            )
+        supported_ranks = {
+            row.get("id") or row.get("code") for row in rank_rows
+            if row.get("id") or row.get("code")
+        } or {"teacher", "senior_teacher", "expert", "department_head"}
+        rank = optional_text(data.teacher_rank)
+        if rank is not None and rank not in supported_ranks:
+            raise HTTPException(status_code=422, detail="teacher_rank غير مدعوم")
+
     for field in ["specialization", "academic_degree", "teacher_rank", "years_of_experience",
                   "contract_type", "employee_number", "department", "education_stage", "hire_date"]:
+        if field not in provided:
+            continue
         val = getattr(data, field, None)
-        if val is not None:
+        if field in {"specialization", "academic_degree", "teacher_rank", "contract_type",
+                     "employee_number", "department", "education_stage", "hire_date"}:
+            val = optional_text(val)
+        elif field == "years_of_experience":
+            val = optional_experience(val)
+        if val is not None or field in {"academic_degree", "teacher_rank", "years_of_experience"}:
             old_val = teacher.get(field)
             if field == "academic_degree" and old_val is None:
                 old_val = teacher.get("qualification")

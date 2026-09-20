@@ -160,4 +160,46 @@ describe('TeacherProfileDialog — Professional Data Rendering', () => {
       expect(screen.getByText(/5/)).toBeInTheDocument();
     });
   });
+
+  test('preserves an explicit zero years of experience when saving professional data', async () => {
+    mockApi.get.mockResolvedValueOnce({
+      data: {
+        profile: {
+          basic_info: { full_name: 'معلم بلا خبرة' },
+          professional_info: {
+            academic_degree: null,
+            teacher_rank: null,
+            years_of_experience: 0,
+            contract_type: 'permanent',
+          },
+          operational_info: { status: 'active' },
+        },
+      },
+    });
+    mockApi.put.mockResolvedValueOnce({ data: { success: true } });
+
+    render(
+      <ThemeProvider>
+        <TeacherProfileDialog
+          open={true}
+          onClose={() => {}}
+          teacher={{ id: 't-zero', full_name: 'معلم بلا خبرة' }}
+          onRefresh={() => {}}
+        />
+      </ThemeProvider>
+    );
+
+    const professionalTab = await screen.findByRole('tab', { name: /المهني|career/i });
+    clickRadixTab(professionalTab);
+    const editButton = await screen.findByTestId('edit-professional');
+    fireEvent.click(editButton);
+    const experience = await screen.findByRole('spinbutton');
+    fireEvent.change(experience, { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
+
+    await waitFor(() => expect(mockApi.put).toHaveBeenCalledWith(
+      '/principal/teacher/t-zero/professional-info',
+      expect.objectContaining({ years_of_experience: 0 })
+    ));
+  });
 });
