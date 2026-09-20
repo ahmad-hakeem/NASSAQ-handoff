@@ -8,6 +8,7 @@ import math
 import os
 from pathlib import Path
 import platform
+import re
 import statistics
 import subprocess
 import sys
@@ -16,8 +17,22 @@ from urllib.parse import urlsplit
 
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 MARKER = "STARTUP_BENCHMARK="
+ERROR_MARKER = "STARTUP_BENCHMARK_ERROR="
 FORBIDDEN = ("pandas", "reportlab", "arabic_reshaper", "bidi")
 DUMMY_DATABASE_URL = "postgresql://benchmark:benchmark@127.0.0.1:1/benchmark"
+
+def safe_probe_error(exc):
+    """Identify failed imports without logging exception messages or locals."""
+    detail = {"exception": type(exc).__name__}
+    tb = exc.__traceback__
+    while tb and tb.tb_next:
+        tb = tb.tb_next
+    if tb:
+        detail["location"] = f"{Path(tb.tb_frame.f_code.co_filename).name}:{tb.tb_lineno}"
+    if isinstance(exc, ModuleNotFoundError) and isinstance(exc.name, str):
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", exc.name):
+            detail["missing_module"] = exc.name
+    return detail
 
 
 async def measure_schema_gate(db):
@@ -110,7 +125,20 @@ def run_probe(module, timeout, schema_url=None):
         raise RuntimeError(f"{module} probe exceeded {timeout}s") from None
     if completed.returncode:
         # Do not echo arbitrary app logs (especially schema connection errors).
-        raise RuntimeError(f"{module} probe exited with status {completed.returncode}")
+        detail = ""
+        for line in completed.stdout.splitlines():
+            if line.startswith(ERROR_MARKER):
+                try:
+                    error = json.loads(line[len(ERROR_MARKER):])
+                    fields = [error.get(key, "") for key in
+                              ("exception", "location", "missing_module")]
+                    # Accept only identifier/location tokens, never arbitrary logs.
+                    fields = [value for value in fields if isinstance(value, str)
+                              and re.fullmatch(r"[A-Za-z0-9_.:-]{1,200}", value)]
+                    detail = ": " + " / ".join(fields) if fields else ""
+                except (ValueError, AttributeError):
+                    pass
+        raise RuntimeError(f"{module} probe exited with status {completed.returncode}{detail}")
     lines = [line[len(MARKER):] for line in completed.stdout.splitlines()
              if line.startswith(MARKER)]
     if len(lines) != 1:
@@ -177,7 +205,11 @@ def main():
             parser.error("--probe is internal; run the benchmark without --probe")
         if not args.schema_gate and os.environ.get("DATABASE_URL") != DUMMY_DATABASE_URL:
             parser.error("Import probes require the isolated dummy database")
-        probe(args.probe, args.schema_gate)
+        try:
+            probe(args.probe, args.schema_gate)
+        except (Exception, SystemExit) as exc:
+            print(ERROR_MARKER + json.dumps(safe_probe_error(exc)), flush=True)
+            return 1
         return 0
     if args.samples < 1:
         parser.error("--samples must be positive")

@@ -17,6 +17,10 @@ generous regression tripwires, not service-level objectives. Export-only pandas,
 ReportLab, Arabic reshaper, and bidi imports fail regardless of elapsed time.
 
 The JSON report includes individual import and whole-process wall times,
+and failed probes identify the exception class, last source filename/line, and
+missing module (when applicable). Raw exception messages, source lines, local
+variables, and application logs are withheld to avoid exposing credentials.
+The report also includes
 median/max import times, Python version/executable, OS, architecture, logical CPU
 count and load average. Whole-process time includes interpreter startup, probe
 setup, import, optional schema probe, output and teardown; it is **not**

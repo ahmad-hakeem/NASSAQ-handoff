@@ -100,6 +100,30 @@ class StartupBenchmarkTests(unittest.TestCase):
                 self.benchmark.run_probe("server", 30)
         self.assertNotIn("secret", str(caught.exception))
 
+    def test_probe_failure_includes_safe_exception_location_not_message(self):
+        try:
+            raise RuntimeError("postgresql://private:secret@example.invalid/db")
+        except RuntimeError as exc:
+            detail = self.benchmark.safe_probe_error(exc)
+        self.assertEqual(detail["exception"], "RuntimeError")
+        self.assertIn("test_backend_startup.py:", detail["location"])
+        self.assertNotIn("secret", str(detail))
+        self.assertNotIn("postgresql", str(detail))
+
+    def test_missing_module_is_identified(self):
+        detail = self.benchmark.safe_probe_error(
+            ModuleNotFoundError("sensitive arbitrary message", name="resend"))
+        self.assertEqual(detail["missing_module"], "resend")
+        self.assertNotIn("sensitive", str(detail))
+
+    def test_structured_failure_reaches_build_report(self):
+        output = 'STARTUP_BENCHMARK_ERROR={"exception":"ImportError","location":"db.py:12"}\n'
+        with patch.object(self.benchmark.subprocess, "run",
+                          return_value=subprocess.CompletedProcess([], 1, output, "secret")):
+            with self.assertRaisesRegex(RuntimeError, "ImportError.*db.py:12") as caught:
+                self.benchmark.run_probe("dependencies", 30)
+        self.assertNotIn("secret", str(caught.exception))
+
     def test_full_app_and_dependencies_in_fresh_processes(self):
         for module in ("dependencies", "server"):
             with self.subTest(module=module):
