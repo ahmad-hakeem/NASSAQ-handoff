@@ -368,8 +368,6 @@ def register_external_routes(router, db, require_roles, UserRole, resolve_school
     async def discard(draft_id: str, school_id: Optional[str] = None,
                       x_school_context: Optional[str] = Header(None, alias="X-School-Context"),
                       current_user: dict = Depends(authorized)):
-        import pandas as pd
-
         school = resolve_school(current_user, x_school_context, school_id)
         await scope_lock(db.session, school)
         payload = await load_owned(db.session, draft_id, current_user["id"], school)
@@ -381,6 +379,8 @@ def register_external_routes(router, db, require_roles, UserRole, resolve_school
     async def confirm(body: Confirmation, school_id: Optional[str] = None,
                       x_school_context: Optional[str] = Header(None, alias="X-School-Context"),
                       current_user: dict = Depends(authorized)):
+        import pandas as pd
+
         school = resolve_school(current_user, x_school_context, school_id)
         if body.acknowledged is not True:
             reject("acknowledgement_required", "يجب الموافقة الصريحة على إنشاء وتحديث السجلات والعلاقات")

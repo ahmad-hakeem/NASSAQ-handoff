@@ -95,6 +95,19 @@ async def test_downloaded_official_template_accepts_replacement_rows(client, kin
     assert draft["rows"][0]["row"] == 2
     assert draft["rows"][0]["action"] == "create"
     assert not await gd_find(db.session, kind, {"school_id": school})
+    confirmed = await client.post("/bulk/confirm", headers=headers, json=confirmation(draft))
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["success"], confirmed.text
+    assert confirmed.json()["imported"] == 1, confirmed.text
+    imported = await gd_find(db.session, kind, {"school_id": school})
+    assert len(imported) == 1
+    if kind == "students":
+        classes = await gd_find(db.session, "classes", {"school_id": school})
+        parents = await gd_find(db.session, "parents", {"school_id": school})
+        assert imported[0]["class_id"] in {row["id"] for row in classes}
+        assert imported[0]["parent_id"] in {row["id"] for row in parents}
+        links = await gd_find(db.session, "guardian_links", {"tenant_id": school})
+        assert any(link["student_id"] == imported[0]["id"] for link in links)
 
 
 @pytest.mark.parametrize("unsafe", ["unknown_sheet", "third_sheet", "instructions_formula",
