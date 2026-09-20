@@ -37,6 +37,7 @@ import { getApiErrorMessage, getLocalizedApiError } from '@/shared/models/utils/
 import { executeStudentTransfer } from '@/shared/models/utils/studentTransfer';
 import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
 import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
+import ExternalImportReview from '../components/ExternalImportReview';
 
 const AddStudentWizard = lazy(() => import('@/features/teachers/components/wizards/AddStudentWizard'));
 const AddTeacherWizard = lazy(() => import('@/features/teachers/components/wizards/AddTeacherWizard').then(m => ({ default: m.AddTeacherWizard })));
@@ -928,11 +929,13 @@ export default function UsersClassesManagement() {
   const [showClassWizard, setShowClassWizard] = useState(false);
 
   const [noorImportCount, setNoorImportCount] = useState(null);
-  const [importType, setImportType] = useState('students');
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [importing, setImporting] = useState(false);
+  const [importType, setImportType] = useState(() => searchParams.get('import_type') === 'teachers' ? 'teachers' : 'students');
   const [importResult, setImportResult] = useState(null);
   const [importResultType, setImportResultType] = useState(null);
+  useLayoutEffect(() => {
+    setImportResult(null);
+    setImportResultType(null);
+  }, [user?.id, user?.tenant_id, user?.school_id, user?.role, isImpersonating, schoolContext?.school_id]);
   const [exportType, setExportType] = useState('students');
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
@@ -1792,41 +1795,15 @@ export default function UsersClassesManagement() {
     }
   };
 
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      if (!['.xlsx', '.xls', '.csv'].some(t => file.name.toLowerCase().endsWith(t))) {
-        nassaqWarning(t('unsupportedFormat'));
-        return;
-      }
-      setSelectedFile(file);
-      setImportResult(null);
-      setImportResultType(null);
-    }
-  };
-
   const selectImportType = (type) => {
     setImportType(type);
     // Never render student counters for a teacher result (or vice versa) if
     // the user changes the import mode before choosing a new file.
     setImportResult(null);
     setImportResultType(null);
-    setSelectedFile(null);
   };
 
-  const handleImport = async () => {
-    if (!selectedFile) { nassaqWarning(t('selectAFile')); return; }
-    setImporting(true); setImportResult(null);
-    try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      const response = await api.post(`/bulk/import/${importType}`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          ...getBulkRequestHeaders(),
-        },
-      });
-      const result = response.data || {};
+  const handleImportComplete = (result, importType) => {
       const metrics = getBulkImportMetrics(result);
       const status = getBulkImportStatus(result, importType);
       setImportResult(result);
@@ -1883,8 +1860,6 @@ export default function UsersClassesManagement() {
       if (hasPersistedData || (result.success !== false && metrics.totalRows > 0)) {
         fetchAllData();
       }
-    } catch (error) { nassaqError(getApiErrorMessage(error) || (t('importFailed'))); }
-    finally { setImporting(false); }
   };
 
   const handleExport = async () => {
@@ -2355,18 +2330,15 @@ export default function UsersClassesManagement() {
                               </div>
                             </div>
                             <Button variant="outline" onClick={() => downloadTemplate(importType)} disabled={downloadingTemplate} className="w-full">{downloadingTemplate ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : <Download className="h-4 w-4 me-2" />}{downloadingTemplate ? (t('downloading')) : (t('downloadTemplate2'))}</Button>
-                            <div className="border-2 border-dashed rounded-xl p-5 text-center hover:border-brand-turquoise/50 transition-colors">
-                              <Input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileSelect} className="hidden" id="file-upload" />
-                              <label htmlFor="file-upload" className="cursor-pointer">
-                                <FileSpreadsheet className="h-10 w-10 mx-auto mb-2 text-muted-foreground" />
-                                <p className="text-xs text-muted-foreground">{t('dragOrSelectFile')}</p>
-                              </label>
-                              {selectedFile && <Badge variant="outline" className="mt-2">{selectedFile.name}</Badge>}
-                            </div>
-                            <Button onClick={handleImport} disabled={importing || !selectedFile} className="w-full">
-                              {importing ? <Loader2 className="h-4 w-4 animate-spin me-2" /> : <Upload className="h-4 w-4 me-2" />}
-                              {importing ? (t('importing')) : (t('startImport'))}
-                            </Button>
+                            <ExternalImportReview
+                              key={JSON.stringify([user?.id, user?.tenant_id, user?.school_id, user?.role, isImpersonating, schoolContext?.school_id, importType])}
+                              api={api}
+                              headers={getBulkRequestHeaders()}
+                              importType={importType}
+                              isRTL={isRTL}
+                              onSelectionChange={() => { setImportResult(null); setImportResultType(null); }}
+                              onComplete={handleImportComplete}
+                            />
                           </CardContent>
                         </Card>
                         {importResult && (() => {

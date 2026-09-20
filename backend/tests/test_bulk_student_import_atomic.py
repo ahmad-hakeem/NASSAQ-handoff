@@ -62,7 +62,7 @@ def _create_excel_file(rows: list) -> io.BytesIO:
 
 
 @pytest.mark.asyncio
-async def test_bulk_student_import_partial_success_commits_valid_rows(client):
+async def test_bulk_student_import_mixed_errors_block_all_rows(client):
     school_id = f"sch_{uuid.uuid4().hex[:8]}"
     await _mk_school(school_id)
     principal = await _mk_principal(school_id)
@@ -109,18 +109,21 @@ async def test_bulk_student_import_partial_success_commits_valid_rows(client):
 
     # 2. Upload file
     resp1 = await client.post(
-        "/bulk/import/students",
+        "/bulk/preview/students",
         files={"file": ("test_students.xlsx", excel_file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         headers=h,
     )
     assert resp1.status_code == 200, resp1.text
     res1_data = resp1.json()
 
-    # Verify response schema: valid student is imported, invalid row fails
-    assert res1_data["success"] is False
-    assert res1_data["total_rows"] == 2
-    assert res1_data["imported"] == 1, "Valid records should be imported even if other rows fail"
-    assert res1_data["failed"] == 1
+    assert res1_data["can_confirm"] is False
+    assert res1_data["summary"]["total_rows"] == 2
+    assert res1_data["summary"]["error_rows"] == 1
+    blocked = await client.post("/bulk/confirm", headers=h, json={
+        **{k: res1_data[k] for k in ("draft_id", "fingerprint", "preview_version")},
+        "acknowledged": True,
+    })
+    assert blocked.status_code == 409
     assert len(res1_data["errors"]) >= 1
 
     # Verify errors contain exact row number and detailed messages
@@ -129,10 +132,9 @@ async def test_bulk_student_import_partial_success_commits_valid_rows(client):
     error_messages = " ".join([e.get("message", "") for e in row3_errors])
     assert "اسم العائلة" in error_messages or "رقم الهوية" in error_messages
 
-    # Verify Database state: valid student was committed
+    # A single blocking error prevents every domain write.
     students_in_db = await gd_find(db.session, "students", {"school_id": school_id})
-    assert len(students_in_db) == 1
-    assert students_in_db[0]["national_id"] == valid_national_id
+    assert len(students_in_db) == 0
 
 
 @pytest.mark.asyncio
@@ -170,10 +172,17 @@ async def test_bulk_student_import_9_digit_iqama_and_leading_zero(client):
 
     excel_file = _create_excel_file(rows)
     resp = await client.post(
-        "/bulk/import/students",
+        "/bulk/preview/students",
         files={"file": ("iqama_students.xlsx", excel_file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         headers=h,
     )
+    assert resp.status_code == 200, resp.text
+    res_data = resp.json()
+    assert res_data["can_confirm"]
+    resp = await client.post("/bulk/confirm", headers=h, json={
+        **{k: res_data[k] for k in ("draft_id", "fingerprint", "preview_version")},
+        "acknowledged": True,
+    })
     assert resp.status_code == 200, resp.text
     res_data = resp.json()
 
@@ -232,10 +241,17 @@ async def test_bulk_student_import_success_all_rows(client):
 
     excel_file = _create_excel_file(rows)
     resp = await client.post(
-        "/bulk/import/students",
+        "/bulk/preview/students",
         files={"file": ("valid_students.xlsx", excel_file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         headers=h,
     )
+    assert resp.status_code == 200, resp.text
+    res_data = resp.json()
+    assert res_data["can_confirm"]
+    resp = await client.post("/bulk/confirm", headers=h, json={
+        **{k: res_data[k] for k in ("draft_id", "fingerprint", "preview_version")},
+        "acknowledged": True,
+    })
     assert resp.status_code == 200, resp.text
     res_data = resp.json()
 
@@ -284,16 +300,16 @@ async def test_bulk_student_import_catches_in_file_duplicates(client):
 
     excel_file = _create_excel_file(rows)
     resp = await client.post(
-        "/bulk/import/students",
+        "/bulk/preview/students",
         files={"file": ("duplicate_students.xlsx", excel_file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         headers=h,
     )
     assert resp.status_code == 200, resp.text
     res_data = resp.json()
 
-    assert res_data["success"] is False
-    assert res_data["imported"] == 1
-    assert res_data["failed"] >= 1
+    assert res_data["can_confirm"] is False
+    assert res_data["summary"]["error_rows"] >= 1
+    assert not await gd_find(db.session, "students", {"school_id": school_id})
     # Check error message mentions duplication
     dup_error = next((e for e in res_data["errors"] if duplicate_nid in e.get("message", "")), None)
     assert dup_error is not None

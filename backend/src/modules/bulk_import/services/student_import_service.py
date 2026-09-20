@@ -564,9 +564,12 @@ async def import_students(
     errors: list,
     warnings: list,
     filename: Optional[str] = None,
+    *,
+    plan_only: bool = False,
 ) -> dict:
     """Import legacy student rows with per-row savepoints and counters."""
-    await acquire_school_import_lock(db.session, school_id)
+    if not plan_only:
+        await acquire_school_import_lock(db.session, school_id)
     df = _normalise_columns(df)
 
     # A grade/class-less upload cannot satisfy the endpoint's assignment
@@ -795,6 +798,12 @@ async def import_students(
                 f"خطأ في معالجة الصف: {_exception_message(exc)}",
                 student_name=_row_student_name(row),
             ))
+
+    if plan_only:
+        from src.modules.bulk_import.services.external_preview import resolve_student_plan
+        return await resolve_student_plan(
+            db, school_id, valid_records, classes, grade_values, grade_ids, errors
+        )
 
     counters = {
         "created": 0,

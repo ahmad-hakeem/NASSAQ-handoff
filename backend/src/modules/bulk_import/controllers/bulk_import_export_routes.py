@@ -347,6 +347,8 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
     """Setup bulk import/export routes"""
     
     router = APIRouter(prefix="/bulk", tags=["Bulk Import/Export"])
+    from src.modules.bulk_import.services.external_preview import register_external_routes
+    register_external_routes(router, db, require_roles, UserRole, _resolve_bulk_school_id)
     
     # ============= IMPORT TEMPLATES =============
     
@@ -485,6 +487,8 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
     ):
         """استيراد البيانات من ملف Excel/CSV"""
+        if import_type in (ImportType.STUDENTS, ImportType.TEACHERS):
+            raise HTTPException(status_code=409, detail={"code": "preview_required", "message": "يجب معاينة الملف وتأكيده أولاً"})
         
         school_id = _resolve_bulk_school_id(
             current_user,
@@ -719,7 +723,7 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
     return await import_students(db, df, school_id, user, errors, warnings, filename)
 
 
-async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):
+async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list, *, plan_only=False):
     """استيراد المعلمين مع التحقق المسبق والمعاملات المتكاملة (All-or-Nothing Atomic Import)"""
     imported = 0
     
@@ -840,6 +844,8 @@ async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, err
         except Exception as e:
             errors.append({"row": row_num, "field": "عام", "message": f"خطأ في معالجة الصف: {str(e)}"})
 
+    if plan_only:
+        return {"records": valid_records}
     failed_rows_count = len(set(e['row'] for e in errors))
     if errors:
         return {"imported": 0, "failed": failed_rows_count}
@@ -866,13 +872,17 @@ async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, err
             "created_by": user.get("id"),
             "import_source": "bulk_import"
         }
-        await gd_insert(db.session, "teachers", teacher)
-        imported += 1
+        try:
+            async with db.session.begin_nested():
+                await gd_insert(db.session, "teachers", teacher)
+            imported += 1
+        except Exception:
+            errors.append({"row": item["row_num"], "field": "عام", "message": "تعذر حفظ المعلم؛ لم يتم حفظ أي جزء من الصف"})
 
     from engines.entity_counts import reconcile_school_counts
     await reconcile_school_counts(db.session, school_id)
 
-    return {"imported": imported, "failed": 0}
+    return {"imported": imported, "failed": len(errors)}
 
 
 async def _import_noor_classes(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):

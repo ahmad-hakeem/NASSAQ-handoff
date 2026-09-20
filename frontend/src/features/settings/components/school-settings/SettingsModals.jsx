@@ -8,6 +8,8 @@ import { toast } from 'sonner';
 import { useTheme, useTranslation } from '@/shared/contexts/ThemeContext';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+import { useNavigate } from 'react-router-dom';
+import { useSchoolNavigation } from '@/shared/models/utils/studentNavigation';
 
 function BreakModal({ hook }) {
   const { t } = useTranslation();
@@ -157,6 +159,30 @@ function BreakModal({ hook }) {
   );
 }
 
+function ExternalImportRedirect({ importType, onClose }) {
+  const { direction } = useTheme();
+  const navigate = useNavigate();
+  const { rolePrefix } = useSchoolNavigation();
+  const isRTL = direction === 'rtl';
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir={direction}>
+      <section role="dialog" aria-modal="true" aria-labelledby="external-import-redirect-title" className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
+        <h3 id="external-import-redirect-title" className="text-lg font-bold">{isRTL ? 'مراجعة الملف قبل الاستيراد' : 'Review the file before importing'}</h3>
+        <p>{isRTL
+          ? 'يتطلب استيراد الطلاب والمعلمين معاينة الملف ومراجعة الأخطاء والتحذيرات ثم التأكيد الصريح. افتح صفحة إدارة المستخدمين لاختيار الملف ومراجعته. لم يتم استيراد أي بيانات هنا.'
+          : 'Student and teacher imports require a file preview, review of errors and warnings, and explicit confirmation. Open user management to select and review your file. No data has been imported here.'}</p>
+        <div className="flex flex-wrap gap-3">
+          <Button onClick={() => {
+            onClose();
+            navigate(`${rolePrefix}/users-management?filter=import-export&import_type=${importType}`);
+          }}>{isRTL ? 'فتح مراجعة الاستيراد' : 'Open import review'}</Button>
+          <Button variant="outline" onClick={onClose}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
   const { t } = useTranslation();
   const { direction } = useTheme();
@@ -171,6 +197,7 @@ function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
   };
 
   const config = importTypeMap[importType] || importTypeMap.noor_classes;
+  const requiresExternalReview = importType === 'students' || importType === 'teachers';
 
   useEffect(() => {
     if (show) {
@@ -195,6 +222,7 @@ function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
   };
 
   const handleUpload = async () => {
+    if (requiresExternalReview) return;
     if (!file || !api) return;
     setUploading(true);
     try {
@@ -235,6 +263,7 @@ function NoorImportModal({ show, onClose, importType, api, onSuccess }) {
   };
 
   if (!show) return null;
+  if (requiresExternalReview) return <ExternalImportRedirect importType={importType} onClose={onClose} />;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" dir={direction}>

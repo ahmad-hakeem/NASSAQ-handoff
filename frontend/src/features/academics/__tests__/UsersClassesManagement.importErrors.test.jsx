@@ -13,7 +13,7 @@ jest.mock('react-router-dom', () => ({
 }), { virtual: true });
 
 jest.mock('sonner', () => ({
-  toast: { success: jest.fn(), error: jest.fn() },
+  toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() },
 }));
 
 const mockApiGet = jest.fn();
@@ -83,9 +83,22 @@ import UsersClassesManagement, {
   getBulkImportStatus,
 } from '../pages/UsersClassesManagement';
 
+async function confirmPreview() {
+  fireEvent.click(screen.getByText('معاينة الملف'));
+  await screen.findByText('معاينة فقط — لم تُحفظ أي بيانات بعد');
+  fireEvent.click(screen.getByLabelText('راجعت المعاينة وأؤكد إنشاء أو تحديث السجلات والعلاقات المعروضة.'));
+  fireEvent.click(screen.getByText('تأكيد الاستيراد'));
+}
+
 describe('UsersClassesManagement — Bulk Import Error Logs Rendering', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSearchParams.delete('import_type');
+    mockApiPost.mockReset();
+    mockApiPost.mockResolvedValueOnce({ data: {
+      draft_id: 'review-1', fingerprint: 'file-hash', preview_version: 1,
+      import_type: 'students', can_confirm: true, rows: [], errors: [], warnings: [], summary: {},
+    } });
     mockApiGet.mockImplementation((url) => {
       if (url.startsWith('/students')) return Promise.resolve({ data: [] });
       if (url.startsWith('/teachers')) return Promise.resolve({ data: [] });
@@ -101,7 +114,7 @@ describe('UsersClassesManagement — Bulk Import Error Logs Rendering', () => {
     render(<UsersClassesManagement initialTab="import-export" />);
 
     await waitFor(() => {
-      expect(screen.getByText('بدء الاستيراد')).toBeInTheDocument();
+      expect(screen.getByText('معاينة الملف')).toBeInTheDocument();
     });
 
     // Mock API post response for failed import
@@ -134,9 +147,8 @@ describe('UsersClassesManagement — Bulk Import Error Logs Rendering', () => {
     const fileInput = document.querySelector('input[type="file"]');
     fireEvent.change(fileInput, { target: { files: [file] } });
 
-    // Click "Start Import"
-    const importBtn = screen.getByText('بدء الاستيراد');
-    fireEvent.click(importBtn);
+    // Review and explicitly confirm before actual server results are displayed.
+    await confirmPreview();
 
     // Verify error list rendered on screen
     await waitFor(() => {
@@ -155,7 +167,7 @@ describe('UsersClassesManagement — Bulk Import Error Logs Rendering', () => {
     render(<UsersClassesManagement initialTab="import-export" />);
 
     await waitFor(() => {
-      expect(screen.getByText('بدء الاستيراد')).toBeInTheDocument();
+      expect(screen.getByText('معاينة الملف')).toBeInTheDocument();
     });
 
     mockApiPost.mockResolvedValueOnce({
@@ -180,7 +192,7 @@ describe('UsersClassesManagement — Bulk Import Error Logs Rendering', () => {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
     fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [file] } });
-    fireEvent.click(screen.getByText('بدء الاستيراد'));
+    await confirmPreview();
 
     await waitFor(() => {
       expect(screen.getByTestId('import-status-partial')).toBeInTheDocument();
@@ -198,7 +210,7 @@ describe('UsersClassesManagement — Bulk Import Error Logs Rendering', () => {
     render(<UsersClassesManagement initialTab="import-export" />);
 
     await waitFor(() => {
-      expect(screen.getByText('بدء الاستيراد')).toBeInTheDocument();
+      expect(screen.getByText('معاينة الملف')).toBeInTheDocument();
     });
 
     mockApiPost.mockResolvedValueOnce({
@@ -228,7 +240,7 @@ describe('UsersClassesManagement — Bulk Import Error Logs Rendering', () => {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
     fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [file] } });
-    fireEvent.click(screen.getByText('بدء الاستيراد'));
+    await confirmPreview();
 
     await waitFor(() => {
       expect(screen.getByTestId('import-status-success')).toBeInTheDocument();
@@ -252,6 +264,18 @@ describe('UsersClassesManagement — Bulk Import Error Logs Rendering', () => {
       imported: 10,
       assigned: 10,
     }, 'students')).toBe('success');
+  });
+
+  test('settings teacher deep link opens the teacher external review mode', async () => {
+    mockSearchParams.set('import_type', 'teachers');
+    render(<UsersClassesManagement />);
+    await screen.findByText('معاينة الملف');
+    expect(screen.getByRole('button', { name: 'المعلمون' })).toHaveClass('border-brand-turquoise');
+    fireEvent.change(document.querySelector('input[type="file"]'), {
+      target: { files: [new File(['data'], 'teachers.csv')] },
+    });
+    fireEvent.click(screen.getByText('معاينة الملف'));
+    await waitFor(() => expect(mockApiPost).toHaveBeenCalledWith('/bulk/preview/teachers', expect.any(FormData), expect.anything()));
   });
 
   test('keeps teacher imports on the legacy success semantics', () => {
