@@ -216,6 +216,42 @@ describe('AddTeacherWizard - optional qualifications', () => {
     })));
   });
 
+  test.each([
+    ['degree only', { degree: 'bachelor' }, { academic_degree: 'bachelor', teacher_rank: null, years_of_experience: null }],
+    ['rank only', { rank: 'teacher' }, { academic_degree: null, teacher_rank: 'teacher', years_of_experience: null }],
+    ['experience only', { experience: '7' }, { academic_degree: null, teacher_rank: null, years_of_experience: 7 }],
+    ['all three', { degree: 'bachelor', rank: 'teacher', experience: '7' }, { academic_degree: 'bachelor', teacher_rank: 'teacher', years_of_experience: 7 }],
+  ])('submits %s qualification values without changing absent fields', async (_name, values, expected) => {
+    mockApi.post.mockResolvedValue({ data: { success: true, teacher_id: 'T-populated' } });
+    await renderWizard();
+    fillBasicToQualifications();
+    if (values.degree) setSelect('teacher-degree', values.degree);
+    if (values.rank) setSelect('teacher-rank', values.rank);
+    if (values.experience) fireEvent.change(screen.getByTestId('teacher-experience'), { target: { value: values.experience } });
+    finishFromQualifications();
+    await act(async () => fireEvent.click(screen.getByText('confirmSave')));
+    await waitFor(() => expect(mockApi.post).toHaveBeenCalledWith('/teachers/create', expect.objectContaining({
+      qualifications: expected,
+    })));
+  });
+
+  test('resets every qualification field to blank values for another teacher', async () => {
+    mockApi.post.mockResolvedValue({ data: { success: true, teacher_id: 'T-reset' } });
+    await renderWizard();
+    fillBasicToQualifications();
+    setSelect('teacher-degree', 'bachelor');
+    setSelect('teacher-rank', 'teacher');
+    fireEvent.change(screen.getByTestId('teacher-experience'), { target: { value: '7' } });
+    finishFromQualifications();
+    await act(async () => fireEvent.click(screen.getByText('confirmSave')));
+    await screen.findByText('addAnother2');
+    fireEvent.click(screen.getByText('addAnother2'));
+    fillBasicToQualifications();
+    expect(screen.getByTestId('teacher-degree')).toHaveValue('');
+    expect(screen.getByTestId('teacher-rank')).toHaveValue('');
+    expect(screen.getByTestId('teacher-experience').value).toBe('');
+  });
+
   test('rejects provided negative or non-integer experience at the field', async () => {
     await renderWizard();
     fillBasicToQualifications();

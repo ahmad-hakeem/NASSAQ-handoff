@@ -141,7 +141,11 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
   const [result, setResult] = useState(null);
 
   const [basicData, setBasicData] = useState({ nationality: 'SA' });
-  const [qualData, setQualData] = useState({ years_of_experience: null });
+  const [qualData, setQualData] = useState({
+    academic_degree: null,
+    teacher_rank: null,
+    years_of_experience: null,
+  });
   const [subjectData, setSubjectData] = useState({ subject_ids: [], grade_ids: [], max_periods_per_week: 24 });
   const [scheduleData, setScheduleData] = useState({ contract_type: 'permanent', available_days: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'] });
 
@@ -319,7 +323,11 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
   const handleReset = () => {
     setCurrentStep(1);
     setBasicData({ nationality: 'SA' });
-    setQualData({ years_of_experience: null });
+    setQualData({
+      academic_degree: null,
+      teacher_rank: null,
+      years_of_experience: null,
+    });
     setSubjectData({ subject_ids: [], grade_ids: [], max_periods_per_week: 24 });
     setScheduleData({ contract_type: 'permanent', available_days: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'] });
     setErrors({});
