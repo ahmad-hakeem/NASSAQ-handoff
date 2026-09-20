@@ -162,6 +162,72 @@ const renderWizard = async (props = {}) => {
   return { onOpenChange, onSuccess };
 };
 
+const fillBasicToQualifications = () => {
+  fireEvent.change(screen.getByTestId('teacher-name-ar'), { target: { value: 'أحمد المعلم' } });
+  fireEvent.change(screen.getByTestId('teacher-national-id'), { target: { value: '1234567890' } });
+  fireEvent.click(screen.getByText('Male'));
+  fireEvent.change(screen.getByTestId('teacher-phone'), { target: { value: '0500000000' } });
+  fireEvent.change(screen.getByTestId('teacher-email'), { target: { value: 'ahmed@example.com' } });
+  fireEvent.click(screen.getByText('next'));
+};
+
+const finishFromQualifications = () => {
+  fireEvent.click(screen.getByText('next'));
+  fireEvent.click(screen.getByRole('button', { name: 'Math' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Grade 1' }));
+  setSelect('teacher-primary-subject', 'math');
+  fireEvent.click(screen.getByText('next'));
+  fireEvent.click(screen.getByText('next'));
+};
+
+describe('AddTeacherWizard - optional qualifications', () => {
+  test('allows all qualification fields to remain blank and submits null values', async () => {
+    mockApi.post.mockResolvedValue({ data: { success: true, teacher_id: 'T-optional' } });
+    await renderWizard();
+    fillBasicToQualifications();
+    expect(screen.getByText('Academic Degree').textContent).not.toContain('*');
+    expect(screen.getByText('Years of Experience').textContent).not.toContain('*');
+    expect(screen.getByText('teacherRank').textContent).not.toContain('*');
+    finishFromQualifications();
+    await act(async () => fireEvent.click(screen.getByText('confirmSave')));
+    await waitFor(() => expect(mockApi.post).toHaveBeenCalledWith('/teachers/create', expect.objectContaining({
+      qualifications: expect.objectContaining({
+        academic_degree: null,
+        teacher_rank: null,
+        years_of_experience: null,
+      }),
+    })));
+  });
+
+  test('preserves explicit zero experience and normalizes partially populated qualifications', async () => {
+    mockApi.post.mockResolvedValue({ data: { success: true, teacher_id: 'T-zero' } });
+    await renderWizard();
+    fillBasicToQualifications();
+    fireEvent.change(screen.getByTestId('teacher-experience'), { target: { value: '0' } });
+    setSelect('teacher-degree', 'bachelor');
+    finishFromQualifications();
+    await act(async () => fireEvent.click(screen.getByText('confirmSave')));
+    await waitFor(() => expect(mockApi.post).toHaveBeenCalledWith('/teachers/create', expect.objectContaining({
+      qualifications: expect.objectContaining({
+        academic_degree: 'bachelor',
+        teacher_rank: null,
+        years_of_experience: 0,
+      }),
+    })));
+  });
+
+  test('rejects provided negative or non-integer experience at the field', async () => {
+    await renderWizard();
+    fillBasicToQualifications();
+    fireEvent.change(screen.getByTestId('teacher-experience'), { target: { value: '-1' } });
+    fireEvent.click(screen.getByText('next'));
+    expect(screen.getByText('invalidExperience')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('teacher-experience'), { target: { value: '1.5' } });
+    fireEvent.click(screen.getByText('next'));
+    expect(screen.getByText('invalidExperience')).toBeInTheDocument();
+  });
+});
+
 describe('AddTeacherWizard - Confirm & Save', () => {
   test('happy path: creates teacher, shows success, fires onSuccess, and closes via onOpenChange', async () => {
     mockApi.post.mockResolvedValue({

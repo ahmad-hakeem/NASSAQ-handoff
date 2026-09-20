@@ -141,7 +141,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
   const [result, setResult] = useState(null);
 
   const [basicData, setBasicData] = useState({ nationality: 'SA' });
-  const [qualData, setQualData] = useState({ years_of_experience: 0 });
+  const [qualData, setQualData] = useState({ years_of_experience: null });
   const [subjectData, setSubjectData] = useState({ subject_ids: [], grade_ids: [], max_periods_per_week: 24 });
   const [scheduleData, setScheduleData] = useState({ contract_type: 'permanent', available_days: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'] });
 
@@ -194,8 +194,15 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
       if (!basicData.phone?.trim()) newErrors.phone = t('required');
       if (!basicData.email?.trim()) newErrors.email = t('required');
     } else if (step === 2) {
-      if (!qualData.academic_degree) newErrors.academic_degree = t('required');
-      if (!qualData.teacher_rank) newErrors.teacher_rank = t('required');
+      const experience = qualData.years_of_experience;
+      if (
+        experience !== null &&
+        experience !== undefined &&
+        experience !== '' &&
+        (!/^\d+$/.test(String(experience)) || Number(experience) < 0)
+      ) {
+        newErrors.years_of_experience = t('invalidExperience');
+      }
     } else if (step === 3) {
       if (!subjectData.subject_ids?.length) newErrors.subject_ids = t('selectAtLeastOne');
       if (!subjectData.grade_ids?.length) newErrors.grade_ids = t('selectAtLeastOne2');
@@ -219,7 +226,23 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
     submissionLock.current = true;
     setSubmitting(true);
     try {
-      const payload = { basic_info: basicData, qualifications: qualData, subjects: subjectData, schedule: scheduleData };
+      const normalizeText = (value) => {
+        if (value === null || value === undefined) return null;
+        const normalized = String(value).trim();
+        return normalized || null;
+      };
+      const qualifications = {
+        ...qualData,
+        academic_degree: normalizeText(qualData.academic_degree),
+        teacher_rank: normalizeText(qualData.teacher_rank),
+        years_of_experience:
+          qualData.years_of_experience === null ||
+          qualData.years_of_experience === undefined ||
+          qualData.years_of_experience === ''
+            ? null
+            : Number(qualData.years_of_experience),
+      };
+      const payload = { basic_info: basicData, qualifications, subjects: subjectData, schedule: scheduleData };
       const response = await apiClient.post('/teachers/create', payload);
       if (response.data.success) {
         setResult(response.data);
@@ -296,7 +319,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
   const handleReset = () => {
     setCurrentStep(1);
     setBasicData({ nationality: 'SA' });
-    setQualData({ years_of_experience: 0 });
+    setQualData({ years_of_experience: null });
     setSubjectData({ subject_ids: [], grade_ids: [], max_periods_per_week: 24 });
     setScheduleData({ contract_type: 'permanent', available_days: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'] });
     setErrors({});
@@ -436,7 +459,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
               <div className="space-y-5">
                 <SectionHeader icon={GraduationCap} title={t('qualifications')} subtitle={t('enterQualificationAndExperienceInfo')} color="blue" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField label={isRTL ? 'الدرجة العلمية' : 'Academic Degree'} required error={errors.academic_degree}>
+                  <FormField label={isRTL ? 'الدرجة العلمية' : 'Academic Degree'} error={errors.academic_degree}>
                     <Select value={qualData.academic_degree || ''} onValueChange={(val) => setQualData(p => ({ ...p, academic_degree: val }))}>
                       <SelectTrigger className={`h-10 rounded-lg ${errors.academic_degree ? 'border-red-500' : ''}`} data-testid="teacher-degree"><SelectValue placeholder={t('selectDegree')} /></SelectTrigger>
                       <SelectContent>
@@ -453,10 +476,10 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                   <FormField label={t('graduationYear')}>
                     <Input type="number" value={qualData.graduation_year || ''} onChange={(e) => setQualData(p => ({ ...p, graduation_year: parseInt(e.target.value) || '' }))} min="1970" max={new Date().getFullYear()} className="h-10 rounded-lg" data-testid="teacher-grad-year" />
                   </FormField>
-                  <FormField label={isRTL ? 'سنوات الخبرة' : 'Years of Experience'} required error={errors.years_of_experience}>
-                    <Input type="number" value={qualData.years_of_experience ?? ''} onChange={(e) => setQualData(p => ({ ...p, years_of_experience: parseInt(e.target.value) || 0 }))} min="0" className={`h-10 rounded-lg ${errors.years_of_experience ? 'border-red-500' : ''}`} data-testid="teacher-experience" />
+                  <FormField label={isRTL ? 'سنوات الخبرة' : 'Years of Experience'} error={errors.years_of_experience}>
+                    <Input type="number" value={qualData.years_of_experience ?? ''} onChange={(e) => setQualData(p => ({ ...p, years_of_experience: e.target.value }))} min="0" className={`h-10 rounded-lg ${errors.years_of_experience ? 'border-red-500' : ''}`} data-testid="teacher-experience" />
                   </FormField>
-                  <FormField label={t('teacherRank')} required error={errors.teacher_rank}>
+                  <FormField label={t('teacherRank')} error={errors.teacher_rank}>
                     <Select value={qualData.teacher_rank || ''} onValueChange={(val) => setQualData(p => ({ ...p, teacher_rank: val }))}>
                       <SelectTrigger className={`h-10 rounded-lg ${errors.teacher_rank ? 'border-red-500' : ''}`} data-testid="teacher-rank"><SelectValue placeholder={t('selectRank')} /></SelectTrigger>
                       <SelectContent>
@@ -608,9 +631,9 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                     <span className="font-semibold text-sm text-blue-800 dark:text-blue-300">{isRTL ? 'المؤهلات' : 'Qualifications'}</span>
                   </div>
                   <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                    <div><span className="text-muted-foreground text-xs">{t('degree2')}</span><p className="font-medium">{qualData.academic_degree}</p></div>
-                    <div><span className="text-muted-foreground text-xs">{t('experience2')}</span><p className="font-medium">{qualData.years_of_experience} {t('years')}</p></div>
-                    <div><span className="text-muted-foreground text-xs">{t('rank')}</span><p className="font-medium">{qualData.teacher_rank}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('degree2')}</span><p className="font-medium">{qualData.academic_degree || 'غير مضاف'}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('experience2')}</span><p className="font-medium">{qualData.years_of_experience === null || qualData.years_of_experience === undefined || qualData.years_of_experience === '' ? 'غير مضاف' : `${qualData.years_of_experience} ${t('years')}`}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('rank')}</span><p className="font-medium">{qualData.teacher_rank || 'غير مضاف'}</p></div>
                   </div>
                 </div>
 
