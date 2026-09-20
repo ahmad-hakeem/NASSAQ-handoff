@@ -1,6 +1,6 @@
 """Separate retained timetable history from operational placements."""
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from engines.sql_utils import _build_filter_conditions, models_to_dicts
 from pg_models import GenericDocument
@@ -27,3 +27,19 @@ async def find_live_timetable_sessions(session, filters: dict, *, limit=50000):
     )
     result = await session.execute(stmt)
     return models_to_dicts(result.scalars().all())
+
+
+async def count_live_timetable_sessions(session, filters: dict) -> int:
+    """Count operational placements, retaining legacy null/missing markers."""
+    stmt = (
+        select(func.count())
+        .select_from(GenericDocument)
+        .where(
+            GenericDocument._collection == "timetable_sessions",
+            *_build_filter_conditions(GenericDocument, filters),
+            GenericDocument.data["is_active"].astext.is_distinct_from("false"),
+            GenericDocument.data["status"].astext.is_distinct_from("cancelled"),
+        )
+    )
+    result = await session.execute(stmt)
+    return int(result.scalar_one())

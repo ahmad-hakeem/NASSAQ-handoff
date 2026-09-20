@@ -30,6 +30,7 @@ from engines.notification_engine import (
     NotificationType,
 )
 from engines.sql_utils import gd_delete_many, gd_find, gd_find_one, gd_insert, gd_upsert
+from engines.timetable_session_lifecycle import find_live_timetable_sessions
 from src.common.utils.tenant_scope import assert_school_access, resolve_school_id
 
 # Standby roster is principal/admin-only (Task #157).
@@ -103,7 +104,10 @@ async def get_standby_candidates(
     # Echo back original session context if provided (cheap, no extra query
     # if absent — frontend already has the cell data).
     if original_session_id:
-        orig = await gd_find_one(db.session, "timetable_sessions", {"id": original_session_id})
+        rows = await find_live_timetable_sessions(
+            db.session, {"id": original_session_id}, limit=1
+        )
+        orig = rows[0] if rows else None
         if orig and orig.get("school_id") in (sid, None):
             result["original_session"] = {
                 "id": orig.get("id"),
@@ -143,9 +147,10 @@ async def notify_coverage_candidate(
 
     # الحصة الأصلية — تُعيد 404 إن لم توجد أو كانت لمدرسة أخرى حتى لا
     # يكشف المسار وجود سجلات مستأجر آخر.
-    orig = await gd_find_one(
-        db.session, "timetable_sessions", {"id": body.original_session_id}
+    rows = await find_live_timetable_sessions(
+        db.session, {"id": body.original_session_id}, limit=1
     )
+    orig = rows[0] if rows else None
     if not orig or str(orig.get("school_id")) != str(sid):
         raise HTTPException(status_code=404, detail="الحصة غير موجودة")
 
@@ -544,10 +549,10 @@ async def get_standby_roster(
     # Guardrail: standby generation requires that the master schedule has
     # produced at least one session. See
     # docs/superpowers/specs/2026-05-03-standby-engine-refactor-design.md.
-    has_session = await gd_find_one(
-        db.session, "timetable_sessions", {"school_id": str(sid)},
+    live_sessions = await find_live_timetable_sessions(
+        db.session, {"school_id": str(sid)}, limit=1
     )
-    if not has_session:
+    if not live_sessions:
         raise HTTPException(
             status_code=409,
             detail="يجب توليد الجدول الرئيسي أولاً قبل توليد جدول الانتظار",
@@ -563,10 +568,8 @@ async def get_standby_roster(
     timetable_id = timetable.get("id") if timetable else None
     sessions: list[dict] = []
     if timetable_id:
-        sessions = await gd_find(
-            db.session, "timetable_sessions",
-            {"timetable_id": timetable_id},
-            limit=10000,
+        sessions = await find_live_timetable_sessions(
+            db.session, {"timetable_id": timetable_id}, limit=10000
         )
     periods = _detect_periods(sessions)
 
@@ -948,10 +951,8 @@ async def get_my_standby_roster(
     timetable_id = timetable.get("id") if timetable else None
     sessions: list[dict] = []
     if timetable_id:
-        sessions = await gd_find(
-            db.session, "timetable_sessions",
-            {"timetable_id": timetable_id},
-            limit=10000,
+        sessions = await find_live_timetable_sessions(
+            db.session, {"timetable_id": timetable_id}, limit=10000
         )
     periods = _detect_periods(sessions)
 
@@ -1143,8 +1144,8 @@ async def put_standby_override(
     # Reject manual adds that would be silently dropped (busy/leave/blocked).
     if action == "add":
         if timetable_id:
-            clash = await gd_find(
-                db.session, "timetable_sessions",
+            clash = await find_live_timetable_sessions(
+                db.session,
                 {
                     "timetable_id": timetable_id,
                     "teacher_id": body.teacher_id,

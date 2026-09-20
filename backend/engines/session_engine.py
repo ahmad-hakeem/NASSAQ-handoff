@@ -24,6 +24,7 @@ import logging
 from sqlalchemy import text as sa_text
 
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
+from engines.timetable_session_lifecycle import find_live_timetable_sessions
 from src.common.utils.parent_resolution import resolve_students_parent_user_ids
 from src.common.utils.student_health import summarize_student_health
 
@@ -532,7 +533,10 @@ class TeacherSessionEngine:
         """
         schedule_session = await gd_find_one(self.session, "schedule_sessions", {"id": schedule_session_id})
         if not schedule_session:
-            schedule_session = await gd_find_one(self.session, "timetable_sessions", {"id": schedule_session_id})
+            timetable_sessions = await find_live_timetable_sessions(
+                self.session, {"id": schedule_session_id}, limit=1
+            )
+            schedule_session = timetable_sessions[0] if timetable_sessions else None
 
         if not schedule_session:
             schedule_session = {"id": schedule_session_id, "teacher_id": teacher_id}

@@ -36,6 +36,10 @@ from engines.notification_engine import (
     NotificationPriority,
     NotificationType,
 )
+from engines.timetable_session_lifecycle import (
+    count_live_timetable_sessions,
+    find_live_timetable_sessions,
+)
 
 from services.standby_roster_service import (
     DAYS,
@@ -204,8 +208,8 @@ async def score_candidates_for_slot(
 
     sessions = []
     if timetable_id:
-        sessions = await gd_find(
-            session, "timetable_sessions",
+        sessions = await find_live_timetable_sessions(
+            session,
             {"timetable_id": timetable_id},
             limit=10000,
         )
@@ -373,7 +377,10 @@ async def assign_substitute(
     if not original_session_id or not substitute_teacher_id or not absence_date:
         return {"success": False, "error": "missing_fields", "message_ar": "بيانات ناقصة"}
 
-    orig = await gd_find_one(session, "timetable_sessions", {"id": original_session_id})
+    orig_rows = await find_live_timetable_sessions(
+        session, {"id": original_session_id}, limit=1,
+    )
+    orig = orig_rows[0] if orig_rows else None
     if not orig:
         return {"success": False, "error": "session_not_found", "message_ar": "الحصة غير موجودة"}
     if orig.get("school_id") and orig.get("school_id") != school_id:
@@ -389,7 +396,7 @@ async def assign_substitute(
         return {"success": False, "error": "invalid_slot", "message_ar": "بيانات الحصة غير سليمة"}
 
     # Conflict checks: substitute must be free at this slot in main timetable
-    main_conflict = await gd_count(session, "timetable_sessions", {
+    main_conflict = await count_live_timetable_sessions(session, {
         "timetable_id": orig.get("timetable_id"),
         "teacher_id": substitute_teacher_id,
         "day_of_week": day,
@@ -624,9 +631,8 @@ async def list_vacant_slots_for_absent_teacher(
             "error_ar": "المعلم غير موجود في هذه المدرسة",
         }
 
-    teacher_sessions = await gd_find(
+    teacher_sessions = await find_live_timetable_sessions(
         session,
-        "timetable_sessions",
         {
             "timetable_id": timetable.get("id"),
             "teacher_id": absent_teacher_id,
@@ -746,7 +752,10 @@ async def assign_bulk_substitutes(
             })
             continue
 
-        orig = await gd_find_one(session, "timetable_sessions", {"id": orig_id})
+        orig_rows = await find_live_timetable_sessions(
+            session, {"id": orig_id}, limit=1,
+        )
+        orig = orig_rows[0] if orig_rows else None
         if not orig:
             results.append({
                 "success": False,
@@ -786,7 +795,7 @@ async def assign_bulk_substitutes(
             continue
 
         # Hard-constraint: substitute must be free at this slot in the timetable.
-        main_conflict = await gd_count(session, "timetable_sessions", {
+        main_conflict = await count_live_timetable_sessions(session, {
             "timetable_id": orig.get("timetable_id"),
             "teacher_id": sub_tid,
             "day_of_week": day,

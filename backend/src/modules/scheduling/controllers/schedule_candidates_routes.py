@@ -13,6 +13,7 @@ import logging
 
 from dependencies import db, require_roles, UserRole
 from engines.sql_utils import gd_find_one, gd_delete_one
+from engines.timetable_session_lifecycle import find_live_timetable_sessions
 from services.schedule_candidates_service import (
     get_candidates,
     assign_teacher_to_slot,
@@ -76,12 +77,17 @@ async def list_slot_candidates(
     tt = await _ensure_timetable_access(timetable_id, current_user)
 
     # تأكد أن الخانة فارغة فعلاً للفصل المحدد
-    existing = await gd_find_one(db.session, "timetable_sessions", {
-        "timetable_id": timetable_id,
-        "class_id": class_id,
-        "day_of_week": day_of_week,
-        "period_number": period_number,
-    })
+    existing_rows = await find_live_timetable_sessions(
+        db.session,
+        {
+            "timetable_id": timetable_id,
+            "class_id": class_id,
+            "day_of_week": day_of_week,
+            "period_number": period_number,
+        },
+        limit=1,
+    )
+    existing = existing_rows[0] if existing_rows else None
     if existing:
         raise HTTPException(
             status_code=409,
@@ -174,12 +180,17 @@ async def unassign_slot(
     """
     timetable_id, class_id, day_of_week, period_number = _parse_composite_slot_id(slot_id)
     await _ensure_timetable_access(timetable_id, current_user)
-    sess = await gd_find_one(db.session, "timetable_sessions", {
-        "timetable_id": timetable_id,
-        "class_id": class_id,
-        "day_of_week": day_of_week,
-        "period_number": period_number,
-    })
+    session_rows = await find_live_timetable_sessions(
+        db.session,
+        {
+            "timetable_id": timetable_id,
+            "class_id": class_id,
+            "day_of_week": day_of_week,
+            "period_number": period_number,
+        },
+        limit=1,
+    )
+    sess = session_rows[0] if session_rows else None
     if not sess:
         raise HTTPException(status_code=404, detail="الحصة غير موجودة (ربما حُذفت بالفعل)")
 

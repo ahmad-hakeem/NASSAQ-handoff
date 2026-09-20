@@ -10,7 +10,11 @@ Scoring (max 100):
 """
 from typing import Any, Dict, List, Optional
 
-from engines.sql_utils import gd_find, gd_find_one, gd_count
+from engines.sql_utils import gd_find, gd_find_one
+from engines.timetable_session_lifecycle import (
+    count_live_timetable_sessions,
+    find_live_timetable_sessions,
+)
 
 
 DEFAULT_WEEKLY_NISAB = 24
@@ -76,9 +80,8 @@ async def get_candidates(
     teacher_ids = [t["id"] for t in teachers]
 
     # 3. جلب جدول الحصص الحالي للمدرسة (لحساب النصاب والتوافر)
-    all_sessions = await gd_find(
+    all_sessions = await find_live_timetable_sessions(
         session,
-        "timetable_sessions",
         {"timetable_id": timetable_id, "teacher_id": {"$in": teacher_ids}},
         limit=10000,
     )
@@ -187,7 +190,7 @@ async def assign_teacher_to_slot(
     """يُنشئ حصة جديدة في timetable_sessions ويتحقق من التعارضات والعزل بين المدارس."""
     import uuid
     from datetime import datetime, timezone
-    from engines.sql_utils import gd_insert, gd_count, gd_delete_one
+    from engines.sql_utils import gd_insert, gd_delete_one
 
     # 1) عزل المستأجر — تحقق أن المعلم/الفصل/المادة كلها تنتمي لنفس المدرسة
     teacher = await gd_find_one(session, "teachers", {"id": teacher_id})
@@ -216,26 +219,34 @@ async def assign_teacher_to_slot(
     subj = subj or {}
 
     # 2) فحص التعارض المسبق (best-effort قبل الإدراج)
-    teacher_conflict = await gd_find_one(session, "timetable_sessions", {
-        "timetable_id": timetable_id,
-        "teacher_id": teacher_id,
-        "day_of_week": day_of_week,
-        "period_number": period_number,
-    })
-    if teacher_conflict:
+    teacher_conflicts = await find_live_timetable_sessions(
+        session,
+        {
+            "timetable_id": timetable_id,
+            "teacher_id": teacher_id,
+            "day_of_week": day_of_week,
+            "period_number": period_number,
+        },
+        limit=1,
+    )
+    if teacher_conflicts:
         return {
             "success": False,
             "error": "teacher_conflict",
             "message_ar": "المعلم لديه حصة أخرى في هذا الوقت",
         }
 
-    class_conflict = await gd_find_one(session, "timetable_sessions", {
-        "timetable_id": timetable_id,
-        "class_id": class_id,
-        "day_of_week": day_of_week,
-        "period_number": period_number,
-    })
-    if class_conflict:
+    class_conflicts = await find_live_timetable_sessions(
+        session,
+        {
+            "timetable_id": timetable_id,
+            "class_id": class_id,
+            "day_of_week": day_of_week,
+            "period_number": period_number,
+        },
+        limit=1,
+    )
+    if class_conflicts:
         return {
             "success": False,
             "error": "class_conflict",
@@ -281,13 +292,13 @@ async def assign_teacher_to_slot(
     # 3) Post-insert verification — يلتقط حالات السباق (concurrent assigns)
     # في حال وُجدت أكثر من حصة لنفس (timetable, class, day, period) أو نفس المعلم
     # في نفس الخانة، نتراجع عن إدراجنا الأخير ونعيد خطأ.
-    class_count = await gd_count(session, "timetable_sessions", {
+    class_count = await count_live_timetable_sessions(session, {
         "timetable_id": timetable_id,
         "class_id": class_id,
         "day_of_week": day_of_week,
         "period_number": period_number,
     })
-    teacher_count = await gd_count(session, "timetable_sessions", {
+    teacher_count = await count_live_timetable_sessions(session, {
         "timetable_id": timetable_id,
         "teacher_id": teacher_id,
         "day_of_week": day_of_week,

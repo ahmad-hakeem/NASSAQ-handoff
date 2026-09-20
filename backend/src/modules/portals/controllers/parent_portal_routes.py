@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 SAUDI_TZ = ZoneInfo("Asia/Riyadh")
 import uuid
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert
+from engines.timetable_session_lifecycle import find_live_timetable_sessions
 from src.core.guards.tenant_guard import is_independent_workspace_id
 from src.common.utils.it_schedule import normalize_it_day, compute_it_slot_times
 from src.common.utils.subject_display import build_subject_name_map
@@ -373,7 +374,8 @@ async def _resolve_class_today_sessions(session, school_id, class_id, today_en):
     if not timetable:
         return []
 
-    all_sessions = await gd_find(session, "timetable_sessions", {
+    all_sessions = await find_live_timetable_sessions(session, {
+        "school_id": school_id,
         "timetable_id": timetable.get("id"),
         "class_id": class_id,
     }, limit=500)
@@ -1388,7 +1390,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
                 sort=[("created_at", -1)])
             if timetable:
-                all_sessions = await gd_find(db.session, "timetable_sessions", {
+                all_sessions = await find_live_timetable_sessions(db.session, {
+                        "school_id": school_id,
                         "timetable_id": timetable.get("id"),
                         "class_id": child.get("class_id")
                     }, limit=500)
@@ -3469,9 +3472,13 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             )
             tt_id = published[0].get("id")
             if tt_id:
-                tt_sessions = await gd_find(
-                    db.session, "timetable_sessions",
-                    {"timetable_id": tt_id, "class_id": {"$in": class_ids}},
+                tt_sessions = await find_live_timetable_sessions(
+                    db.session,
+                    {
+                        "school_id": school_id,
+                        "timetable_id": tt_id,
+                        "class_id": {"$in": class_ids},
+                    },
                     limit=2000,
                 )
                 for s in tt_sessions:
@@ -3798,7 +3805,8 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
             timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
                 sort=[("created_at", -1)])
             if timetable:
-                sessions = await gd_find(db.session, "timetable_sessions", {
+                sessions = await find_live_timetable_sessions(db.session, {
+                        "school_id": school_id,
                         "timetable_id": timetable.get("id"),
                         "class_id": child.get("class_id")
                     }, limit=500)

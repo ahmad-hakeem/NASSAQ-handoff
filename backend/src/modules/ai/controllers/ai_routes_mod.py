@@ -22,6 +22,7 @@ from dependencies import (
     REPORT_TYPES, generate_student_qr_code
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_aggregate
+from engines.timetable_session_lifecycle import count_live_timetable_sessions
 
 
 from shared_models import (
@@ -3129,7 +3130,10 @@ async def get_ai_alerts(
     # teachers to timetable slots is a school-admin / scheduling task,
     # not something a teacher can act on from their own dashboard.
     if teacher_scope is None:
-        unassigned_sessions = await gd_count(db.session, "timetable_sessions", {**sessions_q, "$or": [{"teacher_id": None}, {"teacher_id": ""}]})
+        unassigned_sessions = await count_live_timetable_sessions(
+            db.session,
+            {**sessions_q, "$or": [{"teacher_id": None}, {"teacher_id": ""}]},
+        )
         if unassigned_sessions > 0:
             alerts.append({
                 "id": str(uuid.uuid4())[:8],

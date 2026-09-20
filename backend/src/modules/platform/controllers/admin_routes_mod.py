@@ -13,6 +13,7 @@ import uuid, os, logging, json, random, re, io, base64
 
 from sqlalchemy import bindparam, text as sa_text
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
+from engines.timetable_session_lifecycle import count_live_timetable_sessions
 from dependencies import (
     db, get_current_user, require_roles, UserRole, SchoolStatus,
     hash_password, verify_password, create_access_token,
@@ -675,7 +676,7 @@ async def get_activity_summary(current_user: dict = Depends(require_roles([
         today_str = today.strftime("%Y-%m-%d")
         today_attendance = await gd_count(db.session, "attendance", {"date": today_str})
         today_users = await gd_count(db.session, "users", {"is_active": True})
-        today_lessons = await gd_count(db.session, "timetable_sessions", {})
+        today_lessons = await count_live_timetable_sessions(db.session, {})
         today_grades = await gd_count(db.session, "grades", {})
 
         return {

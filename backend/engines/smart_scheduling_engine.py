@@ -3353,9 +3353,10 @@ class SmartSchedulingEngine:
                     order_by="created_at", desc_order=True, limit=1,
                 )
                 if _drafts:
-                    _other = await gd_find(
-                        self.session, "timetable_sessions",
+                    _other = await find_live_timetable_sessions(
+                        self.session,
                         {"timetable_id": _drafts[0].get("id"),
+                         "school_id": school_id,
                          "class_id": {"$nin": target_class_ids}},
                         limit=5000,
                     )

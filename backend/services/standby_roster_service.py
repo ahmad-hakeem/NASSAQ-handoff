@@ -27,6 +27,7 @@ from math import ceil
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from engines.sql_utils import gd_find, gd_find_one
+from engines.timetable_session_lifecycle import find_live_timetable_sessions
 
 
 DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday"]
@@ -226,8 +227,8 @@ async def compute_standby_roster(
 
     if sessions is None:
         if timetable_id:
-            sessions = await gd_find(
-                session, "timetable_sessions",
+            sessions = await find_live_timetable_sessions(
+                session,
                 {"timetable_id": timetable_id},
                 limit=10000,
             )

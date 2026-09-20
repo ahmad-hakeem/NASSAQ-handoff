@@ -11,6 +11,7 @@ import logging
 from engines.sql_utils import (
     gd_find, gd_find_one, gd_insert, gd_update_one, gd_delete_one,
 )
+from engines.timetable_session_lifecycle import find_live_timetable_sessions
 from src.modules.schools.dto.unavailability_dto import UnavailabilityCreate
 
 logger = logging.getLogger("nassaq")
@@ -94,11 +95,12 @@ class TeacherUnavailabilityService:
             affected_sessions: list[dict] = []
             if active_timetable:
                 session_query = {
+                    "school_id": school_id,
                     "timetable_id": active_timetable.get("id"),
                     "class_id": data.entity_id,
                 }
-                all_class_sessions = await gd_find(
-                    session, "timetable_sessions", session_query, limit=2000
+                all_class_sessions = await find_live_timetable_sessions(
+                    session, session_query, limit=2000
                 )
                 if data.unavailability_type == "recurring":
                     ar_to_en = {

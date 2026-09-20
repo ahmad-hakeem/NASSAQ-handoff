@@ -15,6 +15,7 @@ from dependencies import (
 from engines.sql_utils import (
     gd_find, gd_find_one, gd_insert, gd_update_one, gd_delete_one,
 )
+from engines.timetable_session_lifecycle import find_live_timetable_sessions
 from src.modules.schools.dto.constraints_dto import (
     CustomSoftConstraintCreate, CustomSoftConstraintUpdate,
     ConstraintPatternCreate, OtherDutyCreate, OtherDutyUpdate
@@ -425,9 +426,12 @@ class ConstraintsService:
         )
         session_counts_by_teacher: Dict[str, int] = {}
         if active_timetable:
-            placed_sessions = await gd_find(
-                session, "timetable_sessions",
-                {"timetable_id": active_timetable.get("id")},
+            placed_sessions = await find_live_timetable_sessions(
+                session,
+                {
+                    "school_id": school_id,
+                    "timetable_id": active_timetable.get("id"),
+                },
                 limit=10000
             )
             for s in placed_sessions:

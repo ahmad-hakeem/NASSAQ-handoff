@@ -24,6 +24,7 @@ from dependencies import (
     require_recent_mfa_403_if_independent_teacher,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, _gd_aggregate
+from engines.timetable_session_lifecycle import find_live_timetable_sessions
 from src.core.guards.tenant_guard import is_independent_workspace_id
 from src.common.utils.it_schedule import compute_it_slot_times, normalize_it_day
 from src.common.utils.subject_display import subject_display_name
@@ -208,10 +209,16 @@ async def _resolve_teacher_sessions(school_id: str, resolved_teacher_id: str, da
     enriched: List[Dict[str, Any]] = []
 
     if use_timetable and timetable:
-        tt_filter = {"timetable_id": timetable.get("id"), "teacher_id": resolved_teacher_id}
+        tt_filter = {
+            "school_id": school_id,
+            "timetable_id": timetable.get("id"),
+            "teacher_id": resolved_teacher_id,
+        }
         if day_of_week:
             tt_filter["day_of_week"] = day_of_week
-        sessions = await gd_find(db.session, "timetable_sessions", tt_filter, limit=500)
+        sessions = await find_live_timetable_sessions(
+            db.session, tt_filter, limit=500
+        )
         # Deduplicate by (day, period) so a stale duplicate row can't double up.
         seen = set()
         unique = []

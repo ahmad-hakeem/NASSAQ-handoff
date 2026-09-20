@@ -16,6 +16,7 @@ from engines.sql_utils import (
 # FIX (D8): Use the canonical UserRole enum for the seed-account role string
 # instead of a hardcoded "student" literal.
 from dependencies import UserRole
+from engines.timetable_session_lifecycle import find_live_timetable_sessions
 from src.common.utils.subject_display import build_subject_name_map
 
 
@@ -103,7 +104,8 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
             timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": {"$in": LIVE_TIMETABLE_STATUSES}}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
                 sort=[("created_at", -1)])
             if timetable:
-                sessions = await gd_find(db.session, "timetable_sessions", {
+                sessions = await find_live_timetable_sessions(db.session, {
+                        "school_id": school_id,
                         "timetable_id": timetable.get("id"),
                         "class_id": student.get("class_id"),
                         "day_of_week": today_en
@@ -355,7 +357,8 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
             timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": {"$in": LIVE_TIMETABLE_STATUSES}}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
                 sort=[("created_at", -1)])
             if timetable:
-                all_sessions = await gd_find(db.session, "timetable_sessions", {
+                all_sessions = await find_live_timetable_sessions(db.session, {
+                        "school_id": school_id,
                         "timetable_id": timetable.get("id"),
                         "class_id": student.get("class_id")
                     }, limit=500)
@@ -513,7 +516,8 @@ def setup_student_portal_routes(db, get_current_user, require_roles, UserRole):
             teacher_ids_set = set()
             teacher_subject_map = {}
             if timetable:
-                sessions = await gd_find(db.session, "timetable_sessions", {
+                sessions = await find_live_timetable_sessions(db.session, {
+                        "school_id": school_id,
                         "timetable_id": timetable.get("id"),
                         "class_id": student.get("class_id")
                     }, limit=500)
