@@ -16,6 +16,7 @@ from dependencies import (
     require_recent_mfa,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_unset
+from src.common.utils.date_only import normalize_optional_past_date
 
 
 router = APIRouter(prefix="/principal", tags=["Principal Management"])
@@ -282,12 +283,28 @@ async def update_teacher_basic_info(
     updates = {}
     changes = {}
     for field in ["full_name", "full_name_en", "national_id", "gender", "nationality",
-                  "date_of_birth", "marital_status", "phone", "alt_phone", "email",
+                  "marital_status", "phone", "alt_phone", "email",
                   "address", "city", "country"]:
         val = getattr(data, field, None)
         if val is not None and val != teacher.get(field):
             updates[field] = val
             changes[field] = {"old": teacher.get(field), "new": val}
+
+    # Unlike the older optional text fields, birth date has explicit PATCH-like
+    # semantics: omitted preserves, while null/blank clears.
+    if "date_of_birth" in data.model_fields_set:
+        try:
+            birth_date = normalize_optional_past_date(data.date_of_birth)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail=f"date_of_birth: {exc}"
+            ) from exc
+        if birth_date != teacher.get("date_of_birth"):
+            updates["date_of_birth"] = birth_date
+            changes["date_of_birth"] = {
+                "old": teacher.get("date_of_birth"),
+                "new": birth_date,
+            }
 
     if not updates:
         return {"success": True, "message": "لا توجد تغييرات"}

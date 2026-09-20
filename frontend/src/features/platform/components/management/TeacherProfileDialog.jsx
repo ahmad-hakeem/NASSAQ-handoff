@@ -15,8 +15,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/compo
 import { getFormErrorMessage } from '@/shared/models/utils/apiError';
 import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
 import { maskInternalId } from '@/shared/models/utils/internalId';
+import { TeacherBirthDateDisplay, TeacherBirthDateField } from '@/shared/components/forms/TeacherBirthDate';
+import { validateTeacherBirthDate } from '@/shared/models/utils/teacherBirthDate';
 import {
-  User, BookOpen, Edit, Save, X, Phone, Mail, Hash, Calendar,
+  User, BookOpen, Edit, Save, X, Phone, Mail, Hash,
   MapPin, Loader2, Award, Briefcase, Copy, Eye, EyeOff, History,
   AlertTriangle, CheckCircle, FileText, Key, Settings2, UserCheck,
   UserX, Shield, Trash2, Clock
@@ -43,6 +45,8 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({});
   const [experienceError, setExperienceError] = useState('');
+  const [birthDateError, setBirthDateError] = useState('');
+  const [birthDateDirty, setBirthDateDirty] = useState(false);
   const [credForm, setCredForm] = useState({ new_email: '', new_password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
@@ -71,9 +75,23 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
   }, [open, teacher?.id, fetchProfile]);
 
   const handleSaveBasicInfo = async () => {
+    const { date_of_birth: rawBirthDate, ...basicInfo } = formData;
+    if (birthDateDirty) {
+      const birthDate = validateTeacherBirthDate(rawBirthDate);
+      if (birthDate.status === 'invalid') {
+        setBirthDateError(t('invalidGregorianDate'));
+        return;
+      }
+      if (birthDate.status === 'future') {
+        setBirthDateError(t('futureBirthDate'));
+        return;
+      }
+      basicInfo.date_of_birth = birthDate.value;
+    }
+    setBirthDateError('');
     setSaving(true);
     try {
-      await api.put(`/principal/teacher/${teacher.id}/basic-info`, formData);
+      await api.put(`/principal/teacher/${teacher.id}/basic-info`, basicInfo);
       toast.success(isRTL ? 'تم تحديث البيانات بنجاح' : 'Profile updated successfully');
       setEditing(false);
       setEditSection(null);
@@ -193,6 +211,8 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
   const startEdit = (section) => {
     const p = profile;
     if (section === 'basic') {
+      setBirthDateError('');
+      setBirthDateDirty(false);
       setFormData({ ...p?.basic_info, ...p?.contact_info });
     } else if (section === 'professional') {
       setExperienceError('');
@@ -306,7 +326,6 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                       { key: 'phone', label: t('phone'), icon: Phone },
                       { key: 'email', label: t('email'), icon: Mail },
                       { key: 'nationality', label: t('nationality'), icon: MapPin },
-                      { key: 'date_of_birth', label: t('dateOfBirth'), icon: Calendar },
                       { key: 'address', label: t('address'), icon: MapPin },
                       { key: 'city', label: t('city'), icon: MapPin },
                     ].map(({ key, label, icon: Icon }) => (
@@ -315,6 +334,21 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                         <Input value={formData[key] || ''} onChange={(e) => setFormData(p => ({ ...p, [key]: e.target.value }))} className="h-8 text-sm" />
                       </div>
                     ))}
+                    <TeacherBirthDateField
+                      id="profile-teacher-date-of-birth"
+                      value={formData.date_of_birth || ''}
+                      onChange={(value) => {
+                        setFormData(previous => ({ ...previous, date_of_birth: value }));
+                        setBirthDateError('');
+                        setBirthDateDirty(true);
+                      }}
+                      t={t}
+                      locale={isRTL ? 'ar' : 'en'}
+                      error={birthDateError}
+                      legacyUnchanged={!birthDateDirty}
+                      testId="profile-teacher-dob"
+                      className="col-span-2"
+                    />
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3 text-sm">
@@ -333,6 +367,12 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                         <div><span className="text-muted-foreground text-xs">{label}</span><p className="font-medium text-sm">{value || '-'}</p></div>
                       </div>
                     ))}
+                    <TeacherBirthDateDisplay
+                      value={p?.basic_info?.date_of_birth || null}
+                      t={t}
+                      locale={isRTL ? 'ar' : 'en'}
+                      className="col-span-2"
+                    />
                   </div>
                 )}
 

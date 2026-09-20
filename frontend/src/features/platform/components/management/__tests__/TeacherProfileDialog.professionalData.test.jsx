@@ -332,4 +332,179 @@ describe('TeacherProfileDialog — Professional Data Rendering', () => {
     expect(await screen.findByText(/يجب أن تكون الخبرة|Experience must be/)).toBeInTheDocument();
     expect(mockApi.put).not.toHaveBeenCalled();
   });
+
+  test('renders both birth-date calendars and saves only the Gregorian value', async () => {
+    const profile = {
+      basic_info: {
+        full_name: 'معلم',
+        date_of_birth: '2024-03-11',
+      },
+      contact_info: {},
+      professional_info: {},
+      operational_info: { status: 'active' },
+    };
+    mockApi.get.mockResolvedValue({ data: { profile } });
+    mockApi.put.mockResolvedValue({ data: { success: true } });
+
+    render(
+      <ThemeProvider>
+        <TeacherProfileDialog
+          open={true}
+          onClose={() => {}}
+          teacher={{ id: 't-dob', full_name: 'معلم' }}
+          onRefresh={() => {}}
+        />
+      </ThemeProvider>
+    );
+
+    expect(await screen.findByText('2024-03-11')).toBeInTheDocument();
+    expect(screen.getByText(/١٤٤٥-٠٩-٠١ هـ/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /تعديل|edit/i }));
+    fireEvent.change(screen.getByTestId('profile-teacher-dob'), { target: { value: '2000-01-01' } });
+    expect(screen.getByText(/١٤٢٠-٠٩-٢٤ هـ/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
+
+    await waitFor(() => expect(mockApi.put).toHaveBeenCalledWith(
+      '/principal/teacher/t-dob/basic-info',
+      expect.objectContaining({ date_of_birth: '2000-01-01' })
+    ));
+    expect(mockApi.put.mock.calls[0][1]).not.toHaveProperty('hijri_date_of_birth');
+  });
+
+  test('clears a birth date as null and blocks a future value', async () => {
+    mockApi.get.mockResolvedValue({
+      data: {
+        profile: {
+          basic_info: { full_name: 'معلم', date_of_birth: '2024-03-11' },
+          contact_info: {},
+          professional_info: {},
+          operational_info: { status: 'active' },
+        },
+      },
+    });
+    mockApi.put.mockResolvedValue({ data: { success: true } });
+
+    render(
+      <ThemeProvider>
+        <TeacherProfileDialog
+          open={true}
+          onClose={() => {}}
+          teacher={{ id: 't-clear-dob', full_name: 'معلم' }}
+          onRefresh={() => {}}
+        />
+      </ThemeProvider>
+    );
+    await screen.findByText('2024-03-11');
+    fireEvent.click(screen.getByRole('button', { name: /تعديل|edit/i }));
+    fireEvent.change(screen.getByTestId('profile-teacher-dob'), { target: { value: '2999-01-01' } });
+    fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/المستقبل|future/i);
+    expect(mockApi.put).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByTestId('profile-teacher-dob'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
+    await waitFor(() => expect(mockApi.put).toHaveBeenCalledWith(
+      '/principal/teacher/t-clear-dob/basic-info',
+      expect.objectContaining({ date_of_birth: null })
+    ));
+  });
+
+  test('allows unrelated edits with a legacy DOB by omitting it until explicitly changed', async () => {
+    mockApi.get.mockResolvedValue({
+      data: {
+        profile: {
+          basic_info: { full_name: 'معلم', date_of_birth: 'legacy-date' },
+          contact_info: { phone: '0500000000' },
+          professional_info: {},
+          operational_info: { status: 'active' },
+        },
+      },
+    });
+    mockApi.put.mockResolvedValue({ data: { success: true } });
+
+    render(
+      <ThemeProvider>
+        <TeacherProfileDialog
+          open={true}
+          onClose={() => {}}
+          teacher={{ id: 't-legacy-dob', full_name: 'معلم' }}
+          onRefresh={() => {}}
+        />
+      </ThemeProvider>
+    );
+
+    expect(await screen.findByText('legacy-date')).toBeInTheDocument();
+    expect(screen.getByText(/تاريخ ميلادي مخزن غير صالح|Invalid stored Gregorian date/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /تعديل|edit/i }));
+    expect(screen.getByText('legacy-date')).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue('0500000000'), { target: { value: '0511111111' } });
+    fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
+
+    await waitFor(() => expect(mockApi.put).toHaveBeenCalled());
+    expect(mockApi.put.mock.calls[0][1]).toMatchObject({ phone: '0511111111' });
+    expect(mockApi.put.mock.calls[0][1]).not.toHaveProperty('date_of_birth');
+  });
+
+  test('blocks an explicit invalid DOB replacement after a legacy value', async () => {
+    mockApi.get.mockResolvedValue({
+      data: {
+        profile: {
+          basic_info: { full_name: 'معلم', date_of_birth: 'legacy-date' },
+          contact_info: {},
+          professional_info: {},
+          operational_info: { status: 'active' },
+        },
+      },
+    });
+
+    render(
+      <ThemeProvider>
+        <TeacherProfileDialog
+          open={true}
+          onClose={() => {}}
+          teacher={{ id: 't-replace-legacy-dob', full_name: 'معلم' }}
+          onRefresh={() => {}}
+        />
+      </ThemeProvider>
+    );
+    await screen.findByText('legacy-date');
+    fireEvent.click(screen.getByRole('button', { name: /تعديل|edit/i }));
+    fireEvent.change(screen.getByTestId('profile-teacher-dob'), { target: { value: '2999-01-01' } });
+    fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/المستقبل|future/i);
+    expect(mockApi.put).not.toHaveBeenCalled();
+  });
+
+  test('explicitly clears a legacy DOB as null', async () => {
+    mockApi.get.mockResolvedValue({
+      data: {
+        profile: {
+          basic_info: { full_name: 'معلم', date_of_birth: 'legacy-date' },
+          contact_info: {},
+          professional_info: {},
+          operational_info: { status: 'active' },
+        },
+      },
+    });
+    mockApi.put.mockResolvedValue({ data: { success: true } });
+
+    render(
+      <ThemeProvider>
+        <TeacherProfileDialog
+          open={true}
+          onClose={() => {}}
+          teacher={{ id: 't-clear-legacy-dob', full_name: 'معلم' }}
+          onRefresh={() => {}}
+        />
+      </ThemeProvider>
+    );
+    await screen.findByText('legacy-date');
+    fireEvent.click(screen.getByRole('button', { name: /تعديل|edit/i }));
+    fireEvent.click(screen.getByTestId('profile-teacher-dob-clear-legacy'));
+    fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
+    await waitFor(() => expect(mockApi.put).toHaveBeenCalledWith(
+      '/principal/teacher/t-clear-legacy-dob/basic-info',
+      expect.objectContaining({ date_of_birth: null })
+    ));
+  });
 });

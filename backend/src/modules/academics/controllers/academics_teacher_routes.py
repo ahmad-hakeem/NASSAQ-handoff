@@ -28,6 +28,7 @@ from dependencies import (
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_pull
 from engines.entity_counts import reconcile_school_counts
 from src.core.guards.tenant_guard import require_request_school_id
+from src.common.utils.date_only import normalize_optional_past_date
 from pg_models import Teacher, User
 
 
@@ -801,7 +802,11 @@ async def create_teacher_wizard(
         national_id = data.basic_info.get("national_id") or data.national_id
         gender = data.basic_info.get("gender") or data.gender
         nationality = data.basic_info.get("nationality") or data.nationality
-        date_of_birth = data.basic_info.get("date_of_birth") or data.date_of_birth
+        date_of_birth = (
+            data.basic_info["date_of_birth"]
+            if "date_of_birth" in data.basic_info
+            else data.date_of_birth
+        )
     else:
         full_name = data.full_name
         full_name_en = data.full_name_en
@@ -811,6 +816,14 @@ async def create_teacher_wizard(
         gender = data.gender
         nationality = data.nationality
         date_of_birth = data.date_of_birth
+
+    try:
+        date_of_birth = normalize_optional_past_date(date_of_birth)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"date_of_birth: {exc}",
+        ) from exc
     
     qualifications = data.qualifications or {}
 

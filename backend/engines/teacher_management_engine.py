@@ -11,7 +11,7 @@ import string
 import qrcode
 import io
 import base64
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 from enum import Enum
 
 from sqlalchemy import select, func, or_
@@ -21,6 +21,7 @@ from engines.sql_utils import (
     model_to_dict, models_to_dicts, dict_to_model, apply_updates,
     gd_find, gd_find_one, gd_insert, gd_count,
 )
+from src.common.utils.date_only import normalize_optional_past_date
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,11 @@ class TeacherBasicInfo(BaseModel):
     nationality: str = Field(default="SA")
     phone: str = Field(...)
     email: EmailStr
+
+    @field_validator("date_of_birth", mode="before")
+    @classmethod
+    def validate_date_of_birth(cls, value):
+        return normalize_optional_past_date(value)
 
 class TeacherQualifications(BaseModel):
     academic_degree: str
@@ -207,6 +213,7 @@ class TeacherManagementEngine:
                 years_of_experience=request.qualifications.years_of_experience,
                 gender=request.basic_info.gender.value,
                 national_id=request.basic_info.national_id,
+                date_of_birth=request.basic_info.date_of_birth,
                 weekly_periods=request.subjects.max_periods_per_week,
                 is_active=True,
             )

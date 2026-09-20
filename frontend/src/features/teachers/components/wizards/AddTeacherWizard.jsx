@@ -25,6 +25,8 @@ import {
 } from '@/shared/components/ui/dialog';
 import { toast } from 'sonner';
 import { getApiErrorCode, getFormErrorMessage } from '@/shared/models/utils/apiError';
+import { TeacherBirthDateDisplay, TeacherBirthDateField } from '@/shared/components/forms/TeacherBirthDate';
+import { validateTeacherBirthDate } from '@/shared/models/utils/teacherBirthDate';
 import {
   User,
   Phone,
@@ -197,6 +199,9 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
       if (!basicData.gender) newErrors.gender = t('required');
       if (!basicData.phone?.trim()) newErrors.phone = t('required');
       if (!basicData.email?.trim()) newErrors.email = t('required');
+      const birthDate = validateTeacherBirthDate(basicData.date_of_birth);
+      if (birthDate.status === 'invalid') newErrors.date_of_birth = t('invalidGregorianDate');
+      if (birthDate.status === 'future') newErrors.date_of_birth = t('futureBirthDate');
     } else if (step === 2) {
       const experience = qualData.years_of_experience;
       if (
@@ -246,7 +251,15 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
             ? null
             : Number(qualData.years_of_experience),
       };
-      const payload = { basic_info: basicData, qualifications, subjects: subjectData, schedule: scheduleData };
+      const payload = {
+        basic_info: {
+          ...basicData,
+          date_of_birth: basicData.date_of_birth || null,
+        },
+        qualifications,
+        subjects: subjectData,
+        schedule: scheduleData,
+      };
       const response = await apiClient.post('/teachers/create', payload);
       if (response.data.success) {
         setResult(response.data);
@@ -450,9 +463,16 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                       </SelectContent>
                     </Select>
                   </FormField>
-                  <FormField label={t('dateOfBirth')}>
-                    <Input type="date" value={basicData.date_of_birth || ''} onChange={(e) => setBasicData(p => ({ ...p, date_of_birth: e.target.value }))} className="h-10 rounded-lg" data-testid="teacher-dob" />
-                  </FormField>
+                  <TeacherBirthDateField
+                    value={basicData.date_of_birth || ''}
+                    onChange={(value) => {
+                      setBasicData(p => ({ ...p, date_of_birth: value }));
+                      setErrors(p => ({ ...p, date_of_birth: undefined }));
+                    }}
+                    t={t}
+                    locale={isRTL ? 'ar' : 'en'}
+                    error={errors.date_of_birth}
+                  />
                   <FormField label={t('phone5')} required error={errors.phone}>
                     <Input value={basicData.phone || ''} onChange={(e) => setBasicData(p => ({ ...p, phone: e.target.value }))} className={`h-10 rounded-lg ${errors.phone ? 'border-red-500' : ''}`} dir="ltr" data-testid="teacher-phone" placeholder="05xxxxxxxx" />
                   </FormField>
@@ -633,6 +653,12 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                     <div><span className="text-muted-foreground text-xs">{t('id')}</span><p className="font-medium" dir="ltr">{basicData.national_id}</p></div>
                     <div><span className="text-muted-foreground text-xs">{t('email')}</span><p className="font-medium" dir="ltr">{basicData.email}</p></div>
                     <div><span className="text-muted-foreground text-xs">{t('phone')}</span><p className="font-medium" dir="ltr">{basicData.phone}</p></div>
+                    <TeacherBirthDateDisplay
+                      value={basicData.date_of_birth || null}
+                      t={t}
+                      locale={isRTL ? 'ar' : 'en'}
+                      className="col-span-2 md:col-span-3"
+                    />
                   </div>
                 </div>
 

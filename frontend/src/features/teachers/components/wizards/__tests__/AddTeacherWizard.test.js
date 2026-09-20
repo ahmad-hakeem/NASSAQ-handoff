@@ -308,6 +308,52 @@ describe('AddTeacherWizard - optional qualifications', () => {
   });
 });
 
+describe('AddTeacherWizard - teacher birth date', () => {
+  test('shows the calculated Hijri date in basic info and review, then submits Gregorian only', async () => {
+    mockApi.post.mockResolvedValue({ data: { success: true, teacher_id: 'T-dob' } });
+    await renderWizard();
+    fireEvent.change(screen.getByTestId('teacher-dob'), { target: { value: '2024-03-11' } });
+    expect(screen.getByText('1445-09-01 AH')).toBeInTheDocument();
+
+    await fillThroughReview();
+    expect(screen.getByText('2024-03-11')).toBeInTheDocument();
+    expect(screen.getByText('1445-09-01 AH')).toBeInTheDocument();
+    await act(async () => fireEvent.click(screen.getByText('confirmSave')));
+
+    await waitFor(() => expect(mockApi.post).toHaveBeenCalledWith(
+      '/teachers/create',
+      expect.objectContaining({
+        basic_info: expect.objectContaining({ date_of_birth: '2024-03-11' }),
+      })
+    ));
+    expect(mockApi.post.mock.calls[0][1].basic_info).not.toHaveProperty('hijri_date_of_birth');
+  });
+
+  test('blocks malformed or future values using the Saudi date while allowing an unsupported old date', async () => {
+    await renderWizard();
+    fillBasicToQualifications();
+    fireEvent.click(screen.getByText('back'));
+    fireEvent.change(screen.getByTestId('teacher-dob'), { target: { value: '2999-01-01' } });
+    fireEvent.click(screen.getByText('next'));
+    expect(screen.getByRole('alert')).toHaveTextContent('futureBirthDate');
+    expect(screen.getByTestId('teacher-name-ar')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId('teacher-dob'), { target: { value: '1900-01-01' } });
+    expect(screen.getByText('hijriConversionUnavailable')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('next'));
+    expect(screen.getByTestId('teacher-degree')).toBeInTheDocument();
+  });
+
+  test('normalizes an untouched optional birth date to null', async () => {
+    mockApi.post.mockResolvedValue({ data: { success: true, teacher_id: 'T-no-dob' } });
+    await renderWizard();
+    await fillThroughReview();
+    await act(async () => fireEvent.click(screen.getByText('confirmSave')));
+    await waitFor(() => expect(mockApi.post).toHaveBeenCalled());
+    expect(mockApi.post.mock.calls[0][1].basic_info.date_of_birth).toBeNull();
+  });
+});
+
 describe('AddTeacherWizard - Confirm & Save', () => {
   test('happy path: creates teacher, shows success, fires onSuccess, and closes via onOpenChange', async () => {
     mockApi.post.mockResolvedValue({

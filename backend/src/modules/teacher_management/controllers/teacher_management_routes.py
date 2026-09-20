@@ -4,11 +4,12 @@ API endpoints for teacher management by school principals
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional, List
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 from enum import Enum
 import logging
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
 from src.modules.schools.controllers.school_settings_mod import _ensure_teacher_linked_to_all_classes
+from src.common.utils.date_only import normalize_optional_past_date
 
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,11 @@ class TeacherBasicInfoRequest(BaseModel):
     nationality: str = Field(default="SA")
     phone: str
     email: EmailStr
+
+    @field_validator("date_of_birth", mode="before")
+    @classmethod
+    def validate_date_of_birth(cls, value):
+        return normalize_optional_past_date(value)
 
 class TeacherQualificationsRequest(BaseModel):
     academic_degree: str
