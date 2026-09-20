@@ -35,6 +35,7 @@ import secrets
 
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_count, gd_delete_one, gd_delete_many
 from engines.infeasibility import InfeasibilityIssue, InfeasibilityReport
+from engines.timetable_session_lifecycle import find_live_timetable_sessions
 from engines.scheduling_summary import (
     RejectionCounters,
     TeacherPlacementRecord,
@@ -3817,7 +3818,7 @@ class SmartSchedulingEngine:
         teacher_id: Optional[str] = None,
         day_of_week: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Get sessions for a timetable"""
+        """Get live placements; retained deletion history is not schedulable."""
         query = {"timetable_id": timetable_id}
         if class_id:
             query["class_id"] = class_id
@@ -3826,7 +3827,7 @@ class SmartSchedulingEngine:
         if day_of_week:
             query["day_of_week"] = day_of_week
         
-        return await gd_find(self.session, "timetable_sessions", query, order_by="day_of_week", desc_order=False, limit=50000)
+        return await find_live_timetable_sessions(self.session, query, limit=50000)
     
     async def get_timetable_conflicts(self, timetable_id: str) -> List[Dict[str, Any]]:
         """Get conflicts for a timetable"""
@@ -3887,10 +3888,7 @@ class SmartSchedulingEngine:
         """
         from engines.hard_constraints import validate_full, validate_placement
 
-        sessions = await gd_find(
-            self.session, "timetable_sessions",
-            {"timetable_id": timetable_id}, limit=50000
-        )
+        sessions = await self.get_timetable_sessions(timetable_id)
         # School-aware: merge per-school overrides so a principal-disabled
         # can_disable rule (e.g. HC-10) is NOT enforced at publish time for
         # this school, exactly as it is excluded during generation.
@@ -4243,12 +4241,7 @@ class SmartSchedulingEngine:
         }
         await gd_insert(self.session, "timetables", new_timetable)
 
-        source_sessions = await gd_find(
-            self.session,
-            "timetable_sessions",
-            {"timetable_id": source_id},
-            limit=50000,
-        )
+        source_sessions = await self.get_timetable_sessions(source_id)
         cloned_docs = []
         for sess in source_sessions:
             doc = {

@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 
 from dependencies import db, get_current_user
 from engines.sql_utils import gd_count, gd_find, gd_find_one
+from engines.timetable_session_lifecycle import find_live_timetable_sessions
 from src.common.utils.tenant_scope import assert_school_access, resolve_school_id
 
 logger = logging.getLogger("nassaq.schedule_master_grid")
@@ -511,9 +512,8 @@ async def get_master_grid(
         if sess_filter is not None and requested_day:
             sess_filter["day_of_week"] = requested_day
         if sess_filter is not None:
-            sessions = await gd_find(
+            sessions = await find_live_timetable_sessions(
                 db.session,
-                "timetable_sessions",
                 sess_filter,
                 limit=10000,
             )

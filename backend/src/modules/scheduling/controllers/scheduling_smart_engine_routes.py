@@ -31,6 +31,7 @@ from src.common.utils.tenant_scope import assert_school_access, resolve_school_i
 from src.common.utils.subject_display import subject_display_name
 from src.modules.scheduling.controllers._publish_gate import assert_publishable
 from sqlalchemy import text
+from engines.timetable_session_lifecycle import find_live_timetable_sessions
 
 
 from shared_models import (
@@ -1025,7 +1026,7 @@ async def get_active_timetable_sessions(
         query["teacher_id"] = teacher_id
     
     # Fetch sessions
-    sessions = await gd_find(db.session, "timetable_sessions", query, limit=1000)
+    sessions = await find_live_timetable_sessions(db.session, query, limit=1000)
     
     # Enrich sessions
     enriched_sessions = []
