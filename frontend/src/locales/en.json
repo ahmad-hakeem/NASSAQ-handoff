@@ -1284,6 +1284,8 @@
   "expectedOutcome": "Expected Outcome",
   "experience": "Experience",
   "experience2": "Experience",
+  "invalidExperience": "Experience must be a non-negative integer",
+  "qualificationNotProvided": "Not provided",
   "expert": "Expert",
   "expired": "Expired",
   "export": "Export",

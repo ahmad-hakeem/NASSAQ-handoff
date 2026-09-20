@@ -10,6 +10,8 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AddTeacherWizard } from '../AddTeacherWizard';
+import en from '@/locales/en.json';
+import ar from '@/locales/ar.json';
 
 const mockApi = { get: jest.fn(), post: jest.fn() };
 const mockNassaqError = jest.fn();
@@ -21,7 +23,12 @@ jest.mock('react-router-dom', () => ({
 
 jest.mock('@/shared/contexts/ThemeContext', () => ({
   useTheme: () => ({ isRTL: false }),
-  useTranslation: () => ({ t: (key) => key }),
+  useTranslation: () => ({
+    t: (key) => ({
+      invalidExperience: 'Experience must be a non-negative integer',
+      qualificationNotProvided: 'Not provided',
+    }[key] || key),
+  }),
 }));
 
 jest.mock('@/shared/contexts/AuthContext', () => ({
@@ -70,17 +77,19 @@ jest.mock('@/shared/components/ui/dialog', () => {
 jest.mock('@/shared/components/ui/select', () => {
   const React = require('react');
   const SelectItem = () => null;
-  const SelectTrigger = () => null;
+  const SelectTrigger = ({ id, ...props }) => React.createElement('span', { id, ...props });
   const SelectValue = () => null;
   const SelectContent = ({ children }) => children;
   const Select = ({ value, onValueChange, children }) => {
     let testId;
+    let triggerId;
     const options = [];
     const walk = (nodes) => {
       React.Children.forEach(nodes, (child) => {
         if (!React.isValidElement(child)) return;
         if (child.type === SelectTrigger && child.props['data-testid']) {
           testId = child.props['data-testid'];
+          triggerId = child.props.id;
         }
         if (child.type === SelectItem) {
           options.push({ value: child.props.value, label: child.props.children });
@@ -93,6 +102,7 @@ jest.mock('@/shared/components/ui/select', () => {
       'select',
       {
         'data-testid': testId,
+        id: triggerId,
         value: value || '',
         onChange: (e) => onValueChange(e.target.value),
       },
@@ -181,6 +191,13 @@ const finishFromQualifications = () => {
 };
 
 describe('AddTeacherWizard - optional qualifications', () => {
+  test('provides localized qualification validation and missing-value messages', () => {
+    expect(en.invalidExperience).toBe('Experience must be a non-negative integer');
+    expect(ar.invalidExperience).toBe('يجب أن تكون الخبرة رقمًا صحيحًا غير سالب');
+    expect(en.qualificationNotProvided).toBe('Not provided');
+    expect(ar.qualificationNotProvided).toBe('غير مضاف');
+  });
+
   test('allows all qualification fields to remain blank and submits null values', async () => {
     mockApi.post.mockResolvedValue({ data: { success: true, teacher_id: 'T-optional' } });
     await renderWizard();
@@ -256,10 +273,18 @@ describe('AddTeacherWizard - optional qualifications', () => {
     await renderWizard();
     fillBasicToQualifications();
     finishFromQualifications();
-    expect(screen.getAllByText('غير مضاف')).toHaveLength(3);
+    expect(screen.getAllByText('Not provided')).toHaveLength(3);
     const experience = screen.getByText('experience2').parentElement.querySelector('p');
-    expect(experience).toHaveTextContent('غير مضاف');
+    expect(experience).toHaveTextContent('Not provided');
     expect(experience).not.toHaveTextContent('years');
+  });
+
+  test('associates each optional qualification label with its control', async () => {
+    await renderWizard();
+    fillBasicToQualifications();
+    expect(screen.getByLabelText('Academic Degree')).toBe(screen.getByTestId('teacher-degree'));
+    expect(screen.getByLabelText('Years of Experience')).toBe(screen.getByTestId('teacher-experience'));
+    expect(screen.getByLabelText('teacherRank')).toBe(screen.getByTestId('teacher-rank'));
   });
 
   test('review appends years only when experience is populated', async () => {
@@ -276,10 +301,10 @@ describe('AddTeacherWizard - optional qualifications', () => {
     fillBasicToQualifications();
     fireEvent.change(screen.getByTestId('teacher-experience'), { target: { value: '-1' } });
     fireEvent.click(screen.getByText('next'));
-    expect(screen.getByText('invalidExperience')).toBeInTheDocument();
+    expect(screen.getByText('Experience must be a non-negative integer')).toBeInTheDocument();
     fireEvent.change(screen.getByTestId('teacher-experience'), { target: { value: '1.5' } });
     fireEvent.click(screen.getByText('next'));
-    expect(screen.getByText('invalidExperience')).toBeInTheDocument();
+    expect(screen.getByText('Experience must be a non-negative integer')).toBeInTheDocument();
   });
 });
 

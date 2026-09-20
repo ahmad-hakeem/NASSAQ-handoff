@@ -1288,6 +1288,8 @@
   "expectedOutcome": "النتيجة المتوقعة",
   "experience": "سنوات الخبرة",
   "experience2": "الخبرة",
+  "invalidExperience": "يجب أن تكون الخبرة رقمًا صحيحًا غير سالب",
+  "qualificationNotProvided": "غير مضاف",
   "expert": "معلم خبير",
   "expired": "منتهي",
   "export": "تصدير",

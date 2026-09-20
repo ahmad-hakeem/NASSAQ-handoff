@@ -89,9 +89,9 @@ const StepProgress = ({ currentStep, steps, isRTL }) => {
   );
 };
 
-const FormField = ({ label, required, error, children }) => (
+const FormField = ({ label, required, error, htmlFor, children }) => (
   <div className="space-y-1.5">
-    <Label className="text-sm font-medium">
+    <Label htmlFor={htmlFor} className="text-sm font-medium">
       {label} {required && <span className="text-red-500">*</span>}
     </Label>
     {children}
@@ -467,9 +467,9 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
               <div className="space-y-5">
                 <SectionHeader icon={GraduationCap} title={t('qualifications')} subtitle={t('enterQualificationAndExperienceInfo')} color="blue" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField label={isRTL ? 'الدرجة العلمية' : 'Academic Degree'} error={errors.academic_degree}>
+                  <FormField label={isRTL ? 'الدرجة العلمية' : 'Academic Degree'} htmlFor="teacher-degree" error={errors.academic_degree}>
                     <Select value={qualData.academic_degree || ''} onValueChange={(val) => setQualData(p => ({ ...p, academic_degree: val }))}>
-                      <SelectTrigger className={`h-10 rounded-lg ${errors.academic_degree ? 'border-red-500' : ''}`} data-testid="teacher-degree"><SelectValue placeholder={t('selectDegree')} /></SelectTrigger>
+                      <SelectTrigger id="teacher-degree" className={`h-10 rounded-lg ${errors.academic_degree ? 'border-red-500' : ''}`} data-testid="teacher-degree"><SelectValue placeholder={t('selectDegree')} /></SelectTrigger>
                       <SelectContent>
                         {options.degrees?.map((d) => (<SelectItem key={d.id || d.code} value={d.id || d.code}>{isRTL ? (d.name || d.name_ar) : (d.name_en || d.name)}</SelectItem>))}
                       </SelectContent>
@@ -484,15 +484,15 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                   <FormField label={t('graduationYear')}>
                     <Input type="number" value={qualData.graduation_year || ''} onChange={(e) => setQualData(p => ({ ...p, graduation_year: parseInt(e.target.value) || '' }))} min="1970" max={new Date().getFullYear()} className="h-10 rounded-lg" data-testid="teacher-grad-year" />
                   </FormField>
-                  <FormField label={isRTL ? 'سنوات الخبرة' : 'Years of Experience'} error={errors.years_of_experience}>
-                    <Input type="number" value={qualData.years_of_experience ?? ''} onChange={(e) => {
+                  <FormField label={isRTL ? 'سنوات الخبرة' : 'Years of Experience'} htmlFor="teacher-experience" error={errors.years_of_experience}>
+                    <Input id="teacher-experience" type="number" value={qualData.years_of_experience ?? ''} onChange={(e) => {
                       const raw = e.target.value;
                       setQualData(p => ({ ...p, years_of_experience: raw === '' ? null : Number(raw) }));
                     }} min="0" className={`h-10 rounded-lg ${errors.years_of_experience ? 'border-red-500' : ''}`} data-testid="teacher-experience" />
                   </FormField>
-                  <FormField label={t('teacherRank')} error={errors.teacher_rank}>
+                  <FormField label={t('teacherRank')} htmlFor="teacher-rank" error={errors.teacher_rank}>
                     <Select value={qualData.teacher_rank || ''} onValueChange={(val) => setQualData(p => ({ ...p, teacher_rank: val }))}>
-                      <SelectTrigger className={`h-10 rounded-lg ${errors.teacher_rank ? 'border-red-500' : ''}`} data-testid="teacher-rank"><SelectValue placeholder={t('selectRank')} /></SelectTrigger>
+                      <SelectTrigger id="teacher-rank" className={`h-10 rounded-lg ${errors.teacher_rank ? 'border-red-500' : ''}`} data-testid="teacher-rank"><SelectValue placeholder={t('selectRank')} /></SelectTrigger>
                       <SelectContent>
                         {options.ranks?.map((r) => (<SelectItem key={r.id || r.code} value={r.id || r.code}>{isRTL ? (r.name || r.name_ar) : (r.name_en || r.name)}</SelectItem>))}
                       </SelectContent>
@@ -642,9 +642,9 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                     <span className="font-semibold text-sm text-blue-800 dark:text-blue-300">{isRTL ? 'المؤهلات' : 'Qualifications'}</span>
                   </div>
                   <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                    <div><span className="text-muted-foreground text-xs">{t('degree2')}</span><p className="font-medium">{qualData.academic_degree || 'غير مضاف'}</p></div>
-                    <div><span className="text-muted-foreground text-xs">{t('experience2')}</span><p className="font-medium">{qualData.years_of_experience === null || qualData.years_of_experience === undefined || qualData.years_of_experience === '' ? 'غير مضاف' : `${qualData.years_of_experience} ${t('years')}`}</p></div>
-                    <div><span className="text-muted-foreground text-xs">{t('rank')}</span><p className="font-medium">{qualData.teacher_rank || 'غير مضاف'}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('degree2')}</span><p className="font-medium">{qualData.academic_degree || t('qualificationNotProvided')}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('experience2')}</span><p className="font-medium">{qualData.years_of_experience === null || qualData.years_of_experience === undefined || qualData.years_of_experience === '' ? t('qualificationNotProvided') : `${qualData.years_of_experience} ${t('years')}`}</p></div>
+                    <div><span className="text-muted-foreground text-xs">{t('rank')}</span><p className="font-medium">{qualData.teacher_rank || t('qualificationNotProvided')}</p></div>
                   </div>
                 </div>
 
