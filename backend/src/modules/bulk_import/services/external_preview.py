@@ -10,9 +10,10 @@ import zipfile
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 from fastapi import Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, StrictStr
 from sqlalchemy import select, text
@@ -42,6 +43,8 @@ def _data_sheet_index(names):
 
 def parse_file(contents: bytes, filename: str) -> pd.DataFrame:
     """Bound both compressed input and expanded workbook; never evaluate formulas."""
+    import pandas as pd
+
     if not contents or len(contents) > MAX_BYTES:
         reject("invalid_size", "الملف فارغ أو يتجاوز 10 ميغابايت", 400)
     suffix = Path(filename or "").suffix.lower()
@@ -329,6 +332,8 @@ def register_external_routes(router, db, require_roles, UserRole, resolve_school
         x_school_context: Optional[str] = Header(None, alias="X-School-Context"),
         current_user: dict = Depends(authorized),
     ):
+        import pandas as pd
+
         school = resolve_school(current_user, x_school_context, school_id)
         contents = await file.read(MAX_BYTES + 1)
         df = parse_file(contents, file.filename)
@@ -363,6 +368,8 @@ def register_external_routes(router, db, require_roles, UserRole, resolve_school
     async def discard(draft_id: str, school_id: Optional[str] = None,
                       x_school_context: Optional[str] = Header(None, alias="X-School-Context"),
                       current_user: dict = Depends(authorized)):
+        import pandas as pd
+
         school = resolve_school(current_user, x_school_context, school_id)
         await scope_lock(db.session, school)
         payload = await load_owned(db.session, draft_id, current_user["id"], school)

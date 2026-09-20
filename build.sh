@@ -18,6 +18,9 @@ pip install -r requirements.txt --no-cache-dir -q 2>&1 | tail -5
 # Replit Publish owns production schema changes.  Keep this image build
 # database-independent: it must not connect to PostgreSQL or execute DDL.
 
+echo "Checking fresh-process backend imports (no database access)..."
+python /home/runner/workspace/scripts/benchmark_backend_startup.py
+
 echo "Building frontend..."
 cd /home/runner/workspace/frontend
 rm -rf build

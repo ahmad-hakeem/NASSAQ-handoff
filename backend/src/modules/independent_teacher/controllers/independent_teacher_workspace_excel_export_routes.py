@@ -43,7 +43,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
-import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from src.core.guards.tenant_guard import (
@@ -556,6 +555,8 @@ def _build_workbook(sheets: Dict[str, List[Dict[str, Any]]]) -> bytes:
     Uses ``xlsxwriter`` (already a project dependency) for header
     formatting, frozen header row, and per-sheet column widths.
     """
+    import pandas as pd
+
     buf = io.BytesIO()
     # Disable xlsxwriter's automatic string-to-formula / string-to-url
     # conversion so a roster name like ``=HYPERLINK(...)`` is written as

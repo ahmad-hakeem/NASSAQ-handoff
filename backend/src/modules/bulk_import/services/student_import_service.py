@@ -23,9 +23,10 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 from sqlalchemy import text
 
 from engines.sql_utils import (
@@ -127,6 +128,8 @@ def _normalise_header(value: Any) -> str:
 
 def normalise_cell(value: Any) -> Optional[str]:
     """Return a whitespace/digit-normalised spreadsheet value."""
+    import pandas as pd
+
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return None
     value = str(value).replace("\u00a0", " ").translate(_ARABIC_DIGITS).strip()

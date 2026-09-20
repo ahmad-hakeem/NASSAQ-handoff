@@ -2,13 +2,13 @@
 NASSAQ - Bulk Import/Export Routes
 استيراد وتصدير البيانات الجماعي
 """
+from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, BackgroundTasks, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import TYPE_CHECKING, Optional, List
 from datetime import datetime, timezone
-import pandas as pd
 import io
 import uuid
 import re
@@ -17,6 +17,9 @@ from enum import Enum
 from engines.export_engine import _sanitize_formula_cell
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, gd_upsert, _gd_aggregate
 from src.common.utils.tenant_scope import resolve_school_id
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = logging.getLogger("nassaq.bulk_import")
 
@@ -350,7 +353,7 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
     from src.modules.bulk_import.services.external_preview import register_external_routes
     register_external_routes(router, db, require_roles, UserRole, _resolve_bulk_school_id)
     
-    # ============= IMPORT TEMPLATES =============
+    # IMPORT TEMPLATES
     
     @router.get("/template/{import_type}")
     async def download_import_template(
@@ -358,6 +361,8 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
     ):
         """تحميل قالب الاستيراد"""
+        import pandas as pd
+
         try:
             if import_type == ImportType.NOOR_CLASSES:
                 columns = {
@@ -476,7 +481,7 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
             logger.error(f"Error creating template: {e}")
             raise HTTPException(status_code=500, detail="حدث خطأ داخلي في الخادم")
     
-    # ============= IMPORT DATA =============
+    # IMPORT DATA
     
     @router.post("/import/{import_type}", response_model=ImportResult)
     async def import_data(
@@ -489,6 +494,7 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
         """استيراد البيانات من ملف Excel/CSV"""
         if import_type in (ImportType.STUDENTS, ImportType.TEACHERS):
             raise HTTPException(status_code=409, detail={"code": "preview_required", "message": "يجب معاينة الملف وتأكيده أولاً"})
+        import pandas as pd
         
         school_id = _resolve_bulk_school_id(
             current_user,
@@ -604,7 +610,7 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
             logger.exception(f"Error processing import: {e}")
             raise HTTPException(status_code=500, detail=f"خطأ في معالجة الملف: {str(e)}")
     
-    # ============= EXPORT DATA =============
+    # EXPORT DATA
     
     @router.get("/export/{export_type}")
     async def export_data(
@@ -617,6 +623,7 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
         current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN]))
     ):
         """تصدير البيانات إلى Excel/CSV"""
+        import pandas as pd
         
         school_id = _resolve_bulk_school_id(
             current_user,
@@ -715,7 +722,7 @@ def setup_bulk_routes(db, get_current_user, require_roles, UserRole):
     return router
 
 
-# ============= HELPER FUNCTIONS =============
+# HELPER FUNCTIONS
 
 async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list, filename: Optional[str] = None):
     """Import students using the transactional service implementation."""
@@ -725,6 +732,8 @@ async def _import_students(db, df: pd.DataFrame, school_id: str, user: dict, err
 
 async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list, *, plan_only=False):
     """استيراد المعلمين مع التحقق المسبق والمعاملات المتكاملة (All-or-Nothing Atomic Import)"""
+    import pandas as pd
+
     imported = 0
     
     # Column mapping
@@ -887,6 +896,8 @@ async def _import_teachers(db, df: pd.DataFrame, school_id: str, user: dict, err
 
 async def _import_noor_classes(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):
     """استيراد الفصول مع التحقق المسبق والمعاملات المتكاملة (All-or-Nothing Atomic Import)"""
+    import pandas as pd
+
     imported = 0
     
     column_map = {
@@ -991,6 +1002,8 @@ async def _import_noor_classes(db, df: pd.DataFrame, school_id: str, user: dict,
 
 async def _import_noor_assignments(db, df: pd.DataFrame, school_id: str, user: dict, errors: list, warnings: list):
     """استيراد إسناد المعلمين مع التحقق المسبق والمعاملات المتكاملة (All-or-Nothing Atomic Import)"""
+    import pandas as pd
+
     imported = 0
     
     column_map = {
@@ -1138,6 +1151,8 @@ async def _import_noor_assignments(db, df: pd.DataFrame, school_id: str, user: d
 
 async def _export_students(db, school_id: str, grade: str = None, class_name: str = None):
     """تصدير الطلاب"""
+    import pandas as pd
+
     from src.common.utils.canonical_grades import normalize_canonical_grade
     from src.modules.bulk_import.services.student_import_service import _normalise_token
 
@@ -1266,6 +1281,8 @@ async def _export_students(db, school_id: str, grade: str = None, class_name: st
 
 async def _export_teachers(db, school_id: str):
     """تصدير المعلمين"""
+    import pandas as pd
+
     query = {}
     if school_id:
         query["school_id"] = school_id
@@ -1295,6 +1312,8 @@ async def _export_teachers(db, school_id: str):
 
 async def _export_schedule(db, school_id: str):
     """تصدير الجدول الدراسي"""
+    import pandas as pd
+
     query = {}
     if school_id:
         query["school_id"] = school_id
@@ -1323,6 +1342,8 @@ async def _export_schedule(db, school_id: str):
 
 async def _export_attendance(db, school_id: str, grade: str = None, class_name: str = None):
     """تصدير سجل الحضور"""
+    import pandas as pd
+
     query = {}
     if school_id:
         query["school_id"] = school_id
@@ -1352,6 +1373,8 @@ async def _export_attendance(db, school_id: str, grade: str = None, class_name: 
 
 async def _export_grades(db, school_id: str, grade: str = None, class_name: str = None):
     """تصدير الدرجات"""
+    import pandas as pd
+
     query = {}
     if school_id:
         query["school_id"] = school_id
