@@ -475,7 +475,9 @@ class TeacherWizardCreate(BaseModel):
     specialization: Optional[str] = None
     teacher_rank: Optional[str] = None
     contract_type: Optional[str] = "permanent"
-    years_of_experience: Optional[int] = 0
+    # Kept permissive at the wire boundary so blank strings from HTML forms can
+    # be normalized to NULL by the create handler.
+    years_of_experience: Optional[Any] = None
     hire_date: Optional[str] = None
     max_periods_per_week: Optional[int] = 24
     available_days: Optional[List[str]] = []
@@ -810,16 +812,69 @@ async def create_teacher_wizard(
         nationality = data.nationality
         date_of_birth = data.date_of_birth
     
-    if data.qualifications:
-        academic_degree = data.qualifications.get("academic_degree") or data.academic_degree
-        specialization = data.qualifications.get("specialization") or data.specialization
-        teacher_rank = data.qualifications.get("teacher_rank") or data.teacher_rank
-        years_of_experience = data.qualifications.get("years_of_experience") or data.years_of_experience or 0
-    else:
-        academic_degree = data.academic_degree
-        specialization = data.specialization
-        teacher_rank = data.teacher_rank
-        years_of_experience = data.years_of_experience or 0
+    qualifications = data.qualifications or {}
+
+    def _optional_text(value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise HTTPException(status_code=422, detail="المؤهل والرتبة يجب أن يكونا نصاً")
+        value = value.strip()
+        return value or None
+
+    def _optional_experience(value):
+        if value is None or value == "":
+            return None
+        if isinstance(value, bool):
+            raise HTTPException(status_code=422, detail="years_of_experience: سنوات الخبرة يجب أن تكون عدداً صحيحاً")
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="years_of_experience: سنوات الخبرة يجب أن تكون عدداً صحيحاً")
+        if isinstance(value, float) and value != parsed:
+            raise HTTPException(status_code=422, detail="years_of_experience: سنوات الخبرة يجب أن تكون عدداً صحيحاً")
+        if parsed < 0:
+            raise HTTPException(status_code=422, detail="years_of_experience: سنوات الخبرة يجب أن تكون صفراً أو أكثر")
+        return parsed
+
+    def _qualification_value(name):
+        return qualifications[name] if name in qualifications else getattr(data, name)
+
+    academic_degree = _optional_text(_qualification_value("academic_degree"))
+    specialization = _optional_text(_qualification_value("specialization"))
+    teacher_rank = _optional_text(_qualification_value("teacher_rank"))
+    years_of_experience = _optional_experience(_qualification_value("years_of_experience"))
+
+    # Keep these sets in lockstep with the option endpoints, including their
+    # existing fallback catalogs.  Lookup values are intentionally loaded at
+    # write time so newly activated options are accepted without deployment.
+    degree_rows = await gd_find(
+        db.session, "lookup_options",
+        {"type": "academic_degree", "is_active": {"$ne": False}}, limit=20,
+    )
+    supported_degrees = {
+        row.get("code", row.get("id")) for row in degree_rows
+        if row.get("code", row.get("id"))
+    } or {"diploma", "bachelor", "master", "doctorate"}
+
+    rank_rows = await gd_find(
+        db.session, "lookup_options",
+        {"type": "teacher_rank", "is_active": {"$ne": False}},
+        order_by="order", desc_order=False, limit=100,
+    )
+    if not rank_rows:
+        rank_rows = await gd_find(
+            db.session, "teacher_ranks", {"is_active": True},
+            order_by="order", desc_order=False, limit=100,
+        )
+    supported_ranks = {
+        row.get("id") or row.get("code") for row in rank_rows
+        if row.get("id") or row.get("code")
+    } or {"teacher", "senior_teacher", "expert", "department_head"}
+    if academic_degree is not None and academic_degree not in supported_degrees:
+        raise HTTPException(status_code=422, detail="academic_degree غير مدعوم")
+    if teacher_rank is not None and teacher_rank not in supported_ranks:
+        raise HTTPException(status_code=422, detail="teacher_rank غير مدعوم")
     
     if data.subjects:
         subject_ids = data.subjects.get("subject_ids") or data.subject_ids or []

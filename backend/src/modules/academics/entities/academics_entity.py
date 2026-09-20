@@ -32,7 +32,9 @@ class Teacher(Base):
     rank = Column(String, nullable=True)
     subject = Column(String, nullable=True)
     qualification = Column(String, nullable=True)
-    years_of_experience = Column(Integer, default=0)
+    # Qualifications are optional; omission must remain SQL NULL rather than
+    # being converted to a misleading zero by the ORM default.
+    years_of_experience = Column(Integer, nullable=True, default=None)
     gender = Column(String, nullable=True)
     national_id = Column(String, nullable=True, index=True)
     weekly_periods = Column(Integer, nullable=True)

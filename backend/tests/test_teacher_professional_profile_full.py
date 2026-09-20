@@ -61,6 +61,82 @@ async def test_teacher_full_profile_returns_professional_data(client, school_pri
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "qualifications, expected",
+    [
+        ({}, (None, None, None)),
+        (
+            {"academic_degree": None, "teacher_rank": None, "years_of_experience": None},
+            (None, None, None),
+        ),
+        (
+            {"academic_degree": "", "teacher_rank": "   ", "years_of_experience": ""},
+            (None, None, None),
+        ),
+        ({"academic_degree": "bachelor"}, ("bachelor", None, None)),
+        ({"teacher_rank": "teacher"}, (None, "teacher", None)),
+        ({"years_of_experience": 0}, (None, None, 0)),
+    ],
+)
+async def test_teacher_create_normalizes_optional_qualifications(
+    client, school_principal_headers, qualifications, expected
+):
+    suffix = uuid.uuid4().hex[:8]
+    payload = {
+        "basic_info": {
+            "full_name_ar": f"اختبار المؤهلات {suffix}",
+            "email": f"qual_{suffix}@test.com",
+            "phone": f"05{uuid.uuid4().int % 100000000:08d}",
+            "national_id": f"10{uuid.uuid4().int % 100000000:08d}",
+        },
+        "qualifications": qualifications,
+        "subjects": {"subject_ids": [], "grade_ids": []},
+    }
+    response = await client.post("/teachers/create", json=payload, headers=school_principal_headers)
+    assert response.status_code == 200, response.text
+    teacher_id = response.json()["teacher"]["id"]
+    profile = await client.get(
+        f"/principal/teacher/{teacher_id}/full-profile",
+        headers=school_principal_headers,
+    )
+    assert profile.status_code == 200, profile.text
+    professional = profile.json()["profile"]["professional_info"]
+    assert (
+        professional["academic_degree"],
+        professional["teacher_rank"],
+        professional["years_of_experience"],
+    ) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "qualifications, field",
+    [
+        ({"years_of_experience": -1}, "years_of_experience"),
+        ({"years_of_experience": "not-a-number"}, "years_of_experience"),
+        ({"academic_degree": "unsupported-degree"}, "academic_degree"),
+        ({"teacher_rank": "unsupported-rank"}, "teacher_rank"),
+    ],
+)
+async def test_teacher_create_rejects_invalid_qualifications(
+    client, school_principal_headers, qualifications, field
+):
+    suffix = uuid.uuid4().hex[:8]
+    payload = {
+        "basic_info": {
+            "full_name_ar": f"اختبار مؤهل غير صالح {suffix}",
+            "email": f"invalid_qual_{suffix}@test.com",
+            "phone": f"05{uuid.uuid4().int % 100000000:08d}",
+            "national_id": f"10{uuid.uuid4().int % 100000000:08d}",
+        },
+        "qualifications": qualifications,
+    }
+    response = await client.post("/teachers/create", json=payload, headers=school_principal_headers)
+    assert response.status_code == 422, response.text
+    assert field in response.text
+
+
+@pytest.mark.asyncio
 async def test_teacher_full_profile_legacy_field_fallback(client, school_principal_headers, tenant_a):
     # Setup legacy teacher in DB with 'qualification' and 'rank' and 'contract'
     legacy_id = str(uuid.uuid4())
