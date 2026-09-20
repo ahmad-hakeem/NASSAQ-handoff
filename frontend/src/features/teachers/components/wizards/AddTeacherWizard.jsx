@@ -485,7 +485,10 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                     <Input type="number" value={qualData.graduation_year || ''} onChange={(e) => setQualData(p => ({ ...p, graduation_year: parseInt(e.target.value) || '' }))} min="1970" max={new Date().getFullYear()} className="h-10 rounded-lg" data-testid="teacher-grad-year" />
                   </FormField>
                   <FormField label={isRTL ? 'سنوات الخبرة' : 'Years of Experience'} error={errors.years_of_experience}>
-                    <Input type="number" value={qualData.years_of_experience ?? ''} onChange={(e) => setQualData(p => ({ ...p, years_of_experience: e.target.value }))} min="0" className={`h-10 rounded-lg ${errors.years_of_experience ? 'border-red-500' : ''}`} data-testid="teacher-experience" />
+                    <Input type="number" value={qualData.years_of_experience ?? ''} onChange={(e) => {
+                      const raw = e.target.value;
+                      setQualData(p => ({ ...p, years_of_experience: raw === '' ? null : Number(raw) }));
+                    }} min="0" className={`h-10 rounded-lg ${errors.years_of_experience ? 'border-red-500' : ''}`} data-testid="teacher-experience" />
                   </FormField>
                   <FormField label={t('teacherRank')} error={errors.teacher_rank}>
                     <Select value={qualData.teacher_rank || ''} onValueChange={(val) => setQualData(p => ({ ...p, teacher_rank: val }))}>

@@ -252,6 +252,25 @@ describe('AddTeacherWizard - optional qualifications', () => {
     expect(screen.getByTestId('teacher-experience').value).toBe('');
   });
 
+  test('review displays Arabic missing placeholders without an experience suffix', async () => {
+    await renderWizard();
+    fillBasicToQualifications();
+    finishFromQualifications();
+    expect(screen.getAllByText('غير مضاف')).toHaveLength(3);
+    const experience = screen.getByText('experience2').parentElement.querySelector('p');
+    expect(experience).toHaveTextContent('غير مضاف');
+    expect(experience).not.toHaveTextContent('years');
+  });
+
+  test('review appends years only when experience is populated', async () => {
+    await renderWizard();
+    fillBasicToQualifications();
+    fireEvent.change(screen.getByTestId('teacher-experience'), { target: { value: '7' } });
+    finishFromQualifications();
+    const experience = screen.getByText('experience2').parentElement.querySelector('p');
+    expect(experience).toHaveTextContent('7 years');
+  });
+
   test('rejects provided negative or non-integer experience at the field', async () => {
     await renderWizard();
     fillBasicToQualifications();
