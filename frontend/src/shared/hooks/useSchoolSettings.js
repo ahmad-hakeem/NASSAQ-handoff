@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
@@ -94,6 +94,8 @@ export function useSchoolSettings() {
   const [classAssignmentsLoaded, setClassAssignmentsLoaded] = useState(false);
   // نتمييز فشل الشبكة عن "صفر فعلي" حتى لا يظهر "0 إسناد" بعد فشل الجلب.
   const [classAssignmentsError, setClassAssignmentsError] = useState(false);
+  const [classAssignmentsBulkLoading, setClassAssignmentsBulkLoading] = useState(false);
+  const classAssignmentsBulkLock = useRef(false);
   const [draggingClass, setDraggingClass] = useState(null);
   // طلب اختيار مادة: يُفتح عندما يتعذّر على الخادم اختيار مادة تلقائيًا
   // لزوج (معلم، فصل) — يعرض المواد المرشّحة ليختار المدير بدل رسالة خطأ
@@ -772,15 +774,18 @@ export function useSchoolSettings() {
       const res = await api.get('/teacher-class-assignments?page_size=20000');
       setClassAssignments(res.data?.data || res.data || []);
       setClassAssignmentsLoaded(true);
+      return true;
     } catch (error) {
       console.error('Error loading class assignments:', error);
       setClassAssignmentsError(true);
+      return false;
     } finally {
       setClassAssignmentsLoading(false);
     }
   };
 
   const handleCreateClassAssignment = async (teacherId, classId, subjectId = null) => {
+    if (classAssignmentsBulkLock.current) return false;
     try {
       await api.post('/teacher-class-assignments', {
         teacher_id: teacherId,
@@ -835,6 +840,7 @@ export function useSchoolSettings() {
   };
 
   const handleDeleteClassAssignment = async (assignmentId) => {
+    if (classAssignmentsBulkLock.current) return false;
     try {
       await api.delete(`/teacher-class-assignments/${assignmentId}`);
       // Re-read the canonical set so the list reflects the unassignment
@@ -849,21 +855,69 @@ export function useSchoolSettings() {
         return;
       }
       nassaqError('فشل في حذف الإسناد');
+      return false;
     }
   };
 
+  const runBulkClassUnassignment = async (endpoint, payload, successMessage, keepAssignment) => {
+    // The ref closes the small gap before React publishes the loading state,
+    // preventing a double click (or a simultaneous drag/delete) from racing.
+    if (classAssignmentsBulkLock.current) return false;
+    classAssignmentsBulkLock.current = true;
+    setClassAssignmentsBulkLoading(true);
+    try {
+      await api.post(endpoint, payload);
+      // The mutation has committed, so update both panels immediately before
+      // attempting the canonical refresh. This avoids leaving destructive stale
+      // controls visible when the follow-up GET happens to fail.
+      setClassAssignments(previous => previous.filter(keepAssignment));
+      const refreshed = await loadClassAssignments();
+      toast.success(successMessage);
+      if (!refreshed) {
+        nassaqWarning('تم إلغاء الإسنادات، لكن تعذّر تحديث البيانات من الخادم. ستظهر البيانات المحدّثة عند إعادة تحميل الصفحة.');
+      }
+      return true;
+    } catch (error) {
+      // Do not optimistically clear local data: a failed request must leave both
+      // panels exactly as they were before the attempted destructive operation.
+      nassaqError(getApiErrorMessage(error) || 'تعذّر إلغاء إسناد الفصول. حاول مرة أخرى.');
+      return false;
+    } finally {
+      classAssignmentsBulkLock.current = false;
+      setClassAssignmentsBulkLoading(false);
+    }
+  };
+
+  const unassignAllClassesForTeacher = (teacherId) => (
+    runBulkClassUnassignment(
+      '/teacher-class-assignments/unassign-teacher',
+      { teacher_id: teacherId },
+      'تم إلغاء إسناد جميع الفصول عن المعلم بنجاح.',
+      assignment => assignment.teacher_id !== teacherId,
+    )
+  );
+
+  const unassignAllClassAssignments = () => (
+    runBulkClassUnassignment(
+      '/teacher-class-assignments/unassign-all',
+      {},
+      'تم إلغاء إسناد كافة الفصول لجميع المعلمين بنجاح.',
+      () => false,
+    )
+  );
+
   useEffect(() => {
-    if (assignmentSubTab === 'classes' && classAssignments.length === 0 && !classAssignmentsLoading) {
+    if (assignmentSubTab === 'classes' && !classAssignmentsLoaded && !classAssignmentsLoading) {
       loadClassAssignments();
     }
   }, [assignmentSubTab]);
 
   // تحميل عدّاد إسناد الفصول فور دخول تبويب "إسناد المعلمين"، حتى لا
   // يظهر بادج "0 إسناد" خادع بجوار التبويب الفرعي قبل أن يفتحه المدير.
-  // الـ guard على length يمنع إعادة الجلب لو سبق تحميله (مثلاً المستخدم
-  // فتح تبويب الفصول الفرعي ثم رجع لتبويب الفصول).
+  // علامة التحميل تمنع إعادة الجلب لو كانت النتيجة الصحيحة صفراً (مثلاً
+  // المستخدم فتح تبويب الفصول الفرعي بعد تحميل العداد ثم عاد إليه).
   useEffect(() => {
-    if (activeTab === 'teacher-assignments' && classAssignments.length === 0 && !classAssignmentsLoading) {
+    if (activeTab === 'teacher-assignments' && !classAssignmentsLoaded && !classAssignmentsLoading) {
       loadClassAssignments();
     }
   }, [activeTab]);
@@ -1097,7 +1151,8 @@ export function useSchoolSettings() {
     stageCurriculums, loadingCurriculum, expandedStages, expandedTracks, expandedGrades,
     subjects, draggingSubject, setDraggingSubject, selectedSubject, setSelectedSubject,
     assignmentSaving, assignmentSubTab, setAssignmentSubTab,
-    classAssignments, classAssignmentsLoading, classAssignmentsLoaded, classAssignmentsError, draggingClass, setDraggingClass,
+    classAssignments, classAssignmentsLoading, classAssignmentsLoaded, classAssignmentsError,
+    classAssignmentsBulkLoading, draggingClass, setDraggingClass,
     showEditSchool, setShowEditSchool, showBreakModal, setShowBreakModal,
     showUnavailabilityModal, setShowUnavailabilityModal,
     editingBreak, setEditingBreak, unavailabilityType, setUnavailabilityType,
@@ -1126,6 +1181,7 @@ export function useSchoolSettings() {
     handleAddBreak, handleEditBreak, handleDeleteBreak, handleSaveBreak,
     handleAddUnavailability, handleSaveUnavailability, handleDeleteUnavailability, handleOpenNoorImport,
     loadClassAssignments, handleCreateClassAssignment, handleDeleteClassAssignment,
+    unassignAllClassesForTeacher, unassignAllClassAssignments,
     subjectPickerRequest, subjectPickerSaving, cancelSubjectPicker, confirmSubjectPicker,
     toggleStageExpand, toggleTrackExpand, toggleGradeExpand,
     navigateToFix, setAssignments,

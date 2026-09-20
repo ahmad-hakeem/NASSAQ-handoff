@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
@@ -10,12 +10,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/shared/components/ui/separator';
 import { ScrollArea } from '@/shared/components/ui/scroll-area';
 import {
+  AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/shared/components/ui/alert-dialog';
+import {
   CalendarDays, Clock, School, Users, BookOpen,
   Sliders, Plus, Edit2, Trash2, Save, CheckCircle2,
   Info, X, GraduationCap, Shield, Building2, MapPin, Phone, Mail,
   Layers, Zap, Lock, Calendar, Timer, Coffee, Moon, UserX, DoorClosed,
   RefreshCw, Wand2, Database, FileSpreadsheet, Upload, AlertTriangle,
-  CheckCheck
+  CheckCheck, Loader2
 } from 'lucide-react';
 import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core';
 import {
@@ -56,12 +60,14 @@ export function SchoolOperationalStatus({ status }) {
 export function DynamicSettingsContent({ hook, dynamicTabs }) {
   const { t } = useTranslation();
   const { isRTL, direction } = useTheme();
+  const [bulkUnassignConfirmation, setBulkUnassignConfirmation] = useState(null);
   const {
     activeTab, setActiveTab, saving, sensors,
     schoolInfo, teachers, classes, assignments,
     subjects, draggingSubject, setDraggingSubject,
     assignmentSubTab, setAssignmentSubTab,
-    classAssignments, classAssignmentsLoading, classAssignmentsLoaded, classAssignmentsError, loadClassAssignments, draggingClass, setDraggingClass,
+    classAssignments, classAssignmentsLoading, classAssignmentsLoaded, classAssignmentsError, loadClassAssignments,
+    classAssignmentsBulkLoading, draggingClass, setDraggingClass,
     editedSchoolInfo, setEditedSchoolInfo,
     workDays, timingSettings, timeSlotsCount, generatingSlots,
     breakTimes, teacherUnavailability, classUnavailability,
@@ -81,9 +87,18 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
     handleAddBreak, handleEditBreak, handleDeleteBreak,
     handleAddUnavailability, handleDeleteUnavailability,
     handleCreateClassAssignment, handleDeleteClassAssignment,
+    unassignAllClassesForTeacher, unassignAllClassAssignments,
     subjectPickerRequest, subjectPickerSaving, cancelSubjectPicker, confirmSubjectPicker,
     nassaqWarning, nassaqError, user, api, setAssignments, handleOpenNoorImport,
   } = hook;
+
+  const confirmBulkUnassignment = async () => {
+    if (!bulkUnassignConfirmation || classAssignmentsBulkLoading) return;
+    const succeeded = bulkUnassignConfirmation.type === 'teacher'
+      ? await unassignAllClassesForTeacher(bulkUnassignConfirmation.teacher.id)
+      : await unassignAllClassAssignments();
+    if (succeeded) setBulkUnassignConfirmation(null);
+  };
 
   return (
     <div className="space-y-6">
@@ -682,6 +697,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
               onDragStart={(e) => setDraggingClass(e.active?.data?.current?.classItem || null)}
               onDragEnd={(e) => {
                 setDraggingClass(null);
+                if (classAssignmentsBulkLoading) return;
                 const classItem = e.active?.data?.current?.classItem;
                 const teacher = e.over?.data?.current?.teacher;
                 if (classItem && teacher) {
@@ -763,13 +779,38 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                 </div>
                 <div className="lg:col-span-3">
                   <Card className="bg-white shadow-sm h-full">
-                    <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4 text-brand-navy" />المعلمون<Badge variant="outline" className="text-xs">{teachers.length}</Badge></CardTitle></CardHeader>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4 text-brand-navy" />المعلمون<Badge variant="outline" className="text-xs">{teachers.length}</Badge></CardTitle>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                          disabled={classAssignments.length === 0 || classAssignmentsBulkLoading}
+                          onClick={() => setBulkUnassignConfirmation({ type: 'global' })}
+                          data-testid="unassign-all-class-assignments"
+                        >
+                          {classAssignmentsBulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                          إلغاء إسناد جميع الفصول
+                        </Button>
+                      </div>
+                    </CardHeader>
                     <CardContent>
                       <ScrollArea className="h-[400px] pr-2">
                         <div className="grid grid-cols-2 gap-3">
                           {teachers.map((teacher) => {
                             const teacherClassAssignments = classAssignments.filter(a => a.teacher_id === teacher.id);
-                            return <DroppableTeacherBox key={teacher.id} teacher={teacher} assignments={teacherClassAssignments} onRemoveAssignment={handleDeleteClassAssignment} />;
+                            return (
+                              <DroppableTeacherBox
+                                key={teacher.id}
+                                teacher={teacher}
+                                assignments={teacherClassAssignments}
+                                onRemoveAssignment={handleDeleteClassAssignment}
+                                onUnassignAll={(selectedTeacher) => setBulkUnassignConfirmation({ type: 'teacher', teacher: selectedTeacher, count: teacherClassAssignments.length })}
+                                actionsDisabled={classAssignmentsBulkLoading}
+                              />
+                            );
                           })}
                         </div>
                       </ScrollArea>
@@ -938,6 +979,41 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
           />
         </TabsContent>
       </Tabs>
+
+      <AlertDialog
+        open={Boolean(bulkUnassignConfirmation)}
+        onOpenChange={(open) => {
+          if (!open && !classAssignmentsBulkLoading) setBulkUnassignConfirmation(null);
+        }}
+      >
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {bulkUnassignConfirmation?.type === 'teacher'
+                ? 'إلغاء إسناد فصول المعلم'
+                : 'إلغاء إسناد كافة الفصول'}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="leading-6">
+              {bulkUnassignConfirmation?.type === 'teacher'
+                ? `هل أنت متأكد من إلغاء إسناد جميع الفصول (${bulkUnassignConfirmation.count}) عن المعلم ${bulkUnassignConfirmation.teacher.full_name || bulkUnassignConfirmation.teacher.name || '-'}؟`
+                : 'سيتم فك ارتباط جميع الفصول المسندة لكافة المعلمين في المدرسة دفعة واحدة. لن يتم حذف الفصول أو المعلمين، بل تحرير الإسنادات فقط. هل ترغب في المتابعة؟'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={classAssignmentsBulkLoading}>إلغاء</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmBulkUnassignment}
+              disabled={classAssignmentsBulkLoading}
+              className="gap-2"
+            >
+              {classAssignmentsBulkLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {classAssignmentsBulkLoading ? 'جارٍ الإلغاء…' : 'تأكيد الإلغاء'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <ClassAssignmentSubjectPicker
         request={subjectPickerRequest}

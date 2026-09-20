@@ -18,6 +18,7 @@ from src.modules.schools.dto.constraints_dto import (
 )
 from src.modules.schools.dto.assignments_dto import (
     TeacherClassAssignmentCreate, TeacherSubjectAssignmentCreate,
+    TeacherClassBulkUnassignTeacher, TeacherClassBulkUnassignAll,
 )
 from src.modules.schools.dto.unavailability_dto import (
     UnavailabilityCreate,
@@ -510,6 +511,36 @@ async def create_teacher_class_assignment(
 ):
     return await TeacherAssignmentsService.create_teacher_class_assignment(
         db.session, assignment, current_user, x_school_context
+    )
+
+
+_ASSIGNMENT_LEADERSHIP_ROLES = [
+    UserRole.SCHOOL_PRINCIPAL,
+    UserRole.SCHOOL_ADMIN,
+    UserRole.SCHOOL_SUB_ADMIN,
+    UserRole.PLATFORM_ADMIN,
+]
+
+
+@router.post("/teacher-class-assignments/unassign-teacher")
+async def unassign_teacher_class_assignments(
+    payload: TeacherClassBulkUnassignTeacher,
+    current_user: dict = Depends(require_roles(_ASSIGNMENT_LEADERSHIP_ROLES)),
+    x_school_context: str = Header(default=None, alias="X-School-Context"),
+):
+    return await TeacherAssignmentsService.bulk_unassign_class_assignments(
+        db.session, current_user, x_school_context, teacher_id=payload.teacher_id
+    )
+
+
+@router.post("/teacher-class-assignments/unassign-all")
+async def unassign_all_teacher_class_assignments(
+    payload: TeacherClassBulkUnassignAll,
+    current_user: dict = Depends(require_roles(_ASSIGNMENT_LEADERSHIP_ROLES)),
+    x_school_context: str = Header(default=None, alias="X-School-Context"),
+):
+    return await TeacherAssignmentsService.bulk_unassign_class_assignments(
+        db.session, current_user, x_school_context
     )
 
 

@@ -8,6 +8,7 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
 import uuid
 import logging
+from sqlalchemy import delete as sa_delete, select, union
 
 from engines.sql_utils import (
     gd_find, gd_find_one, gd_insert, gd_update_one, gd_update_many, gd_delete_one, gd_delete_many,
@@ -21,9 +22,14 @@ from src.common.utils.teacher_assignment_sync import (
     class_subject_candidates,
     add_tombstone,
     clear_tombstones,
+    add_class_tombstones,
 )
 
 logger = logging.getLogger("nassaq")
+
+BULK_UNASSIGN_PAIR_LIMIT = 20_000
+BULK_UNASSIGN_TIMETABLE_LIMIT = 20_000
+BULK_REVIEW_CHUNK_SIZE = 500
 
 
 class TeacherAssignmentsService:
@@ -287,6 +293,173 @@ class TeacherAssignmentsService:
             logger.warning(f"flag sessions on unassign failed teacher={teacher_id} class={class_id}: {e}")
 
         return {"message": "تم حذف الإسناد بنجاح", "flagged_sessions": flagged}
+
+    @staticmethod
+    async def bulk_unassign_class_assignments(
+        session,
+        current_user: dict,
+        x_school_context: str = None,
+        teacher_id: str = None,
+    ) -> dict:
+        """Deactivate every active class assignment in the school (or for one
+        teacher) without deleting teachers, classes, or timetable history.
+
+        This intentionally has no academic-year filter: the settings screen's
+        active canonical links are school-wide.  All writes live in one
+        savepoint because request middleware may commit even after an HTTP
+        error; a failed tombstone/cleanup/review write must therefore undo the
+        entire operation before the error escapes.
+        """
+        from src.modules.schools.services.school_settings_service import resolve_school_context
+
+        school_id = await resolve_school_context(current_user, x_school_context)
+        if not school_id:
+            raise HTTPException(status_code=400, detail="Missing school context")
+
+        if teacher_id:
+            teacher = await gd_find_one(session, "teachers", {
+                "id": teacher_id,
+                "school_id": school_id,
+                "is_active": {"$ne": False},
+            })
+            if not teacher:
+                # Do not reveal whether a cross-school identifier exists.
+                raise HTTPException(status_code=404, detail="المعلم غير موجود في هذه المدرسة")
+
+        assignment_filter = {
+            "school_id": school_id,
+            "is_active": True,
+            "class_id": {"$ne": None},
+        }
+        if teacher_id:
+            assignment_filter["teacher_id"] = teacher_id
+
+        async with session.begin_nested():
+            # Project only the two keys needed for the operation. UNION makes
+            # canonical/legacy duplicates one pair and LIMIT + 1 lets us reject
+            # oversized requests explicitly rather than silently truncating.
+            from pg_models import TeacherAssignment, TeacherClassAssignment, Timetable
+
+            canonical_pairs = select(
+                TeacherAssignment.teacher_id.label("teacher_id"),
+                TeacherAssignment.class_id.label("class_id"),
+            ).where(
+                TeacherAssignment.school_id == school_id,
+                TeacherAssignment.is_active.is_(True),
+                TeacherAssignment.class_id.is_not(None),
+            )
+            legacy_pairs = select(
+                TeacherClassAssignment.teacher_id.label("teacher_id"),
+                TeacherClassAssignment.class_id.label("class_id"),
+            ).where(
+                TeacherClassAssignment.school_id == school_id,
+                # The real legacy model has is_active. NULL historical rows
+                # are treated as active; explicit False rows are history.
+                TeacherClassAssignment.is_active.is_not(False),
+            )
+            if teacher_id:
+                canonical_pairs = canonical_pairs.where(
+                    TeacherAssignment.teacher_id == teacher_id
+                )
+                legacy_pairs = legacy_pairs.where(
+                    TeacherClassAssignment.teacher_id == teacher_id
+                )
+            pair_result = await session.execute(
+                union(canonical_pairs, legacy_pairs).limit(
+                    BULK_UNASSIGN_PAIR_LIMIT + 1
+                )
+            )
+            pair_rows = pair_result.all()
+            if len(pair_rows) > BULK_UNASSIGN_PAIR_LIMIT:
+                raise HTTPException(status_code=409, detail={
+                    "code": "bulk_unassign_limit_exceeded",
+                    "message": "عدد الإسنادات يتجاوز الحد الآمن للعملية",
+                    "limit": BULK_UNASSIGN_PAIR_LIMIT,
+                })
+            pairs = {(row.teacher_id, row.class_id) for row in pair_rows}
+
+            timetable_ids = []
+            if pairs:
+                timetable_stmt = select(Timetable.id).where(
+                    Timetable.school_id == school_id,
+                    Timetable.status == "published",
+                ).limit(BULK_UNASSIGN_TIMETABLE_LIMIT + 1)
+                published_result = await session.execute(timetable_stmt)
+                timetable_ids = list(published_result.scalars().all())
+                if len(timetable_ids) > BULK_UNASSIGN_TIMETABLE_LIMIT:
+                    raise HTTPException(status_code=409, detail={
+                        "code": "bulk_unassign_timetable_limit_exceeded",
+                        "message": "عدد الجداول المنشورة يتجاوز الحد الآمن للعملية",
+                        "limit": BULK_UNASSIGN_TIMETABLE_LIMIT,
+                    })
+
+            now = datetime.now(timezone.utc).isoformat()
+
+            deactivated_rows = 0
+            legacy_deleted = 0
+            tombstones_created = 0
+            flagged_sessions = 0
+            if pairs:
+                deactivated_rows = await gd_update_many(
+                    session, "teacher_assignments", assignment_filter,
+                    {"is_active": False, "updated_at": now},
+                )
+
+                tombstones_created = await add_class_tombstones(
+                    session,
+                    school_id,
+                    pairs,
+                    created_by=current_user.get("id"),
+                    created_at=now,
+                )
+
+                legacy_delete = sa_delete(TeacherClassAssignment).where(
+                    TeacherClassAssignment.school_id == school_id,
+                    TeacherClassAssignment.is_active.is_not(False),
+                )
+                if teacher_id:
+                    legacy_delete = legacy_delete.where(
+                        TeacherClassAssignment.teacher_id == teacher_id
+                    )
+                legacy_result = await session.execute(legacy_delete)
+                legacy_deleted = legacy_result.rowcount or 0
+
+                if timetable_ids:
+                    sorted_pairs = sorted(pairs)
+                    for offset in range(0, len(sorted_pairs), BULK_REVIEW_CHUNK_SIZE):
+                        pair_chunk = sorted_pairs[
+                            offset:offset + BULK_REVIEW_CHUNK_SIZE
+                        ]
+                        session_filter = {
+                            "timetable_id": {"$in": timetable_ids},
+                            "$or": [
+                                {
+                                    "teacher_id": pair_teacher,
+                                    "class_id": pair_class,
+                                }
+                                for pair_teacher, pair_class in pair_chunk
+                            ],
+                        }
+                        flagged_sessions += await gd_update_many(
+                            session, "timetable_sessions", session_filter, {
+                                "needs_review": True,
+                                "review_reason": "unassigned_pairing",
+                                "review_flagged_at": now,
+                            },
+                        )
+
+        affected_teachers = {tid for tid, _ in pairs}
+        affected_classes = {cid for _, cid in pairs}
+        return {
+            "success": True,
+            "unassigned_count": len(pairs),
+            "deactivated_rows": deactivated_rows,
+            "teachers_affected": len(affected_teachers),
+            "classes_affected": len(affected_classes),
+            "tombstones_created": tombstones_created,
+            "legacy_rows_deleted": legacy_deleted,
+            "flagged_sessions": flagged_sessions,
+        }
 
     @staticmethod
     async def get_classes_without_teachers(session, current_user: dict, x_school_context: str = None) -> dict:

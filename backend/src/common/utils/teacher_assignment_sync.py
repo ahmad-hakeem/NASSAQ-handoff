@@ -31,6 +31,7 @@ from engines.sql_utils import gd_find, gd_insert, gd_update_one, gd_delete_many
 logger = logging.getLogger(__name__)
 
 TOMBSTONE_COLLECTION = "teacher_assignment_removals"
+MAX_TOMBSTONES_PER_SCOPE = 20_000
 
 
 def _now() -> str:
@@ -41,17 +42,26 @@ def _now() -> str:
 # Tombstones (explicit removals)
 # ---------------------------------------------------------------------------
 async def load_tombstones(session, school_id: str, teacher_id: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Return removal records for a school (optionally a single teacher)."""
+    """Return removal records for a school (optionally a single teacher).
+
+    This read is deliberately fail-closed. Returning an empty list after a
+    storage failure would tell reconcilers that explicitly removed pairings
+    are eligible for recreation.
+    """
     if not school_id:
         return []
     flt: Dict[str, Any] = {"school_id": school_id}
     if teacher_id:
         flt["teacher_id"] = teacher_id
-    try:
-        return await gd_find(session, TOMBSTONE_COLLECTION, flt, limit=20000)
-    except Exception as e:  # pragma: no cover - defensive
-        logger.warning("load_tombstones failed for school %s: %s", school_id, e)
-        return []
+    rows = await gd_find(
+        session, TOMBSTONE_COLLECTION, flt,
+        limit=MAX_TOMBSTONES_PER_SCOPE + 1,
+    )
+    if len(rows) > MAX_TOMBSTONES_PER_SCOPE:
+        raise RuntimeError(
+            f"Tombstone safety ceiling exceeded for school {school_id}"
+        )
+    return rows
 
 
 def is_tombstoned(
@@ -107,6 +117,52 @@ async def add_tombstone(
             "add_tombstone failed teacher=%s class=%s subject=%s: %s",
             teacher_id, class_id, subject_id, e,
         )
+
+
+async def add_class_tombstones(
+    session,
+    school_id: str,
+    pairs,
+    created_by: Optional[str] = None,
+    created_at: Optional[str] = None,
+) -> int:
+    """Insert class-level removal tombstones as one ORM batch.
+
+    Bulk unassignment cannot call ``add_tombstone`` once per pairing: besides
+    excessive round trips, a swallowed per-row failure could allow the default
+    materializer to resurrect an assignment.  This helper flushes one batch
+    and deliberately propagates every database error to the caller's
+    savepoint.
+    """
+    from pg_models import GenericDocument
+
+    unique_pairs = sorted({
+        (teacher_id, class_id)
+        for teacher_id, class_id in pairs
+        if teacher_id and class_id
+    })
+    if not unique_pairs:
+        return 0
+
+    timestamp = created_at or _now()
+    rows = [
+        GenericDocument(
+            id=str(uuid.uuid4()),
+            _collection=TOMBSTONE_COLLECTION,
+            data={
+                "school_id": school_id,
+                "teacher_id": teacher_id,
+                "class_id": class_id,
+                "subject_id": None,
+                "created_at": timestamp,
+                "created_by": created_by,
+            },
+        )
+        for teacher_id, class_id in unique_pairs
+    ]
+    session.add_all(rows)
+    await session.flush()
+    return len(rows)
 
 
 async def clear_tombstones(

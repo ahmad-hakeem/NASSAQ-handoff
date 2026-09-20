@@ -1,6 +1,6 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { Badge } from '@/shared/components/ui/badge';
-import { BookOpen, GraduationCap, RefreshCw, X } from 'lucide-react';
+import { BookOpen, GraduationCap, RefreshCw, Trash2, X } from 'lucide-react';
 import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
 import { maskInternalId } from '@/shared/models/utils/internalId';
 
@@ -51,7 +51,13 @@ export const DraggableClassItem = ({ classItem, isAssigned, assignedTeacher }) =
   );
 };
 
-export const DroppableTeacherBox = ({ teacher, assignments, onRemoveAssignment }) => {
+export const DroppableTeacherBox = ({
+  teacher,
+  assignments,
+  onRemoveAssignment,
+  onUnassignAll,
+  actionsDisabled = false,
+}) => {
   const canViewInternalIds = useCanViewInternalIds();
   const { isOver, setNodeRef } = useDroppable({
     id: `teacher-${teacher.id}`,
@@ -78,6 +84,19 @@ export const DroppableTeacherBox = ({ teacher, assignments, onRemoveAssignment }
           <p className="font-bold text-slate-800 text-sm truncate">{teacher.full_name || teacher.name || '-'}</p>
           <p className="text-[10px] text-slate-500 truncate">{maskInternalId(teacher.specialization, canViewInternalIds) || teacher.email || '-'}</p>
         </div>
+        {assignments.length > 0 && onUnassignAll && (
+          <button
+            type="button"
+            onClick={() => onUnassignAll(teacher)}
+            disabled={actionsDisabled}
+            className="w-7 h-7 rounded-md text-red-600 hover:bg-red-50 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+            title="إلغاء جميع إسنادات المعلم"
+            aria-label={`إلغاء إسناد جميع الفصول عن المعلم ${teacher.full_name || teacher.name || ''}`}
+            data-testid={`unassign-all-teacher-${teacher.id}`}
+          >
+            {actionsDisabled ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+          </button>
+        )}
         <Badge className="bg-brand-navy/10 text-brand-navy text-[10px]">
           {assignments.length}
         </Badge>
@@ -104,6 +123,7 @@ export const DroppableTeacherBox = ({ teacher, assignments, onRemoveAssignment }
                 </span>
                 <button
                   onClick={() => onRemoveAssignment(assignment.id)}
+                  disabled={actionsDisabled}
                   className="w-4 h-4 rounded-full bg-red-100 text-red-600 hover:bg-red-200 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                   title="إلغاء الإسناد"
                 >

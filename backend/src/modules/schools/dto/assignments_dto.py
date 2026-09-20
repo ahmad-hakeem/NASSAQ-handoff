@@ -13,6 +13,14 @@ class TeacherClassAssignmentCreate(BaseModel):
     subject_id: Optional[str] = None
 
 
+class TeacherClassBulkUnassignTeacher(BaseModel):
+    teacher_id: str = Field(..., min_length=1)
+
+
+class TeacherClassBulkUnassignAll(BaseModel):
+    pass
+
+
 class TeacherClassAssignmentResponse(BaseModel):
     id: str
     teacher_id: str
