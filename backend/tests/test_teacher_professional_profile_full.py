@@ -317,6 +317,34 @@ async def test_update_teacher_professional_info_preserves_explicit_zero(
 
 
 @pytest.mark.asyncio
+async def test_update_teacher_professional_info_accepts_rank_lookup_code(
+    client, school_principal_headers, tenant_a, monkeypatch
+):
+    from src.modules.teacher_management.controllers import principal_management_routes
+
+    async def fake_lookup(*args, **kwargs):
+        if args[1] == "lookup_options" and kwargs.get("order_by") == "order":
+            return [{"id": str(uuid.uuid4()), "code": "semantic_rank", "is_active": True}]
+        return []
+
+    monkeypatch.setattr(principal_management_routes, "gd_find", fake_lookup)
+    teacher_id = str(uuid.uuid4())
+    await gd_insert(db.session, "teachers", {
+        "id": teacher_id, "school_id": tenant_a, "tenant_id": tenant_a,
+        "full_name": "اختبار كود الرتبة",
+        "email": f"rank_code_{uuid.uuid4().hex[:8]}@test.com",
+        "teacher_rank": "teacher", "rank": "teacher", "is_active": True,
+    })
+    await db.session.flush()
+    response = await client.put(
+        f"/principal/teacher/{teacher_id}/professional-info",
+        json={"teacher_rank": "semantic_rank"},
+        headers=school_principal_headers,
+    )
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("payload", [
     {"academic_degree": "unsupported-degree"},
     {"teacher_rank": "unsupported-rank"},

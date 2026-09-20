@@ -382,8 +382,8 @@ async def update_teacher_professional_info(
                 order_by="order", desc_order=False, limit=100,
             )
         supported_ranks = {
-            row.get("id") or row.get("code") for row in rank_rows
-            if row.get("id") or row.get("code")
+            row.get("code") or row.get("id") for row in rank_rows
+            if row.get("code") or row.get("id")
         } or {"teacher", "senior_teacher", "expert", "department_head"}
         rank = optional_text(data.teacher_rank)
         if rank is not None and rank not in supported_ranks:

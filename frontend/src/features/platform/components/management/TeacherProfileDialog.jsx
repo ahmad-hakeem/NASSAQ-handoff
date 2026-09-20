@@ -22,6 +22,13 @@ import {
   UserX, Shield, Trash2, Clock
 } from 'lucide-react';
 
+const professionalField = (profile, field, fallback) => (
+  profile?.professional_info &&
+  Object.prototype.hasOwnProperty.call(profile.professional_info, field)
+    ? profile.professional_info[field]
+    : fallback
+);
+
 export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh }) {
   const { api } = useAuth();
   const canViewInternalIds = useCanViewInternalIds();
@@ -182,9 +189,9 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
     } else if (section === 'professional') {
       setFormData({
         ...p?.professional_info,
-        academic_degree: p?.professional_info?.academic_degree ?? teacher.academic_degree ?? teacher.qualification ?? '',
-        teacher_rank: p?.professional_info?.teacher_rank ?? teacher.teacher_rank ?? teacher.rank ?? '',
-        years_of_experience: p?.professional_info?.years_of_experience ?? teacher.years_of_experience ?? '',
+        academic_degree: professionalField(p, 'academic_degree', teacher.academic_degree ?? teacher.qualification ?? ''),
+        teacher_rank: professionalField(p, 'teacher_rank', teacher.teacher_rank ?? teacher.rank ?? ''),
+        years_of_experience: professionalField(p, 'years_of_experience', teacher.years_of_experience ?? ''),
         contract_type: p?.professional_info?.contract_type || teacher.contract_type || '',
       });
     }
@@ -250,7 +257,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
               <p className="text-emerald-100 text-sm">{maskInternalId(p?.professional_info?.specialization, canViewInternalIds) || maskInternalId(teacher.specialization, canViewInternalIds) || (t('teacher'))}</p>
               <div className="flex items-center gap-2 mt-1">
                 <Badge className={`text-[10px] ${statusColors[status]}`}>{statusLabels[status]}</Badge>
-                <Badge className="text-[10px] bg-white/20 text-white border-0">{rankLabels[p?.professional_info?.teacher_rank] || p?.professional_info?.teacher_rank || rankLabels[teacher.teacher_rank] || rankLabels[teacher.rank] || teacher.teacher_rank || teacher.rank || (t('teacher'))}</Badge>
+                <Badge className="text-[10px] bg-white/20 text-white border-0">{rankLabels[professionalField(p, 'teacher_rank', teacher.teacher_rank ?? teacher.rank)] || professionalField(p, 'teacher_rank', teacher.teacher_rank ?? teacher.rank) || (t('teacher'))}</Badge>
               </div>
             </div>
           </div>
@@ -418,17 +425,17 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                       },
                       {
                         label: t('degree2'),
-                        value: degreeLabels[p?.professional_info?.academic_degree] || p?.professional_info?.academic_degree || degreeLabels[teacher.academic_degree] || degreeLabels[teacher.qualification] || teacher.academic_degree || teacher.qualification,
+                        value: degreeLabels[professionalField(p, 'academic_degree', teacher.academic_degree ?? teacher.qualification)] || professionalField(p, 'academic_degree', teacher.academic_degree ?? teacher.qualification),
                         icon: Award,
                       },
                       {
                         label: t('rank'),
-                        value: rankLabels[p?.professional_info?.teacher_rank] || p?.professional_info?.teacher_rank || rankLabels[teacher.teacher_rank] || rankLabels[teacher.rank] || teacher.teacher_rank || teacher.rank,
+                        value: rankLabels[professionalField(p, 'teacher_rank', teacher.teacher_rank ?? teacher.rank)] || professionalField(p, 'teacher_rank', teacher.teacher_rank ?? teacher.rank),
                         icon: Shield,
                       },
                       {
                         label: t('experience2'),
-                        value: (p?.professional_info?.years_of_experience ?? teacher.years_of_experience) != null && (p?.professional_info?.years_of_experience ?? teacher.years_of_experience) !== '' ? `${p?.professional_info?.years_of_experience ?? teacher.years_of_experience} ${t('yrs')}` : '-',
+                        value: professionalField(p, 'years_of_experience', teacher.years_of_experience) != null && professionalField(p, 'years_of_experience', teacher.years_of_experience) !== '' ? `${professionalField(p, 'years_of_experience', teacher.years_of_experience)} ${t('yrs')}` : '-',
                         icon: Clock,
                       },
                       {

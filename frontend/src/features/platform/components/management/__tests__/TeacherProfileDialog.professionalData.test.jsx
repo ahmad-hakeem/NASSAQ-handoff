@@ -249,4 +249,57 @@ describe('TeacherProfileDialog — Professional Data Rendering', () => {
       })
     ));
   });
+
+  test('treats present null professional fields as authoritative over stale teacher props', async () => {
+    mockApi.get.mockResolvedValueOnce({
+      data: {
+        profile: {
+          basic_info: { full_name: 'معلم' },
+          professional_info: {
+            academic_degree: null,
+            teacher_rank: null,
+            years_of_experience: null,
+            contract_type: 'permanent',
+          },
+          operational_info: { status: 'active' },
+        },
+      },
+    });
+    mockApi.put.mockResolvedValueOnce({ data: { success: true } });
+
+    render(
+      <ThemeProvider>
+        <TeacherProfileDialog
+          open={true}
+          onClose={() => {}}
+          teacher={{
+            id: 't-authoritative-null',
+            full_name: 'معلم',
+            qualification: 'bachelor',
+            rank: 'teacher',
+            years_of_experience: 9,
+          }}
+          onRefresh={() => {}}
+        />
+      </ThemeProvider>
+    );
+
+    const professionalTab = await screen.findByRole('tab', { name: /المهني|career/i });
+    clickRadixTab(professionalTab);
+    await waitFor(() => {
+      expect(screen.queryByText('بكالوريوس')).not.toBeInTheDocument();
+      expect(screen.queryByText(/9/)).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('edit-professional'));
+    fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
+    await waitFor(() => expect(mockApi.put).toHaveBeenCalledWith(
+      '/principal/teacher/t-authoritative-null/professional-info',
+      expect.objectContaining({
+        academic_degree: null,
+        teacher_rank: null,
+        years_of_experience: null,
+      })
+    ));
+  });
 });
