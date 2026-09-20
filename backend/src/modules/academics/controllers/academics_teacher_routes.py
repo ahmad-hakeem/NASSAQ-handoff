@@ -823,6 +823,8 @@ async def create_teacher_wizard(
         return value or None
 
     def _optional_experience(value):
+        if isinstance(value, str):
+            value = value.strip()
         if value is None or value == "":
             return None
         if isinstance(value, bool):

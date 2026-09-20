@@ -1,7 +1,7 @@
 import uuid
 import pytest
 from dependencies import db
-from engines.sql_utils import gd_insert
+from engines.sql_utils import gd_insert, gd_find_one
 
 
 @pytest.mark.asyncio
@@ -73,9 +73,22 @@ async def test_teacher_full_profile_returns_professional_data(client, school_pri
             {"academic_degree": "", "teacher_rank": "   ", "years_of_experience": ""},
             (None, None, None),
         ),
+        ({"years_of_experience": "   "}, (None, None, None)),
         ({"academic_degree": "bachelor"}, ("bachelor", None, None)),
+        (
+            {"academic_degree": "master", "years_of_experience": 7},
+            ("master", None, 7),
+        ),
         ({"teacher_rank": "teacher"}, (None, "teacher", None)),
         ({"years_of_experience": 0}, (None, None, 0)),
+        (
+            {
+                "academic_degree": "bachelor",
+                "teacher_rank": "teacher",
+                "years_of_experience": 6,
+            },
+            ("bachelor", "teacher", 6),
+        ),
     ],
 )
 async def test_teacher_create_normalizes_optional_qualifications(
@@ -106,6 +119,12 @@ async def test_teacher_create_normalizes_optional_qualifications(
         professional["teacher_rank"],
         professional["years_of_experience"],
     ) == expected
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    assert teacher["academic_degree"] == expected[0]
+    assert teacher["qualification"] == expected[0]
+    assert teacher["teacher_rank"] == expected[1]
+    assert teacher["rank"] == expected[1]
+    assert teacher["years_of_experience"] == expected[2]
 
 
 @pytest.mark.asyncio
