@@ -302,4 +302,34 @@ describe('TeacherProfileDialog — Professional Data Rendering', () => {
       })
     ));
   });
+
+  test.each(['1.5', '-1'])('rejects invalid experience value %s without PUT', async (value) => {
+    mockApi.get.mockResolvedValueOnce({
+      data: {
+        profile: {
+          basic_info: { full_name: 'معلم' },
+          professional_info: { years_of_experience: 4, contract_type: 'permanent' },
+          operational_info: { status: 'active' },
+        },
+      },
+    });
+
+    render(
+      <ThemeProvider>
+        <TeacherProfileDialog
+          open={true}
+          onClose={() => {}}
+          teacher={{ id: `t-invalid-${value}`, full_name: 'معلم' }}
+          onRefresh={() => {}}
+        />
+      </ThemeProvider>
+    );
+    clickRadixTab(await screen.findByRole('tab', { name: /المهني|career/i }));
+    fireEvent.click(await screen.findByTestId('edit-professional'));
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value } });
+    fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
+
+    expect(await screen.findByText(/يجب أن تكون الخبرة|Experience must be/)).toBeInTheDocument();
+    expect(mockApi.put).not.toHaveBeenCalled();
+  });
 });

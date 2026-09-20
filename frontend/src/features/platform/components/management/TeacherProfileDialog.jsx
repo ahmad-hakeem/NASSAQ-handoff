@@ -42,6 +42,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
   const [editSection, setEditSection] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({});
+  const [experienceError, setExperienceError] = useState('');
   const [credForm, setCredForm] = useState({ new_email: '', new_password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
@@ -86,14 +87,21 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
   };
 
   const handleSaveProfessional = async () => {
+    const rawExperience = formData.years_of_experience;
+    const normalizedExperience = rawExperience === '' || rawExperience == null ? null : Number(rawExperience);
+    if (normalizedExperience !== null &&
+      (!Number.isInteger(normalizedExperience) || normalizedExperience < 0)) {
+      setExperienceError(t('invalidExperience'));
+      return;
+    }
+    setExperienceError('');
     setSaving(true);
     try {
       const professionalData = {
         ...formData,
         academic_degree: formData.academic_degree || null,
         teacher_rank: formData.teacher_rank || null,
-        years_of_experience: formData.years_of_experience === '' ||
-          formData.years_of_experience == null ? null : formData.years_of_experience,
+        years_of_experience: normalizedExperience,
       };
       await api.put(`/principal/teacher/${teacher.id}/professional-info`, professionalData);
       toast.success(t('professionalInfoUpdated'));
@@ -187,6 +195,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
     if (section === 'basic') {
       setFormData({ ...p?.basic_info, ...p?.contact_info });
     } else if (section === 'professional') {
+      setExperienceError('');
       setFormData({
         ...p?.professional_info,
         academic_degree: professionalField(p, 'academic_degree', teacher.academic_degree ?? teacher.qualification ?? ''),
@@ -397,7 +406,11 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">{t('experience')}</Label>
-                      <Input type="number" value={formData.years_of_experience ?? ''} onChange={(e) => setFormData(p => ({ ...p, years_of_experience: e.target.value === '' ? '' : parseInt(e.target.value, 10) }))} className="h-8 text-sm" />
+                      <Input type="number" value={formData.years_of_experience ?? ''} onChange={(e) => {
+                        setExperienceError('');
+                        setFormData(p => ({ ...p, years_of_experience: e.target.value }));
+                      }} className={`h-8 text-sm ${experienceError ? 'border-red-500' : ''}`} aria-invalid={!!experienceError} />
+                      {experienceError && <p className="text-xs text-red-500">{experienceError}</p>}
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">{t('contract')}</Label>
