@@ -9,7 +9,7 @@
  * Guardrail: one page mount = exactly ONE request per endpoint.
  */
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mockSetSearchParams = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -28,6 +28,8 @@ const mockApiGet = jest.fn();
 const mockApi = { get: mockApiGet, post: jest.fn(), put: jest.fn(), delete: jest.fn() };
 const mockUser = { id: 'u1', role: 'school_admin', tenant_id: 'school-1' };
 const mockNassaqWarning = jest.fn();
+const mockNassaqConfirm = jest.fn();
+const mockNassaqError = jest.fn();
 const mockAuthValue = {
   user: mockUser,
   api: mockApi,
@@ -47,10 +49,10 @@ jest.mock('@/shared/contexts/ThemeContext', () => ({
 
 jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({
-    nassaqError: jest.fn(),
+    nassaqError: mockNassaqError,
     nassaqWarning: mockNassaqWarning,
     nassaqInfo: jest.fn(),
-    nassaqConfirm: jest.fn(),
+    nassaqConfirm: mockNassaqConfirm,
   }),
 }));
 
@@ -133,7 +135,7 @@ jest.mock('@/shared/components/ui/dropdown-menu', () => ({
   DropdownMenu: ({ children }) => <div>{children}</div>,
   DropdownMenuTrigger: ({ children }) => <div>{children}</div>,
   DropdownMenuContent: ({ children }) => <div>{children}</div>,
-  DropdownMenuItem: ({ children, onClick }) => <button onClick={onClick}>{children}</button>,
+  DropdownMenuItem: ({ children, onClick, disabled }) => <button onClick={onClick} disabled={disabled}>{children}</button>,
   DropdownMenuSeparator: () => <hr />,
 }));
 jest.mock('@/shared/components/ui/tabs', () => ({
@@ -302,16 +304,80 @@ describe('UsersClassesManagement — single fetch per endpoint on mount', () => 
   });
 });
 
-describe('UsersClassesManagement — teacher deactivation copy', () => {
-  test('uses account/history language and never exposes backend cleanup keys', () => {
+describe('UsersClassesManagement — permanent teacher deletion', () => {
+  test('uses permanent deletion success copy and never exposes backend cleanup keys', () => {
     const cleanup = { teacher_assignments: 4, timetable_sessions: 9 };
     const englishMessage = getDeleteSuccessMessage('teacher', false, stableT, cleanup);
     const arabicMessage = getDeleteSuccessMessage('teacher', true, stableT, cleanup);
 
-    expect(englishMessage).toMatch(/account.*deactivated/i);
-    expect(englishMessage).toMatch(/history.*retained/i);
-    expect(arabicMessage).toMatch(/إلغاء تنشيط حساب المعلم/);
-    expect(arabicMessage).toMatch(/الاحتفاظ بالحساب والسجل السابق/);
+    expect(englishMessage).toBe('teacherDeletedSuccessfully');
+    expect(arabicMessage).toBe('teacherDeletedSuccessfully');
     expect(`${englishMessage} ${arabicMessage}`).not.toMatch(/teacher_assignments|timetable_sessions/);
+  });
+
+  test('warns about permanence and retention, calls DELETE once, and does not remove before success', async () => {
+    let resolveDelete;
+    mockApiGet.mockImplementation((url) => (
+      url === '/teachers'
+        ? Promise.resolve({ data: [{ id: 'teacher-1', full_name: 'Teacher Kept Until Success' }] })
+        : Promise.resolve({ data: [] })
+    ));
+    mockApi.delete.mockReturnValue(new Promise(resolve => { resolveDelete = resolve; }));
+
+    render(<UsersClassesManagement />);
+    fireEvent.click(screen.getByText('totalTeachers').closest('button'));
+    expect(await screen.findByText('Teacher Kept Until Success')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByText('delete')[0]);
+
+    expect(mockNassaqConfirm).toHaveBeenCalledWith(
+      'teacherPermanentDeleteWarning\n\nteacherPermanentDeleteRetention',
+      expect.any(Function),
+      expect.objectContaining({
+        title: 'confirmPermanentDelete',
+        confirmText: 'yesDeletePermanently',
+      })
+    );
+
+    const confirmDelete = mockNassaqConfirm.mock.calls[0][1];
+    let firstSubmission;
+    await act(async () => {
+      firstSubmission = confirmDelete();
+      await confirmDelete();
+    });
+    expect(mockApi.delete).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Teacher Kept Until Success')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveDelete({ data: { success: true } });
+      await firstSubmission;
+    });
+  });
+
+  test('surfaces a 409 conflict message and leaves the teacher visible', async () => {
+    mockApiGet.mockImplementation((url) => (
+      url === '/teachers'
+        ? Promise.resolve({ data: [{ id: 'shared-teacher', full_name: 'Shared Teacher' }] })
+        : Promise.resolve({ data: [] })
+    ));
+    mockApi.delete.mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          success: false,
+          error: { code: 'TEACHER_DELETE_REVIEW_REQUIRED', message: 'يتطلب هذا الحساب مراجعة مسؤول المنصة' },
+        },
+      },
+    });
+
+    render(<UsersClassesManagement />);
+    fireEvent.click(screen.getByText('totalTeachers').closest('button'));
+    expect(await screen.findByText('Shared Teacher')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByText('delete')[0]);
+    await act(async () => {
+      await mockNassaqConfirm.mock.calls[0][1]();
+    });
+
+    expect(mockNassaqError).toHaveBeenCalledWith('يتطلب هذا الحساب مراجعة مسؤول المنصة');
+    expect(screen.getByText('Shared Teacher')).toBeInTheDocument();
   });
 });

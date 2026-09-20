@@ -105,7 +105,7 @@ def test_api_teacher_create_route_resolves_to_verified_handler():
 
 
 @pytest.mark.asyncio
-async def test_delete_create_collision_then_explicit_restore_preserves_account(client, tenant_a):
+async def test_permanent_delete_releases_identity_instead_of_offering_restore(client, tenant_a):
     principal = await _principal(tenant_a)
     teacher, user = await _deleted_teacher(tenant_a)
     await gd_update_one(db.session, "teachers", {"id": teacher["id"]}, {
@@ -127,25 +127,17 @@ async def test_delete_create_collision_then_explicit_restore_preserves_account(c
     collision = await client.post(
         "/teachers/create", json=payload, headers=_headers(principal["id"], tenant_a)
     )
-    assert collision.status_code == 409, collision.text
-    assert collision.json()["error"]["detail"] == {
-        "code": "TEACHER_RESTORE_AVAILABLE",
-        "message": "هذا المعلم محذوف سابقاً. أكّد استعادة حسابه الحالي بدلاً من إنشاء حساب جديد.",
-        "teacher_id": teacher["id"],
-    }
+    assert collision.status_code == 200, collision.text
     unchanged = await gd_find_one(db.session, "teachers", {"id": teacher["id"]})
-    assert unchanged["full_name"] == "Retained Teacher"
-    assert unchanged["is_active"] is False
+    assert unchanged is None
 
     restored = await client.post(
         f"/teachers/{teacher['id']}/restore",
         headers=_headers(principal["id"], tenant_a),
     )
-    assert restored.status_code == 200, restored.text
-    assert restored.json()["restored_existing"] is True
+    assert restored.status_code == 404, restored.text
     retained_user = await gd_find_one(db.session, "users", {"id": user["id"]})
-    assert retained_user["password_hash"] == "retained-password-hash"
-    assert retained_user["mfa_required"] is True
+    assert retained_user is None
 
 
 @pytest.mark.asyncio
@@ -230,14 +222,15 @@ async def test_delete_audit_failure_rolls_back_all_lifecycle_writes(
         "revoked_at": None,
     })
 
-    real_insert = academics_teacher_routes.gd_insert
+    from services import teacher_permanent_deletion
+    real_insert = teacher_permanent_deletion.gd_insert
 
     async def fail_audit(session, collection, document):
         if collection == "audit_logs":
             raise RuntimeError("injected audit failure")
         return await real_insert(session, collection, document)
 
-    monkeypatch.setattr(academics_teacher_routes, "gd_insert", fail_audit)
+    monkeypatch.setattr(teacher_permanent_deletion, "gd_insert", fail_audit)
     response = await client.delete(
         f"/teachers/{teacher['id']}", headers=_headers(principal["id"], tenant_a)
     )
@@ -296,7 +289,7 @@ async def test_restore_audit_failure_rolls_back_teacher_and_user(
 
 
 @pytest.mark.asyncio
-async def test_deleted_teacher_access_token_stays_revoked_after_restore(client, tenant_a):
+async def test_permanently_deleted_teacher_access_token_cannot_be_restored(client, tenant_a):
     principal = await _principal(tenant_a)
     teacher, user = await _deleted_teacher(tenant_a)
     await gd_update_one(db.session, "teachers", {"id": teacher["id"]}, {
@@ -333,12 +326,12 @@ async def test_deleted_teacher_access_token_stays_revoked_after_restore(client, 
         f"/teachers/{teacher['id']}/restore",
         headers=_headers(principal["id"], tenant_a),
     )
-    assert restored.status_code == 200, restored.text
+    assert restored.status_code == 404, restored.text
     after_restore = await client.get(
         "/teachers/options/nationalities", headers=teacher_headers
     )
     assert after_restore.status_code == 401
-    assert after_restore.json()["error"]["message"] == "Token has been revoked"
+    assert await gd_find_one(db.session, "user_sessions", {"user_id": user["id"]}) is None
 
 
 @pytest.mark.asyncio
@@ -510,7 +503,7 @@ async def test_direct_restore_rechecks_new_global_contact_collision(client, tena
 
 
 @pytest.mark.asyncio
-async def test_actual_user_status_suspension_survives_teacher_delete_restore(
+async def test_suspended_exclusive_teacher_is_permanently_deleted_not_restored(
     client, tenant_a,
 ):
     principal = await _principal(tenant_a)
@@ -539,18 +532,17 @@ async def test_actual_user_status_suspension_survives_teacher_delete_restore(
     deletion_audit = await gd_find_one(db.session, "audit_logs", {
         "entity_type": "teacher",
         "entity_id": teacher["id"],
-        "action": "delete",
+        "action": "permanent_delete",
     })
-    assert deletion_audit["previous_state"]["user_was_active"] is False
+    assert deletion_audit["new_state"]["permanent"] is True
     restore = await client.post(
         f"/teachers/{teacher['id']}/restore",
         headers=_headers(principal["id"], tenant_a),
     )
-    assert restore.status_code == 409, restore.text
-    assert restore.json()["error"]["detail"]["code"] == "TEACHER_ACCOUNT_REVIEW_REQUIRED"
-    assert (await gd_find_one(
+    assert restore.status_code == 404, restore.text
+    assert await gd_find_one(
         db.session, "users", {"id": user["id"]}
-    ))["is_active"] is False
+    ) is None
 
 
 @pytest.mark.asyncio

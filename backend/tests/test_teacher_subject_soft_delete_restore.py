@@ -135,7 +135,7 @@ async def _mk_teacher_assignment(school_id: str, teacher_id: str, subject_id: st
 # ===========================================================================
 
 @pytest.mark.asyncio
-async def test_delete_teacher_principal_soft_deletes_and_cascades(client, tenant_a):
+async def test_delete_teacher_principal_blocks_unproven_account_link(client, tenant_a):
     principal = await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
     teacher_id = await _mk_teacher(tenant_a)
     assignment_id = await _mk_teacher_assignment(tenant_a, teacher_id)
@@ -144,18 +144,14 @@ async def test_delete_teacher_principal_soft_deletes_and_cascades(client, tenant
         f"/teachers/{teacher_id}",
         headers=_bearer(principal["id"], principal["role"], tenant_a),
     )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body.get("success") is True
-    assert body.get("cleanup", {}).get("teacher_assignments") == 1
+    assert resp.status_code == 409, resp.text
 
     row = await gd_find_one(db.session, "teachers", {"id": teacher_id})
-    assert row.get("is_active") is False
-    assert row.get("deleted_at") is not None
-    assert row.get("deleted_by") == principal["id"]
+    assert row.get("is_active") is True
+    assert row.get("deleted_at") is None
 
     assignment = await gd_find_one(db.session, "teacher_assignments", {"id": assignment_id})
-    assert assignment.get("is_active") is False
+    assert assignment.get("is_active") is True
 
 
 @pytest.mark.asyncio
@@ -218,12 +214,14 @@ async def test_restore_teacher_happy_path(client, tenant_a):
     teacher_id = await _mk_teacher(tenant_a)
     assignment_id = await _mk_teacher_assignment(tenant_a, teacher_id)
 
-    # Soft-delete first.
-    del_resp = await client.delete(
-        f"/teachers/{teacher_id}",
-        headers=_bearer(principal["id"], principal["role"], tenant_a),
-    )
-    assert del_resp.status_code == 200
+    # Legacy soft-deleted records remain restorable; new school DELETE does
+    # not produce them under the permanent-deletion policy.
+    await gd_update_one(db.session, "teachers", {"id": teacher_id}, {
+        "is_active": False, "deleted_at": datetime.now(timezone.utc).isoformat(),
+        "deleted_by": principal["id"],
+    })
+    await gd_update_one(db.session, "teacher_assignments", {"id": assignment_id},
+                        {"is_active": False})
 
     resp = await client.post(
         f"/teachers/{teacher_id}/restore",
@@ -287,12 +285,11 @@ async def test_restore_teacher_cross_tenant_principal_blocked(client, tenant_a, 
     intruder = await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
     foreign_teacher_id = await _mk_teacher(tenant_b)
 
-    # Owner soft-deletes their own teacher row so the target IS restorable.
-    del_resp = await client.delete(
-        f"/teachers/{foreign_teacher_id}",
-        headers=_bearer(owner["id"], owner["role"], tenant_b),
-    )
-    assert del_resp.status_code == 200
+    # Seed the retained legacy policy state (new school DELETE is permanent).
+    await gd_update_one(db.session, "teachers", {"id": foreign_teacher_id}, {
+        "is_active": False, "deleted_at": datetime.now(timezone.utc).isoformat(),
+        "deleted_by": owner["id"],
+    })
 
     resp = await client.post(
         f"/teachers/{foreign_teacher_id}/restore",
@@ -488,10 +485,10 @@ async def test_get_teachers_include_deleted_principal_sees_soft_deleted(client, 
     principal = await _mk_user(UserRole.SCHOOL_PRINCIPAL, tenant_a)
     active_id = await _mk_teacher(tenant_a)
     deleted_id = await _mk_teacher(tenant_a)
-    await client.delete(
-        f"/teachers/{deleted_id}",
-        headers=_bearer(principal["id"], principal["role"], tenant_a),
-    )
+    await gd_update_one(db.session, "teachers", {"id": deleted_id}, {
+        "is_active": False, "deleted_at": datetime.now(timezone.utc).isoformat(),
+        "deleted_by": principal["id"],
+    })
 
     # Default — soft-deleted row hidden.
     default_resp = await client.get(
@@ -520,10 +517,10 @@ async def test_get_teachers_include_deleted_silently_ignored_for_teacher(client,
     teacher_caller = await _mk_user(UserRole.TEACHER, tenant_a)
     active_id = await _mk_teacher(tenant_a)
     deleted_id = await _mk_teacher(tenant_a)
-    await client.delete(
-        f"/teachers/{deleted_id}",
-        headers=_bearer(principal["id"], principal["role"], tenant_a),
-    )
+    await gd_update_one(db.session, "teachers", {"id": deleted_id}, {
+        "is_active": False, "deleted_at": datetime.now(timezone.utc).isoformat(),
+        "deleted_by": principal["id"],
+    })
 
     resp = await client.get(
         "/teachers?include_deleted=true",

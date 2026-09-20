@@ -192,6 +192,18 @@ async def _record_session_from_token(
         exp = payload.get("exp")
         if not jti:
             return
+        # user_sessions is a legacy FK-less table. Serialize session creation
+        # against permanent account deletion, then recheck existence after a
+        # concurrent delete commits so stale login requests cannot leave orphans.
+        from sqlalchemy import select as _session_select
+        from pg_models import User as _SessionUser
+        live_user = (await session.execute(
+            _session_select(_SessionUser.id).where(
+                _SessionUser.id == user_id, _SessionUser.is_active.is_(True)
+            ).with_for_update(read=True, key_share=True)
+        )).scalar_one_or_none()
+        if live_user is None:
+            return
         from datetime import timezone as _tz
         expires_at = datetime.fromtimestamp(exp, tz=_tz.utc) if exp else None
         ua_info = _parse_user_agent(user_agent or "")

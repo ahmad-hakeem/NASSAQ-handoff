@@ -1281,6 +1281,8 @@ async def get_my_teacher_profile(current_user: dict = Depends(get_current_user))
 @router.get("/teachers/{teacher_id}", response_model=TeacherResponse)
 async def get_teacher(teacher_id: str, current_user: dict = Depends(get_current_user)):
     """Get teacher by ID"""
+    if teacher_id.startswith("deleted-teacher:"):
+        raise HTTPException(status_code=404, detail="المعلم غير موجود")
     from src.common.utils.tenant_scope import assert_school_access
     teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     if not teacher:
@@ -1300,6 +1302,8 @@ async def update_teacher(
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.SCHOOL_SUB_ADMIN]))
 ):
     """Update teacher"""
+    if teacher_id.startswith("deleted-teacher:"):
+        raise HTTPException(status_code=404, detail="المعلم غير موجود")
     from src.common.utils.tenant_scope import assert_school_access
     existing_teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     if not existing_teacher:
@@ -1347,20 +1351,18 @@ async def delete_teacher(
     teacher_id: str,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.INDEPENDENT_TEACHER]))
 ):
-    """Soft-delete teacher (Task #645).
+    """Permanently delete an exclusively school-teacher account.
 
-    Marks the teacher row as ``is_active=False`` with ``deleted_at`` /
-    ``deleted_by`` populated so the row can be surfaced in the
-    "Recently deleted teachers" panel and restored via
-    ``POST /teachers/{id}/restore``. Dependent rows
-    (assignments, subjects, sessions, attendance, linked user
-    account) are soft-deactivated rather than hard-deleted so a
-    restore can re-link them deliberately. IT callers are pinned to
-    their own workspace; cross-workspace ids return 404 per spec §8
-    inv. 3.
+    School leadership/platform admins use the fail-closed transactional
+    retention service. Shared or unproven accounts require platform review.
+    Independent-teacher callers retain Task #645's existing soft deletion,
+    restore eligibility, and own-workspace restriction (foreign IDs are 404).
     """
     from src.common.utils.tenant_scope import assert_school_access
     from src.core.guards.tenant_guard import is_independent_teacher, independent_workspace_id
+    if not is_independent_teacher(current_user):
+        from services.teacher_permanent_deletion import permanently_delete_teacher
+        return await permanently_delete_teacher(db.session, teacher_id, current_user)
     async with db.session.begin_nested():
         stmt = select(Teacher).where(Teacher.id == teacher_id).with_for_update()
         teacher_obj = (await db.session.execute(stmt)).scalars().first()

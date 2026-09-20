@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { ThemeProvider } from '@/shared/contexts/ThemeContext';
 import TeacherProfileDialog from '../TeacherProfileDialog';
 
@@ -506,5 +506,113 @@ describe('TeacherProfileDialog — Professional Data Rendering', () => {
       '/principal/teacher/t-clear-legacy-dob/basic-info',
       expect.objectContaining({ date_of_birth: null })
     ));
+  });
+});
+
+describe('TeacherProfileDialog — permanent deletion', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('shows the approved warning, prevents duplicate submission, and refreshes before closing', async () => {
+    let resolveDelete;
+    const onRefresh = jest.fn().mockResolvedValue(undefined);
+    const onClose = jest.fn();
+    mockApi.get.mockResolvedValue({
+      data: {
+        profile: {
+          basic_info: { full_name: 'معلم للحذف', status: 'active' },
+          professional_info: {},
+          operational_info: {},
+          assignments: [],
+        },
+      },
+    });
+    mockApi.delete.mockReturnValue(new Promise(resolve => { resolveDelete = resolve; }));
+
+    render(
+      <ThemeProvider>
+        <TeacherProfileDialog
+          open={true}
+          onClose={onClose}
+          teacher={{ id: 'delete-teacher-1', full_name: 'معلم للحذف' }}
+          onRefresh={onRefresh}
+        />
+      </ThemeProvider>
+    );
+
+    clickRadixTab(await screen.findByRole('tab', { name: /إجراءات|actions/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /حذف المعلم نهائياً|delete teacher permanently/i }));
+
+    expect(mockNassaqConfirm).toHaveBeenCalledWith(
+      expect.stringContaining('هذا الحذف نهائي وقد يؤثر على السجلات المرتبطة بالمعلم.'),
+      expect.any(Function),
+      expect.objectContaining({
+        title: 'تأكيد الحذف النهائي',
+        confirmText: 'نعم، احذف نهائياً',
+      })
+    );
+    expect(mockNassaqConfirm.mock.calls[0][0]).toMatch(/معلم محذوف/);
+    expect(mockNassaqConfirm.mock.calls[0][0]).toMatch(/لا يمكن استعادته/);
+
+    let firstSubmission;
+    await act(async () => {
+      firstSubmission = mockNassaqConfirm.mock.calls[0][1]();
+      await mockNassaqConfirm.mock.calls[0][1]();
+    });
+    expect(mockApi.delete).toHaveBeenCalledTimes(1);
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveDelete({ data: { success: true } });
+      await firstSubmission;
+    });
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test('surfaces a platform-review 409 without closing or refreshing', async () => {
+    const onRefresh = jest.fn();
+    const onClose = jest.fn();
+    mockApi.get.mockResolvedValue({
+      data: {
+        profile: {
+          basic_info: { full_name: 'معلم مشترك', status: 'active' },
+          professional_info: {},
+          operational_info: {},
+          assignments: [],
+        },
+      },
+    });
+    mockApi.delete.mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          success: false,
+          error: { code: 'TEACHER_DELETE_REVIEW_REQUIRED', message: 'الحساب مرتبط بأكثر من دور ويتطلب مراجعة مسؤول المنصة' },
+        },
+      },
+    });
+
+    render(
+      <ThemeProvider>
+        <TeacherProfileDialog
+          open={true}
+          onClose={onClose}
+          teacher={{ id: 'shared-teacher', full_name: 'معلم مشترك' }}
+          onRefresh={onRefresh}
+        />
+      </ThemeProvider>
+    );
+    clickRadixTab(await screen.findByRole('tab', { name: /إجراءات|actions/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /حذف المعلم نهائياً|delete teacher permanently/i }));
+    await act(async () => {
+      await mockNassaqConfirm.mock.calls[0][1]();
+    });
+
+    expect(mockNassaqError).toHaveBeenCalledWith('الحساب مرتبط بأكثر من دور ويتطلب مراجعة مسؤول المنصة');
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

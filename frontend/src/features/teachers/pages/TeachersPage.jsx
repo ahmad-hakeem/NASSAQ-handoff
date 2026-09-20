@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { Sidebar } from '@/shared/components/layout/Sidebar';
@@ -90,6 +90,8 @@ export const TeachersPage = () => {
   const [editingTeacher, setEditingTeacher] = useState(null);
   const [deletedExpanded, setDeletedExpanded] = useState(false);
   const [restoringId, setRestoringId] = useState(null);
+  const [deletingTeacherId, setDeletingTeacherId] = useState(null);
+  const teacherDeleteRequestsRef = useRef(new Set());
 
   // Check if user is a school-level user (not platform admin)
   const { nassaqError, nassaqWarning, nassaqConfirm, nassaqSuccess, showAlert } = useNassaqAlert();
@@ -202,23 +204,23 @@ export const TeachersPage = () => {
 
   const handleDeleteTeacher = async (teacherId) => {
     nassaqConfirm(
-      t('areYouSureYouWantToDeleteThisTeacherAllRelatedData'),
+      `${t('teacherPermanentDeleteWarning')}\n\n${t('teacherPermanentDeleteRetention')}`,
       async () => {
+        if (teacherDeleteRequestsRef.current.has(teacherId)) return;
+        teacherDeleteRequestsRef.current.add(teacherId);
+        setDeletingTeacherId(teacherId);
         try {
-          const res = await api.delete(`/teachers/${teacherId}`);
-          const cleanup = res.data?.cleanup;
-          let msg = t('teacherDeletedSuccessfully');
-          if (cleanup) {
-            const parts = Object.entries(cleanup).filter(([_, v]) => v > 0).map(([k, v]) => `${k}: ${v}`);
-            if (parts.length > 0) msg += ` (${parts.join(', ')})`;
-          }
-          toast.success(msg);
+          await api.delete(`/teachers/${teacherId}`);
           await fetchData();
+          toast.success(t('teacherDeletedSuccessfully'));
         } catch (error) {
           nassaqError(getApiErrorMessage(error) || (t('failedToDeleteTeacher')));
+        } finally {
+          teacherDeleteRequestsRef.current.delete(teacherId);
+          setDeletingTeacherId(current => current === teacherId ? null : current);
         }
       },
-      { title: t('confirmDelete'), confirmText: t('yesDelete') || (isRTL ? 'نعم، حذف' : 'Yes, delete'), cancelText: t('cancel') }
+      { title: t('confirmPermanentDelete'), confirmText: t('yesDeletePermanently'), cancelText: t('cancel') }
     );
   };
 
@@ -647,8 +649,11 @@ export const TeachersPage = () => {
                                   <DropdownMenuItem 
                                     className="text-red-600"
                                     onClick={() => handleDeleteTeacher(teacher.id)}
+                                    disabled={deletingTeacherId === teacher.id}
                                   >
-                                    <Trash2 className="h-4 w-4 me-2" />
+                                    {deletingTeacherId === teacher.id
+                                      ? <Loader2 className="h-4 w-4 me-2 animate-spin" />
+                                      : <Trash2 className="h-4 w-4 me-2" />}
                                     {t('delete')}
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>

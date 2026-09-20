@@ -138,9 +138,7 @@ export const getBulkImportStatus = (result = {}, importType = 'students') => {
 
 export const getDeleteSuccessMessage = (type, isRTL, t, cleanup) => {
   if (type === 'teacher') {
-    return isRTL
-      ? 'تم إلغاء تنشيط حساب المعلم مع الاحتفاظ بالحساب والسجل السابق لإمكانية استعادته لاحقاً.'
-      : 'Teacher account deactivated. The account and prior history were retained for a future restore.';
+    return t('teacherDeletedSuccessfully');
   }
   let message = t('deletedSuccessfully');
   const parts = [];
@@ -478,7 +476,7 @@ const StudentCard = ({ student, isRTL, onEdit, onDelete, onView, onAction, viewM
   );
 };
 
-const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewMode = 'grid' }) => {
+const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, isDeleting = false, viewMode = 'grid' }) => {
   const { t } = useTranslation();
   const canViewInternalIds = useCanViewInternalIds();
   const tc = THEME_COLORS.teacher;
@@ -506,7 +504,9 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
               <DropdownMenuItem onClick={() => onView(teacher)}><Eye className="h-3.5 w-3.5 me-2" />{t('viewDetails')}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onEdit(teacher)}><Edit className="h-3.5 w-3.5 me-2" />{t('editInfo')}</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onDelete(teacher)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{t('delete')}</DropdownMenuItem>
+              <DropdownMenuItem disabled={isDeleting} onClick={() => onDelete(teacher)} className="text-red-600">
+                {isDeleting ? <Loader2 className="h-3.5 w-3.5 me-2 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 me-2" />}{t('delete')}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </CardContent>
@@ -541,7 +541,9 @@ const TeacherCard = ({ teacher, isRTL, onEdit, onDelete, onView, onAction, viewM
                 {teacher.is_active !== false ? (t('suspendAccount')) : (t('activateAccount'))}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onDelete(teacher)} className="text-red-600"><Trash2 className="h-3.5 w-3.5 me-2" />{t('delete')}</DropdownMenuItem>
+              <DropdownMenuItem disabled={isDeleting} onClick={() => onDelete(teacher)} className="text-red-600">
+                {isDeleting ? <Loader2 className="h-3.5 w-3.5 me-2 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 me-2" />}{t('delete')}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -950,6 +952,8 @@ export default function UsersClassesManagement() {
 
   const [teacherProfileOpen, setTeacherProfileOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState(null);
+  const [deletingTeacherId, setDeletingTeacherId] = useState(null);
+  const teacherDeleteRequestsRef = useRef(new Set());
   const [parentProfileOpen, setParentProfileOpen] = useState(false);
   const [selectedParent, setSelectedParent] = useState(null);
   const [activeFilter, setActiveFilter] = useState(null);
@@ -1379,31 +1383,44 @@ export default function UsersClassesManagement() {
     }
     const typeLabels = { student: t('studentLower'), teacher: t('teacherLower'), parent: t('parentLower'), class: t('classLower') };
     const msg = type === 'teacher'
-      ? (isRTL
-        ? 'هل تريد إلغاء تنشيط حساب هذا المعلم؟ سيُمنع من تسجيل الدخول، مع الاحتفاظ بحسابه وسجله السابقين لإمكانية استعادته لاحقاً. هذا ليس حذفاً نهائياً.'
-        : 'Deactivate this teacher account? Sign-in will be disabled, while the account and prior history are retained for a possible future restore. This is not a permanent deletion.')
+      ? `${t('teacherPermanentDeleteWarning')}\n\n${t('teacherPermanentDeleteRetention')}`
       : t('confirmDeleteEntity', { label: typeLabels[type] });
     nassaqConfirm(msg, async () => {
+      if (type === 'teacher' && teacherDeleteRequestsRef.current.has(item.id)) return;
+      if (type === 'teacher') {
+        teacherDeleteRequestsRef.current.add(item.id);
+        setDeletingTeacherId(item.id);
+      }
       try {
         const endpoints = { student: `/students/${item.id}`, teacher: `/teachers/${item.id}`, parent: `/parents/${item.id}` };
         const ep = endpoints[type];
         const res = await api.delete(ep);
         const successMsg = getDeleteSuccessMessage(type, isRTL, t, res.data?.cleanup);
-        toast.success(successMsg);
-        fetchAllData();
+        if (type === 'teacher') {
+          await fetchAllData();
+          toast.success(successMsg);
+        } else {
+          toast.success(successMsg);
+          fetchAllData();
+        }
       } catch (error) {
         let errMsg = t('deleteFailed');
         if (getApiErrorMessage(error)) {
           errMsg = typeof getApiErrorMessage(error) === 'string' ? getApiErrorMessage(error) : errMsg;
         }
         nassaqError(errMsg);
+      } finally {
+        if (type === 'teacher') {
+          teacherDeleteRequestsRef.current.delete(item.id);
+          setDeletingTeacherId(current => current === item.id ? null : current);
+        }
       }
     }, {
       title: type === 'teacher'
-        ? (isRTL ? 'تأكيد إلغاء تنشيط المعلم' : 'Confirm teacher deactivation')
+        ? t('confirmPermanentDelete')
         : t('confirmPermanentDelete'),
       confirmText: type === 'teacher'
-        ? (isRTL ? 'نعم، ألغِ التنشيط' : 'Yes, deactivate')
+        ? t('yesDeletePermanently')
         : t('yesDeletePermanently'),
       cancelText: t('cancel'),
     });
@@ -1986,6 +2003,7 @@ export default function UsersClassesManagement() {
             type === 'teachers' ? (
               <TeacherCard key={item.id} teacher={item} isRTL={isRTL} viewMode="list"
                 onEdit={(t) => handleEdit(t, 'teacher')} onDelete={(t) => handleDelete(t, 'teacher')}
+                isDeleting={deletingTeacherId === item.id}
                 onView={(t) => handleView(t, 'teacher')} onAction={(t, a) => handleAccountAction(t, a, 'teacher')} />
             ) : type === 'parents' ? (
               <ParentCard key={item.id} parent={item} isRTL={isRTL} viewMode="list"
@@ -2007,6 +2025,7 @@ export default function UsersClassesManagement() {
           type === 'teachers' ? (
             <TeacherCard key={item.id} teacher={item} isRTL={isRTL}
               onEdit={(t) => handleEdit(t, 'teacher')} onDelete={(t) => handleDelete(t, 'teacher')}
+              isDeleting={deletingTeacherId === item.id}
               onView={(t) => handleView(t, 'teacher')} onAction={(t, a) => handleAccountAction(t, a, 'teacher')} />
           ) : type === 'parents' ? (
             <ParentCard key={item.id} parent={item} isRTL={isRTL}

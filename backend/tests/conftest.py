@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.pool import NullPool
 
 os.environ.setdefault("TESTING", "1")
@@ -24,14 +24,20 @@ from db import _get_async_url
 @pytest_asyncio.fixture(autouse=True)
 async def _db_session():
     engine = create_async_engine(_get_async_url(), poolclass=NullPool)
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with factory() as s:
-        db.set_session(s)
-        try:
-            yield s
-        finally:
-            await s.rollback()
-            db.set_session(None)
+    # Production handlers may explicitly commit before returning success.
+    # Bind to an externally owned transaction so those commits only release a
+    # savepoint and can never persist fixture users in the development database.
+    async with engine.connect() as connection:
+        outer = await connection.begin()
+        async with AsyncSession(bind=connection, expire_on_commit=False,
+                                join_transaction_mode="create_savepoint") as s:
+            db.set_session(s)
+            try:
+                yield s
+            finally:
+                await s.close()
+                db.set_session(None)
+        await outer.rollback()
     await engine.dispose()
 
 

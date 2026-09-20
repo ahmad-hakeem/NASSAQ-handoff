@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/shared/contexts/AuthContext';
 import { useTheme , useTranslation } from '@/shared/contexts/ThemeContext';
 import { Button } from '@/shared/components/ui/button';
@@ -50,6 +50,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
   const [credForm, setCredForm] = useState({ new_email: '', new_password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
+  const deleteRequestRef = useRef(false);
 
   const fetchProfile = useCallback(async () => {
     if (!teacher?.id) return;
@@ -185,17 +186,20 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
 
   const handleDelete = () => {
     nassaqConfirm(
-      t('areYouSureYouWantToPermanentlyDeleteThisTeacherThi'),
+      `${t('teacherPermanentDeleteWarning')}\n\n${t('teacherPermanentDeleteRetention')}`,
       async () => {
+        if (deleteRequestRef.current) return;
+        deleteRequestRef.current = true;
         setActionLoading('delete');
         try {
           await api.delete(`/teachers/${teacher.id}`);
+          await onRefresh?.();
           toast.success(t('teacherDeletedSuccessfully'));
           onClose?.();
-          onRefresh?.();
         } catch (e) {
           nassaqError(getFormErrorMessage(e, { t }) || (t('failedToDeleteTeacher')));
         } finally {
+          deleteRequestRef.current = false;
           setActionLoading('');
         }
       },
