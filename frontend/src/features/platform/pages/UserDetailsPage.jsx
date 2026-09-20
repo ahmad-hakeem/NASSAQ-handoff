@@ -51,6 +51,7 @@ import { PageHeader } from '@/shared/components/layout/PageHeader';
 import { LoadingState } from '@/shared/components/ui/LoadingState';
 import { ImageCropModal } from '@/shared/components/ui/ImageCropModal';
 import { API_URL } from '@/shared/config/apiConfig';
+import { DeleteDialog as UserDeleteDialog } from '@/features/platform/components/users-management/UsersDialogs';
 
 // Role configurations
 const USER_ROLES = {
@@ -202,6 +203,7 @@ export default function UserDetailsPage() {
   // Dialogs
   const [showSuspendDialog, setShowSuspendDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false);
   const [showPasswordResultDialog, setShowPasswordResultDialog] = useState(false);
   const [showNotificationDialog, setShowNotificationDialog] = useState(false);
@@ -331,13 +333,26 @@ export default function UserDetailsPage() {
   
   // Handle delete
   const handleDelete = async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
     try {
       await api.delete(`/users/${userId}`);
-      toast.success('تم أرشفة الحساب بنجاح');
+      toast.success(
+        user?.role === 'teacher'
+          ? 'تم حذف حساب المعلم نهائياً وتحرير بيانات الهوية'
+          : 'تم أرشفة الحساب بنجاح'
+      );
       navigate('/admin/users');
     } catch (error) {
       console.error('Error deleting user:', error);
-      toast.error(getApiErrorMessage(error) || 'فشل في أرشفة الحساب. الرجاء المحاولة مرة أخرى.');
+      toast.error(
+        getApiErrorMessage(error)
+          || (user?.role === 'teacher'
+            ? 'فشل في حذف حساب المعلم. الرجاء المحاولة مرة أخرى.'
+            : 'فشل في أرشفة الحساب. الرجاء المحاولة مرة أخرى.')
+      );
+    } finally {
+      setIsDeleting(false);
     }
   };
   
@@ -1250,29 +1265,14 @@ ${API_URL}/login
           </DialogContent>
         </Dialog>
         
-        {/* Delete Dialog */}
-        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-red-600">
-                <Trash2 className="h-5 w-5" />
-                حذف الحساب
-              </DialogTitle>
-              <DialogDescription>
-                هل أنت متأكد من حذف هذا الحساب؟ سيتم أرشفة الحساب ولن يظهر في القوائم.
-                <br />
-                <strong className="text-red-600">هذا الإجراء لا يمكن التراجع عنه.</strong>
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="flex-row-reverse gap-2">
-              <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>إلغاء</Button>
-              <Button variant="destructive" onClick={handleDelete}>
-                <Trash2 className="h-4 w-4 ms-2" />
-                حذف نهائي
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <UserDeleteDialog
+          user={showDeleteDialog ? user : null}
+          onClose={() => {
+            if (!isDeleting) setShowDeleteDialog(false);
+          }}
+          onConfirm={handleDelete}
+          isDeleting={isDeleting}
+        />
         
         {/* Reset Password Confirm Dialog */}
         <Dialog open={showResetPasswordDialog} onOpenChange={setShowResetPasswordDialog}>

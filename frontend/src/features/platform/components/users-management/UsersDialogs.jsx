@@ -144,23 +144,44 @@ export function SuspendDialog({ user, onClose, onConfirm }) {
   );
 }
 
-export function DeleteDialog({ user, onClose, onConfirm }) {
+export function DeleteDialog({ user, onClose, onConfirm, isDeleting = false }) {
+  const isTeacher = user?.role === 'teacher';
+
   return (
     <Dialog open={!!user} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 flex-row-reverse justify-end text-red-600">
-            <Trash2 className="h-5 w-5" />تأكيد الحذف
+            <Trash2 className="h-5 w-5" />
+            {isTeacher ? 'حذف حساب المعلم نهائياً' : 'تأكيد الحذف'}
           </DialogTitle>
           <DialogDescription className="text-right">
-            هل أنت متأكد من حذف حساب <strong>{user?.full_name}</strong>؟
-            <br /><span className="text-muted-foreground text-sm">سيتم نقل الحساب إلى الأرشيف ولن يتم حذفه نهائياً.</span>
+            {isTeacher ? (
+              <>
+                سيتم حذف حساب المعلم <strong>{user?.full_name}</strong> وسجله النشط نهائياً، وإلغاء وصوله
+                وتحرير البريد الإلكتروني ورقم الهاتف والهوية لإعادة استخدامها.
+                <br />
+                <span className="text-muted-foreground text-sm">
+                  ستبقى السجلات التعليمية والتاريخية السابقة محفوظة باسم «معلم محذوف».
+                </span>
+                <br />
+                <span className="text-red-600 text-sm">
+                  إذا وُجدت ارتباطات مشتركة أو غير مؤكدة فلن يتم الحذف، وستلزم مراجعة مسؤول المنصة.
+                </span>
+              </>
+            ) : (
+              <>
+                هل أنت متأكد من حذف حساب <strong>{user?.full_name}</strong>؟
+                <br /><span className="text-muted-foreground text-sm">سيتم نقل الحساب إلى الأرشيف ولن يتم حذفه نهائياً.</span>
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex-row-reverse gap-2">
-          <Button variant="outline" onClick={onClose}>إلغاء</Button>
-          <Button variant="destructive" onClick={() => onConfirm(user)}>
-            <Archive className="h-4 w-4 ms-2" />أرشفة الحساب
+          <Button variant="outline" onClick={onClose} disabled={isDeleting}>إلغاء</Button>
+          <Button variant="destructive" onClick={() => onConfirm(user)} disabled={isDeleting}>
+            {isTeacher ? <Trash2 className="h-4 w-4 ms-2" /> : <Archive className="h-4 w-4 ms-2" />}
+            {isDeleting ? 'جارٍ الحذف...' : (isTeacher ? 'حذف المعلم نهائياً' : 'أرشفة الحساب')}
           </Button>
         </DialogFooter>
       </DialogContent>

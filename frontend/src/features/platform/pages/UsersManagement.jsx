@@ -116,6 +116,7 @@ export default function UsersManagement() {
   const [showUserDetails, setShowUserDetails] = useState(null);
   const [showSuspendConfirm, setShowSuspendConfirm] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [showEditUser, setShowEditUser] = useState(null);
   const [showSendNotification, setShowSendNotification] = useState(null);
   const [approvalConfirm, setApprovalConfirm] = useState(null);
@@ -360,16 +361,27 @@ export default function UsersManagement() {
   };
 
   const handleDeleteUser = async (user) => {
+    if (isDeletingUser) return;
+    setIsDeletingUser(true);
     try {
       await api.delete(`/users/${user.id}`);
-      toast.success('تم أرشفة الحساب بنجاح');
+      toast.success(
+        user.role === 'teacher'
+          ? 'تم حذف حساب المعلم نهائياً وتحرير بيانات الهوية'
+          : 'تم أرشفة الحساب بنجاح'
+      );
       fetchUsers();
       fetchManagementStats();
+      setShowDeleteConfirm(null);
     } catch (error) {
       console.error('Error deleting user:', error);
-      toast.error(getApiErrorMessage(error) || 'فشل في أرشفة الحساب');
+      toast.error(
+        getApiErrorMessage(error)
+          || (user.role === 'teacher' ? 'فشل في حذف حساب المعلم' : 'فشل في أرشفة الحساب')
+      );
+    } finally {
+      setIsDeletingUser(false);
     }
-    setShowDeleteConfirm(null);
   };
 
   const handleResolveMismatch = (mismatch) => {
@@ -870,8 +882,11 @@ export default function UsersManagement() {
 
         <DeleteDialog
           user={showDeleteConfirm}
-          onClose={() => setShowDeleteConfirm(null)}
+          onClose={() => {
+            if (!isDeletingUser) setShowDeleteConfirm(null);
+          }}
           onConfirm={handleDeleteUser}
+          isDeleting={isDeletingUser}
         />
 
         <NotificationDialog

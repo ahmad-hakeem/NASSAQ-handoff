@@ -256,7 +256,7 @@ async def _verify_live_fks(session):
             review()
 
 
-async def permanently_delete_teacher(session, teacher_id, actor):
+async def permanently_delete_teacher(session, teacher_id, actor, *, expected_user_id=None):
     if actor.get("role") not in {"platform_admin", "school_principal", "school_admin"}:
         raise HTTPException(403, "غير مصرح")
     # School/user/profile links include legacy FK-less fields. Serialize writes to
@@ -288,6 +288,10 @@ async def permanently_delete_teacher(session, teacher_id, actor):
             if len(users) != 1:
                 review()
             user = users[0]
+            # User-management deletion addresses an account, not just a profile.
+            # Verify the requested account under the same locks as all cleanup.
+            if expected_user_id is not None and user.id != expected_user_id:
+                review()
             if (not teacher.user_id or user.id != teacher.user_id or user.teacher_id != teacher_id
                     or user.tenant_id != teacher.school_id or user.role != "teacher"
                     or user.linked_roles or user.parent_id or user.student_id
