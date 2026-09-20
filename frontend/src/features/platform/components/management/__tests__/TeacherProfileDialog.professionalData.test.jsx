@@ -202,4 +202,51 @@ describe('TeacherProfileDialog — Professional Data Rendering', () => {
       expect.objectContaining({ years_of_experience: 0 })
     ));
   });
+
+  test('sends null when degree, rank, and experience are cleared', async () => {
+    mockApi.get.mockResolvedValueOnce({
+      data: {
+        profile: {
+          basic_info: { full_name: 'معلم' },
+          professional_info: {
+            academic_degree: 'bachelor',
+            teacher_rank: 'teacher',
+            years_of_experience: 4,
+            contract_type: 'permanent',
+          },
+          operational_info: { status: 'active' },
+        },
+      },
+    });
+    mockApi.put.mockResolvedValueOnce({ data: { success: true } });
+
+    render(
+      <ThemeProvider>
+        <TeacherProfileDialog
+          open={true}
+          onClose={() => {}}
+          teacher={{ id: 't-clear', full_name: 'معلم' }}
+          onRefresh={() => {}}
+        />
+      </ThemeProvider>
+    );
+
+    const professionalTab = await screen.findByRole('tab', { name: /المهني|career/i });
+    clickRadixTab(professionalTab);
+    await screen.findByTestId('edit-professional');
+    fireEvent.click(screen.getByTestId('edit-professional'));
+    fireEvent.click(screen.getByTestId('clear-degree'));
+    fireEvent.click(screen.getByTestId('clear-rank'));
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
+
+    await waitFor(() => expect(mockApi.put).toHaveBeenCalledWith(
+      '/principal/teacher/t-clear/professional-info',
+      expect.objectContaining({
+        academic_degree: null,
+        teacher_rank: null,
+        years_of_experience: null,
+      })
+    ));
+  });
 });

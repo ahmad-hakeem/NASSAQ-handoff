@@ -248,9 +248,9 @@ async def test_update_teacher_professional_info_distinguishes_omitted_and_cleare
         "tenant_id": tenant_a,
         "full_name": "اختبار مسح المؤهلات",
         "email": f"clear_{uuid.uuid4().hex[:8]}@test.com",
-        "academic_degree": "master",
+        "academic_degree": None,
         "qualification": "master",
-        "teacher_rank": "expert",
+        "teacher_rank": None,
         "rank": "expert",
         "years_of_experience": 7,
         "is_active": True,
@@ -270,6 +270,19 @@ async def test_update_teacher_professional_info_distinguishes_omitted_and_cleare
     assert teacher["rank"] is None
     assert teacher["years_of_experience"] is None
 
+    # The clear must clean stale aliases even when canonical columns were
+    # already NULL, and the profile response must not resurrect those aliases.
+    assert teacher["qualification"] is None
+    assert teacher["rank"] is None
+    profile_response = await client.get(
+        f"/principal/teacher/{teacher_id}/full-profile",
+        headers=school_principal_headers,
+    )
+    assert profile_response.status_code == 200
+    professional = profile_response.json()["profile"]["professional_info"]
+    assert professional["academic_degree"] is None
+    assert professional["teacher_rank"] is None
+
     response = await client.put(
         f"/principal/teacher/{teacher_id}/professional-info",
         json={"contract_type": "contract"},
@@ -279,6 +292,28 @@ async def test_update_teacher_professional_info_distinguishes_omitted_and_cleare
     teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
     assert teacher["contract_type"] == "contract"
     assert teacher["academic_degree"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_teacher_professional_info_preserves_explicit_zero(
+    client, school_principal_headers, tenant_a
+):
+    teacher_id = str(uuid.uuid4())
+    await gd_insert(db.session, "teachers", {
+        "id": teacher_id, "school_id": tenant_a, "tenant_id": tenant_a,
+        "full_name": "اختبار صفر الخبرة",
+        "email": f"zero_edit_{uuid.uuid4().hex[:8]}@test.com",
+        "years_of_experience": 8, "is_active": True,
+    })
+    await db.session.flush()
+    response = await client.put(
+        f"/principal/teacher/{teacher_id}/professional-info",
+        json={"years_of_experience": 0},
+        headers=school_principal_headers,
+    )
+    assert response.status_code == 200, response.text
+    teacher = await gd_find_one(db.session, "teachers", {"id": teacher_id})
+    assert teacher["years_of_experience"] == 0
 
 
 @pytest.mark.asyncio

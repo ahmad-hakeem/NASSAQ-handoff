@@ -372,6 +372,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                           <SelectItem value="doctorate">{t('doctorate')}</SelectItem>
                         </SelectContent>
                       </Select>
+                      <button data-testid="clear-degree" type="button" className="text-xs text-muted-foreground" onClick={() => setFormData(p => ({ ...p, academic_degree: '' }))}>{t('clear') || (isRTL ? 'مسح' : 'Clear')}</button>
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">{t('rank')}</Label>
@@ -385,6 +386,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                           <SelectItem value="department_head">{t('departmentHead')}</SelectItem>
                         </SelectContent>
                       </Select>
+                      <button data-testid="clear-rank" type="button" className="text-xs text-muted-foreground" onClick={() => setFormData(p => ({ ...p, teacher_rank: '' }))}>{t('clear') || (isRTL ? 'مسح' : 'Clear')}</button>
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">{t('experience')}</Label>

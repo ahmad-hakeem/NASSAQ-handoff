@@ -408,12 +408,14 @@ async def update_teacher_professional_info(
             elif field == "contract_type" and old_val is None:
                 old_val = teacher.get("contract")
 
-            if val != old_val:
+            alias_field = {"academic_degree": "qualification", "teacher_rank": "rank"}.get(field)
+            alias_needs_cleanup = alias_field is not None and (
+                teacher.get(alias_field) != val
+            )
+            if val != old_val or alias_needs_cleanup:
                 updates[field] = val
-                if field == "academic_degree":
-                    updates["qualification"] = val
-                elif field == "teacher_rank":
-                    updates["rank"] = val
+                if alias_field:
+                    updates[alias_field] = val
                 elif field == "contract_type":
                     updates["contract"] = val
                 changes[field] = {"old": old_val, "new": val}
