@@ -8,12 +8,18 @@ echo "=========================================="
 
 echo "Setting up Python virtual environment..."
 cd /home/runner/workspace
-python3 -m venv /home/runner/workspace/.venv || true
+python3 -m venv /home/runner/workspace/.venv
 source /home/runner/workspace/.venv/bin/activate
 
 echo "Installing backend dependencies..."
 cd /home/runner/workspace/backend
-pip install -r requirements.txt --no-cache-dir -q 2>&1 | tail -5
+# Install into the SAME interpreter used by the isolated startup probes.
+# Workspace pip/PYTHONPATH settings must not redirect installs to .pythonlibs
+# or make pip treat packages outside this environment as already installed.
+# Keep package-index/security-registry settings intact.
+unset PIP_TARGET PIP_PREFIX PIP_USER PYTHONPATH PYTHONHOME
+python -I -m pip install --ignore-installed --no-user \
+  -r requirements.txt --no-cache-dir -q
 
 # Replit Publish owns production schema changes.  Keep this image build
 # database-independent: it must not connect to PostgreSQL or execute DDL.
