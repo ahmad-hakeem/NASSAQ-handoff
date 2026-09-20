@@ -542,7 +542,9 @@ def _teacher_identity_error(code: str, message: str) -> HTTPException:
     )
 
 
-def _phone_search_values(phone: str) -> set[str]:
+def _phone_search_values(phone: Optional[str]) -> set[str]:
+    if not phone:
+        return set()
     values = {phone}
     if phone.startswith("05") and len(phone) == 10:
         values.update({"966" + phone[1:], "00966" + phone[1:]})
@@ -602,7 +604,7 @@ async def _has_known_administrative_suspension(
 
 
 async def _restorable_teacher_for_wizard(
-    school_id: str, *, email: str, phone: str, national_id: Optional[str],
+    school_id: str, *, email: str, phone: Optional[str], national_id: Optional[str],
 ) -> Optional[str]:
     """Resolve one globally unambiguous, same-school retained identity.
 
@@ -659,7 +661,7 @@ async def _restorable_teacher_for_wizard(
                 "TEACHER_NATIONAL_ID_CONFLICT",
                 "رقم الهوية مرتبط ببيانات معلم مختلفة ويلزم مراجعته.",
             )
-        if any(
+        if phone and any(
             _normalise_teacher_phone(row.get("phone")) == phone for row in teachers
         ):
             raise _teacher_identity_error(
@@ -672,7 +674,7 @@ async def _restorable_teacher_for_wizard(
                 "توجد هوية محتفظ بها تتطلب مراجعة الإدارة.",
             )
         if contact_users:
-            if any(
+            if phone and any(
                 _normalise_teacher_phone(row.phone) == phone
                 for row in contact_users
             ):
@@ -691,7 +693,7 @@ async def _restorable_teacher_for_wizard(
     for row in teachers:
         if row["id"] == teacher["id"]:
             continue
-        if _normalise_teacher_phone(row.get("phone")) == phone:
+        if phone and _normalise_teacher_phone(row.get("phone")) == phone:
             raise _teacher_identity_error(
                 "TEACHER_MOBILE_CONFLICT",
                 "رقم الجوال مرتبط بحساب آخر ولا يمكن استخدامه.",
@@ -781,6 +783,33 @@ async def _restorable_teacher_for_wizard(
             "الحساب المحتفظ به غير قابل للاستعادة التلقائية ويلزم مراجعته.",
         )
     return teacher["id"]
+
+async def _check_teacher_create_identity(school_id, *, email, phone, national_id=None):
+    """Shared by both creation APIs; run before inserting either identity row."""
+    await _lock_teacher_identity(
+        school_id, email=email, phone=phone, national_id=national_id,
+    )
+    restore_teacher_id = await _restorable_teacher_for_wizard(
+        school_id, email=email, phone=phone, national_id=national_id,
+    )
+    if restore_teacher_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "TEACHER_RESTORE_AVAILABLE",
+                "message": "هذا المعلم محذوف سابقاً. أكّد استعادة حسابه الحالي بدلاً من إنشاء حساب جديد.",
+                "teacher_id": restore_teacher_id,
+            },
+        )
+    if await gd_find_one(db.session, "users", {"email": email}):
+        raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
+    if phone and await gd_find_one(db.session, "users", {"phone": phone}):
+        raise HTTPException(status_code=400, detail="رقم الهاتف مسجل مسبقاً")
+    if national_id and await gd_find_one(
+        db.session, "teachers", {"national_id": national_id, "school_id": school_id},
+    ):
+        raise HTTPException(status_code=400, detail="رقم الهوية الوطنية مسجل مسبقاً")
+
 
 @router.post("/teachers/create")
 async def create_teacher_wizard(
@@ -939,48 +968,12 @@ async def create_teacher_wizard(
 
     # Serialize narrow identity keys. This closes the check-then-insert race
     # without locking unrelated teacher creation requests.
-    await _lock_teacher_identity(
+    await _check_teacher_create_identity(
         school_id,
         email=canonical_email,
         phone=canonical_phone,
         national_id=canonical_national_id,
     )
-
-    restore_teacher_id = await _restorable_teacher_for_wizard(
-        school_id,
-        email=canonical_email,
-        phone=canonical_phone,
-        national_id=canonical_national_id,
-    )
-    if restore_teacher_id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "TEACHER_RESTORE_AVAILABLE",
-                "message": "هذا المعلم محذوف سابقاً. أكّد استعادة حسابه الحالي بدلاً من إنشاء حساب جديد.",
-                "teacher_id": restore_teacher_id,
-            },
-        )
-
-    # Check if email exists
-    existing = await gd_find_one(db.session, "users", {"email": canonical_email})
-    if existing:
-        raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
-
-    # Check if phone exists (uniqueness across users)
-    if phone:
-        existing_phone = await gd_find_one(db.session, "users", {"phone": canonical_phone})
-        if existing_phone:
-            raise HTTPException(status_code=400, detail="رقم الهاتف مسجل مسبقاً")
-
-    # Check if national_id is unique among teachers in same school
-    if national_id:
-        existing_nid = await gd_find_one(
-            db.session, "teachers",
-            {"national_id": canonical_national_id, "school_id": school_id}
-        )
-        if existing_nid:
-            raise HTTPException(status_code=400, detail="رقم الهوية الوطنية مسجل مسبقاً")
 
     # Get school info
     school = await gd_find_one(db.session, "schools", {"id": school_id})
@@ -1093,10 +1086,18 @@ async def create_teacher(
         raise HTTPException(status_code=400, detail="يجب تحديد المدرسة / School context is required")
     teacher_data.school_id = school_id
 
-    # Check if email already exists
-    existing = await gd_find_one(db.session, "users", {"email": teacher_data.email})
-    if existing:
-        raise HTTPException(status_code=400, detail="البريد الإلكتروني مسجل مسبقاً")
+    teacher_data.email = _normalise_teacher_email(teacher_data.email)
+    canonical_phone = _normalise_teacher_phone(teacher_data.phone)
+    # This API historically permits no phone; a supplied phone must be valid.
+    if teacher_data.phone is not None and (not canonical_phone or len(canonical_phone) < 7):
+        raise HTTPException(status_code=400, detail={
+            "code": "TEACHER_IDENTITY_INVALID",
+            "message": "رقم الجوال غير صالح.",
+        })
+    teacher_data.phone = canonical_phone or None
+    await _check_teacher_create_identity(
+        school_id, email=teacher_data.email, phone=canonical_phone,
+    )
     
     # Create user account for teacher
     user_id = str(uuid.uuid4())
@@ -1105,6 +1106,7 @@ async def create_teacher(
     temp_password = f"Tch{uuid.uuid4().hex[:8]}!"
     user_doc = {
         "id": user_id,
+        "teacher_id": teacher_id,
         "email": teacher_data.email,
         "password_hash": hash_password(temp_password),
         "full_name": teacher_data.full_name,

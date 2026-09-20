@@ -31,7 +31,7 @@ class TestTeachersAPI:
                 "full_name": "معلم اختبار",
                 "full_name_en": "Test Teacher",
                 "email": unique_email,
-                "phone": "+966501234567",
+                "phone": f"05{uuid.uuid4().int % 100_000_000:08d}",
                 "school_id": tenant_a,
                 "specialization": "رياضيات",
                 "years_of_experience": 5,
@@ -74,7 +74,8 @@ class TestTeachersAPI:
                 "specialization": "فيزياء",
             },
         )
-        assert response.status_code == 400
+        assert response.status_code == 409
+        assert response.json()["error"]["detail"]["code"] == "TEACHER_ACTIVE_DUPLICATE"
 
     async def test_get_teacher_by_id(self, client, school_admin_headers, tenant_a):
         """Test getting a specific teacher by ID"""

@@ -42,8 +42,13 @@ async def setup(school):
 
 
 @pytest.mark.asyncio
-async def test_permanent_delete_readd_duplicate_and_token(client, tenant_a):
+@pytest.mark.parametrize("create_path", ["/teachers/create", "/teachers"])
+async def test_permanent_delete_readd_duplicate_and_token(client, tenant_a, create_path):
     actor, teacher, user = await setup(tenant_a)
+    email = f"{user['id']}@example.com"
+    for collection, row in (("users", user), ("teachers", teacher)):
+        await gd_update_one(db.session, collection, {"id": row["id"]}, {"email": email})
+        row["email"] = email
     claims = {"sub": user["id"], "role": "teacher", "tenant_id": tenant_a}
     old_headers = {"Authorization": f"Bearer {create_access_token(claims)}"}
     refresh_token = create_refresh_token(claims)
@@ -72,7 +77,7 @@ async def test_permanent_delete_readd_duplicate_and_token(client, tenant_a):
                                headers=_headers(actor["id"], tenant_a))).status_code == 404
     assert (await client.get("/auth/me", headers=old_headers)).status_code in (401, 403)
     assert (await client.post("/auth/refresh", json={"refresh_token": refresh_token})).status_code == 401
-    response = await client.post("/teachers/create", headers=_headers(actor["id"], tenant_a),
+    response = await client.post(create_path, headers=_headers(actor["id"], tenant_a),
                                  json={k: teacher[k] for k in ("full_name", "email", "phone", "national_id")})
     assert response.status_code == 200, response.text
     assert (await gd_find_one(db.session, "teachers", {"email": teacher["email"]}))["id"] != teacher["id"]
