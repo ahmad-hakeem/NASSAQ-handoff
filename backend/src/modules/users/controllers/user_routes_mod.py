@@ -490,12 +490,9 @@ async def delete_platform_user(
         raise HTTPException(status_code=400, detail="لا يمكن حذف مدير المنصة")
 
     if user.get("role") == UserRole.TEACHER.value:
-        from services.teacher_permanent_deletion import permanently_delete_teacher, review
-        teacher_id = user.get("teacher_id")
-        if not teacher_id:
-            review()
+        from services.teacher_permanent_deletion import permanently_delete_teacher
         return await permanently_delete_teacher(
-            db.session, teacher_id, current_user, expected_user_id=user_id,
+            db.session, user.get("teacher_id"), current_user, expected_user_id=user_id,
         )
     
     # Soft delete - just mark as inactive

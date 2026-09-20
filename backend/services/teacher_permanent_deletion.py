@@ -6,6 +6,7 @@ school-local deleted-teacher marker. Unknown JSON relationships require review.
 """
 import uuid
 import re
+import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
@@ -17,10 +18,12 @@ from engines.entity_counts import reconcile_school_counts
 from engines.sql_utils import gd_insert
 from src.common.utils.tenant_scope import assert_school_access
 from src.core.guards.tenant_guard import is_independent_workspace_id
+from src.core.middleware.rbac import ROLE_PERMISSIONS
 
 
 REVIEW = "لا يمكن حذف هذا الحساب نهائياً لوجود ارتباطات مشتركة أو غير مؤكدة. يلزم مراجعة مسؤول المنصة."
 LABEL = "معلم محذوف"
+logger = logging.getLogger(__name__)
 ACTIVE_TABLES = {
     "teacher_assignments", "teacher_class_assignments", "user_sessions",
     "notifications", "notifications_preferences", "mfa_factors", "mfa_recovery_codes",
@@ -82,7 +85,12 @@ def identity_column(column, field):
     )
 
 
-def review():
+def review(reason="unclassified_guard", *, table="unknown", count=1):
+    """Fail closed while recording a non-PII reason and affected row count."""
+    logger.warning(
+        "teacher_permanent_delete_blocked reason=%s table=%s count=%d",
+        reason, table, count,
+    )
     raise HTTPException(status_code=409, detail=REVIEW)
 
 
@@ -127,7 +135,7 @@ def verify_document_scope(value, ids, school_id):
         if contains(value, ids):
             for key in ("school_id", "tenant_id", "workspace_school_id"):
                 if value.get(key) not in (None, "", school_id):
-                    review()
+                    review("foreign_nested_document_scope", table="json_document")
         for child in value.values():
             verify_document_scope(child, ids, school_id)
 
@@ -141,14 +149,15 @@ async def verify_teacher_relationship(session, document, teacher_id, school_id):
     including mixed schemas, require platform review rather than deletion.
     """
     if "user_id_1" in document or "user_id_2" in document:
-        review()
+        review("untyped_legacy_relationship", table="user_relationships")
     allowed_fields = {
         "id", "from_entity_type", "from_entity_id", "to_entity_type", "to_entity_id",
         "relationship_type", "tenant_id", "academic_year_id", "term_id", "metadata",
         "status", "created_at", "updated_at", "created_by",
     }
     if set(document) - allowed_fields:
-        review()
+        review("unknown_relationship_fields", table="user_relationships",
+               count=len(set(document) - allowed_fields))
     targets = {
         "teaches_class": ("class", "classes"), "homeroom_for": ("class", "classes"),
         "teaches_subject": ("subject", "subjects"), "teaches_student": ("student", "students"),
@@ -162,7 +171,7 @@ async def verify_teacher_relationship(session, document, teacher_id, school_id):
         or document.get("to_entity_type") != expected[0]
         or not isinstance(document.get("to_entity_id"), str)
     ):
-        review()
+        review("invalid_teacher_relationship_shape", table="user_relationships")
     table = Base.metadata.tables[expected[1]]
     target = (await session.execute(select(table).where(
         table.c.id == document["to_entity_id"]
@@ -170,7 +179,7 @@ async def verify_teacher_relationship(session, document, teacher_id, school_id):
     if target is None or (
         target["id"] if expected[0] == "school" else target["school_id"]
     ) != school_id:
-        review()
+        review("missing_or_foreign_relationship_target", table=expected[1], count=0 if target is None else 1)
 
 
 async def _unmapped_references(session, ids, mutate=False):
@@ -201,7 +210,7 @@ async def _unmapped_references(session, ids, mutate=False):
             continue
         if table == "impersonation_sessions":
             if column == "original_user_id":
-                review()
+                review("impersonation_origin_claim", table="impersonation_sessions")
             if mutate:
                 await session.execute(text(f"""
                     UPDATE {qtable} SET target_user_id=NULL, ended_at=COALESCE(ended_at,now()),
@@ -222,7 +231,7 @@ async def _unmapped_references(session, ids, mutate=False):
                     f"UPDATE {qtable} SET {qcol}='deleted-user' WHERE {condition}"
                 ), params)
         else:
-            review()
+            review("unknown_unmapped_reference", table=table)
 
 
 async def write_deletion_audit(session, teacher_id, school_id, actor, cleanup):
@@ -253,7 +262,7 @@ async def _verify_live_fks(session):
             fk.column.table.name == target and actions.get(fk.ondelete or "NO ACTION") == action
             for fk in table.c[col].foreign_keys
         ):
-            review()
+            review("live_fk_schema_drift", table=source)
 
 
 async def permanently_delete_teacher(session, teacher_id, actor, *, expected_user_id=None):
@@ -268,52 +277,99 @@ async def permanently_delete_teacher(session, teacher_id, actor, *, expected_use
                 "LOCK TABLE users, teachers, generic_documents, schools, "
                 "workspace_collaborators IN SHARE ROW EXCLUSIVE MODE"
             ))
-            teacher = (await session.execute(select(Teacher).where(
-                Teacher.id == teacher_id).with_for_update())).scalar_one_or_none()
-            if teacher is None:
+            expected_user = None
+            if expected_user_id is not None:
+                expected_user = (await session.execute(select(User).where(
+                    User.id == expected_user_id).with_for_update())).scalar_one_or_none()
+                if expected_user is None:
+                    raise HTTPException(404, "المستخدم غير موجود")
+
+            # Legacy rows can have only one side of the user/profile link. Resolve
+            # them only when the remaining scalar link proves one unique profile;
+            # role alone is never evidence of ownership.
+            profile_claims = []
+            if teacher_id:
+                profile_claims.extend((Teacher.id == teacher_id, Teacher.teacher_id == teacher_id))
+            if expected_user_id is not None:
+                profile_claims.append(Teacher.user_id == expected_user_id)
+                if expected_user and expected_user.teacher_id:
+                    profile_claims.extend((
+                        Teacher.id == expected_user.teacher_id,
+                        Teacher.teacher_id == expected_user.teacher_id,
+                    ))
+            teachers = (await session.execute(select(Teacher).where(
+                or_(*profile_claims)).with_for_update())).scalars().all() if profile_claims else []
+            teachers = list({row.id: row for row in teachers}.values())
+            if not teachers:
+                if expected_user_id is not None:
+                    review("missing_teacher_profile", table="teachers", count=0)
                 raise HTTPException(404, "المعلم غير موجود")
+            if len(teachers) != 1:
+                review("ambiguous_teacher_profiles", table="teachers", count=len(teachers))
+            teacher = teachers[0]
+            teacher_id = teacher.id
             assert_school_access(actor, teacher.school_id)
             if not teacher.school_id or is_independent_workspace_id(teacher.school_id):
-                review()
+                review("non_school_teacher_profile", table="teachers")
             school_table = Base.metadata.tables["schools"]
             school = (await session.execute(select(school_table).where(
                 school_table.c.id == teacher.school_id))).mappings().one()
             if {school.get("tenant_type"), school.get("school_type")} & {
                 "independent_teacher", "independent_workspace", "independent_teacher_workspace",
             }:
-                review()
+                review("independent_school_type", table="schools")
             users = (await session.execute(select(User).where(or_(
-                User.id == teacher.user_id, User.teacher_id == teacher_id
+                User.id == teacher.user_id, User.teacher_id == teacher_id,
+                User.id == expected_user_id if expected_user_id is not None else False,
             )).with_for_update())).scalars().all()
+            users = list({row.id: row for row in users}.values())
             if len(users) != 1:
-                review()
+                review("ambiguous_user_accounts", table="users", count=len(users))
             user = users[0]
             # User-management deletion addresses an account, not just a profile.
             # Verify the requested account under the same locks as all cleanup.
             if expected_user_id is not None and user.id != expected_user_id:
-                review()
-            if (not teacher.user_id or user.id != teacher.user_id or user.teacher_id != teacher_id
+                review("requested_user_mismatch", table="users")
+            teacher_claim = teacher.user_id == user.id
+            user_claim = user.teacher_id == teacher_id
+            if ((teacher.user_id is not None and not teacher_claim)
+                    or (user.teacher_id is not None and not user_claim)
+                    or not (teacher_claim or user_claim)
+                    or (expected_user_id is None and not (teacher_claim and user_claim))
                     or user.tenant_id != teacher.school_id or user.role != "teacher"
                     or user.linked_roles or user.parent_id or user.student_id
-                    or user.primary_tenant_id not in (None, teacher.school_id)
-                    or user.permissions):
-                review()
+                    or user.primary_tenant_id not in (None, teacher.school_id)):
+                review("account_ownership_mismatch", table="users", count=1)
+            default_permissions = set(ROLE_PERMISSIONS["teacher"])
+            permissions = user.permissions or []
+            if (
+                not isinstance(permissions, list)
+                or (permissions and set(permissions) != default_permissions)
+            ):
+                review("custom_teacher_permissions", table="users", count=len(permissions) if isinstance(permissions, list) else 1)
+            other_profile_claims = [Teacher.user_id == user.id]
+            if user.teacher_id:
+                other_profile_claims.extend((
+                    Teacher.id == user.teacher_id,
+                    Teacher.teacher_id == user.teacher_id,
+                ))
             profiles = (await session.execute(select(Teacher.id).where(
-                or_(Teacher.user_id == user.id, Teacher.teacher_id == teacher_id)
+                or_(*other_profile_claims)
             ))).scalars().all()
-            if profiles != [teacher_id]:
-                review()
+            profiles = set(profiles)
+            if profiles != {teacher_id}:
+                review("additional_profile_claims", table="teachers", count=len(profiles))
             # Linked-role payloads are not relational FKs. Another account that
             # claims this profile is ambiguity even when User.teacher_id is NULL.
             if (await session.execute(select(User.id).where(
                 User.id != user.id,
                 json_matches(User.linked_roles, {teacher_id, user.id}),
             ).limit(1))).first():
-                review()
+                review("linked_role_profile_claim", table="users")
             for field in ("email", "phone", "national_id"):
                 a, b = getattr(teacher, field), getattr(user, field)
                 if a and b and canonical(a, field) != canonical(b, field):
-                    review()
+                    review("profile_account_identity_mismatch", table="users")
             for model, own_id in ((Teacher, teacher_id), (User, user.id)):
                 matches = []
                 for field in ("email", "phone", "national_id"):
@@ -323,16 +379,16 @@ async def permanently_delete_teacher(session, teacher_id, actor, *, expected_use
                 if matches and (await session.execute(select(model.id).where(
                     model.id != own_id, or_(*matches)
                 ).limit(1))).first():
-                    review()
+                    review("duplicate_identity_owner", table=model.__tablename__)
             ids = {teacher_id, user.id}
             if (await session.execute(select(school_table.c.id).where(
                     or_(school_table.c.principal_id == user.id,
                         school_table.c.id == f"itw_{user.id}")))).first():
-                review()
+                review("school_ownership_claim", table="schools")
             collaborators = Base.metadata.tables["workspace_collaborators"]
             if (await session.execute(select(collaborators.c.id).where(
                     collaborators.c.collaborator_user_id == user.id))).first():
-                review()
+                review("workspace_collaborator_claim", table="workspace_collaborators")
             await _verify_live_fks(session)
             await _unmapped_references(session, (teacher_id, user.id))
 
@@ -347,7 +403,7 @@ async def permanently_delete_teacher(session, teacher_id, actor, *, expected_use
                     continue
                 collection = doc._collection
                 if collection not in ACTIVE_DOCUMENTS | HISTORY_DOCUMENTS:
-                    review()
+                    review("unknown_linked_document_collection", table=collection)
                 verify_document_scope(doc.data, ids, teacher.school_id)
                 if collection == "user_relationships":
                     await verify_teacher_relationship(session, doc.data, teacher_id, teacher.school_id)
@@ -356,10 +412,10 @@ async def permanently_delete_teacher(session, teacher_id, actor, *, expected_use
                     or (doc.data.get("school_id") or doc.data.get("tenant_id")) != teacher.school_id
                     or doc.data.get("roles") or doc.data.get("linked_roles")
                 ):
-                    review()
+                    review("invalid_membership_document", table=collection)
                 scopes = {doc.data.get(k) for k in ("school_id", "tenant_id", "workspace_school_id")} - {None, ""}
                 if scopes - {teacher.school_id}:
-                    review()
+                    review("foreign_document_scope", table=collection)
                 linked_docs.append(doc)
 
             references = []
@@ -379,14 +435,14 @@ async def permanently_delete_teacher(session, teacher_id, actor, *, expected_use
                     # Role/ownership evidence outside the canonical profile is
                     # never erased to make a shared account appear exclusive.
                     if table.name in {"students", "parents", "schools", "workspace_collaborators", "lesson_plans", "noor_import_drafts"}:
-                        review()
+                        review("shared_or_owner_reference", table=table.name, count=len(rows))
                     for row in rows:
                         scopes = {row.get(k) for k in ("school_id", "tenant_id", "workspace_school_id")} - {None, ""}
                         if scopes - {teacher.school_id}:
-                            review()
+                            review("foreign_scalar_reference", table=table.name, count=len(rows))
                     targets = {fk.column.table.name for fk in col.foreign_keys}
                     if table.name not in ACTIVE_TABLES and "users" in targets and not col.nullable:
-                        review()
+                        review("nonnullable_user_reference", table=table.name, count=len(rows))
                     references.append((table, col, targets))
 
             # Preflight and lock *all* typed JSON references before any write.
@@ -418,7 +474,7 @@ async def permanently_delete_teacher(session, teacher_id, actor, *, expected_use
             # therefore cannot appear as a restorable teacher).
             marker = (await session.execute(select(Teacher).where(Teacher.id == marker_id))).scalar_one()
             if marker.school_id or marker.user_id or marker.email or marker.phone or marker.national_id or marker.is_active or marker.deleted_at:
-                review()
+                review("invalid_deleted_teacher_marker", table="teachers")
             replacements = {teacher_id: marker_id, user.id: "deleted-user"}
             for obj in (teacher, user):
                 for field in ("email", "phone", "national_id", "full_name", "full_name_en"):
