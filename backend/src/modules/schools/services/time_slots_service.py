@@ -2,15 +2,14 @@
 Time Slots Service
 Handles generation, regeneration, listing of time slots, and calculation of live school day status.
 """
-from fastapi import HTTPException
-from typing import List, Optional, Dict, Any
+from typing import Optional, Any
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import uuid
 import logging
 
 from engines.sql_utils import (
-    gd_find, gd_find_one, gd_insert_many, gd_update_one, gd_delete_many,
+    gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_delete_many,
 )
 from src.core.guards.tenant_guard import is_independent_workspace_id, independent_workspace_id
 from src.common.utils.it_schedule import synthesize_it_time_slots
@@ -26,6 +25,21 @@ def arabic_ordinal(n: int) -> str:
 
 class TimeSlotsService:
     """Service handling time slots generation, listing, and day-status calculation."""
+
+    @staticmethod
+    def _session_day_key(value: Any) -> Optional[str]:
+        """Return the settings key used by a timetable placement's weekday."""
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        aliases = {
+            "الأحد": "sunday", "الاحد": "sunday",
+            "الإثنين": "monday", "الاثنين": "monday",
+            "الثلاثاء": "tuesday", "الأربعاء": "wednesday",
+            "الاربعاء": "wednesday", "الخميس": "thursday",
+            "الجمعة": "friday", "السبت": "saturday",
+        }
+        return aliases.get(str(value).strip(), normalized)
 
     @staticmethod
     async def regenerate_time_slots(session, school_id: str) -> dict:
@@ -204,11 +218,16 @@ class TimeSlotsService:
             index: slot for index, slot in enumerate(new_teaching, start=1)
         }
         draft_sessions = []
+        incompatible_sessions = []
+        all_draft_rows = []
         drafts = await gd_find(
             session, "timetables",
             {"school_id": school_id, "status": {"$in": ["draft", "DRAFT"]}},
             limit=100,
         )
+        working_days = settings.get("working_days")
+        if not isinstance(working_days, dict):
+            working_days = {}
         for draft in drafts:
             timetable_id = draft.get("id")
             if not timetable_id:
@@ -218,6 +237,7 @@ class TimeSlotsService:
                 {"timetable_id": timetable_id}, limit=50000,
             )
             for row in rows:
+                all_draft_rows.append(row)
                 if row.get("is_active") is False or row.get("status") == "cancelled":
                     continue
                 logical_period = old_id_to_period.get(row.get("time_slot_id"))
@@ -238,39 +258,135 @@ class TimeSlotsService:
                     if raw_slot is not None:
                         logical_period = old_raw_to_period.get(raw_slot, raw_slot)
 
-                if logical_period is not None and logical_period > periods:
-                    raise HTTPException(
-                        status_code=422,
-                        detail={
-                            "code": "TIMING_VALIDATION_ERROR",
-                            "reason": "draft_sessions_use_removed_periods",
-                            "field": "periods_per_day",
-                            "message": (
-                                "Cannot reduce periods_per_day while draft timetable "
-                                "sessions are assigned to a removed period."
-                            ),
-                            "timetable_id": timetable_id,
-                            "session_id": row.get("id"),
-                            "period_number": logical_period,
-                        },
-                    )
-                if logical_period in new_by_period:
-                    draft_sessions.append((row, logical_period))
+                # Some old manual placements contain only denormalized times.
+                # Resolve those against the old teaching-slot timeline before
+                # deciding that a placement is incompatible.
+                if logical_period is None:
+                    start, end = row.get("start_time"), row.get("end_time")
+                    for index, old_slot in enumerate(old_teaching, start=1):
+                        if (
+                            start == old_slot.get("start_time")
+                            and (not end or end == old_slot.get("end_time"))
+                        ):
+                            logical_period = index
+                            break
+
+                day_key = TimeSlotsService._session_day_key(
+                    row.get("day_of_week", row.get("day"))
+                )
+                removed_day = bool(
+                    working_days and day_key in working_days
+                    and working_days.get(day_key) is not True
+                )
+                if logical_period not in new_by_period or removed_day:
+                    incompatible_sessions.append((draft, row))
+                else:
+                    draft_sessions.append((draft, row, logical_period))
 
         await gd_delete_many(session, "time_slots", {"school_id": school_id})
         if slots:
             await gd_insert_many(session, "time_slots", slots)
 
-        # Only draft children are retargeted. Published and archived timetable
-        # rows remain immutable history with their original denormalized times.
-        for row, logical_period in draft_sessions:
-            replacement = new_by_period[logical_period]
-            await gd_update_one(
-                session, "timetable_sessions", {"id": row.get("id")}, {
+        reconciliation = {
+            "remapped_sessions": 0,
+            "archived_drafts": 0,
+            "excluded_sessions": len(incompatible_sessions),
+            "editable_draft_id": None,
+        }
+        if incompatible_sessions:
+            # A partially rewritten draft is ambiguous history. Retire all
+            # editable drafts as immutable snapshots and create exactly one
+            # successor containing only placements valid in the new structure.
+            # This also prevents draft/ensure from treating an archived draft
+            # as a source for a later implicit clone.
+            now = datetime.now(timezone.utc).isoformat()
+            source = drafts[0] if drafts else {}
+            replacement_draft_id = str(uuid.uuid4())
+            await gd_insert(session, "timetables", {
+                "id": replacement_draft_id,
+                "school_id": school_id,
+                "name": source.get("name") or "Editable timetable",
+                "name_en": source.get("name_en"),
+                "academic_year": source.get("academic_year"),
+                "semester": source.get("semester"),
+                "effective_from": source.get("effective_from"),
+                "effective_to": source.get("effective_to"),
+                "working_days": [
+                    day for day, active in working_days.items() if active is True
+                ],
+                "status": "draft",
+                "is_published": False,
+                "total_sessions": len(draft_sessions),
+                "version": int(source.get("version") or 1) + 1,
+                "created_by": source.get("created_by"),
+                "updated_by": source.get("updated_by"),
+                "created_at": now,
+                "updated_at": now,
+            })
+            for draft in drafts:
+                await gd_update_one(
+                    session, "timetables", {"id": draft.get("id")}, {
+                        "status": "archived",
+                        "is_published": False,
+                        "effective_to": now,
+                        "updated_at": now,
+                    },
+                )
+            for row in all_draft_rows:
+                await gd_update_one(
+                    session, "timetable_sessions", {"id": row.get("id")}, {
+                        "is_active": False,
+                        "status": "cancelled",
+                        "retired_at": now,
+                        "retirement_reason": "timetable_settings_reconciliation",
+                        "updated_at": now,
+                    },
+                )
+            for _draft, row, logical_period in draft_sessions:
+                replacement = new_by_period[logical_period]
+                clone = {
+                    key: value for key, value in row.items()
+                    if key not in {"id", "_id", "data", "_collection", "timetable_id", "created_at", "updated_at"}
+                }
+                clone.update({
+                    "id": str(uuid.uuid4()),
+                    "school_id": school_id,
+                    "timetable_id": replacement_draft_id,
+                    "period_number": logical_period,
+                    "slot_number": replacement["slot_number"],
                     "time_slot_id": replacement["id"],
                     "start_time": replacement["start_time"],
                     "end_time": replacement["end_time"],
-                },
+                    "created_at": now,
+                    "updated_at": now,
+                })
+                if "period" in row:
+                    clone["period"] = logical_period
+                await gd_insert(session, "timetable_sessions", clone)
+            reconciliation.update({
+                "remapped_sessions": len(draft_sessions),
+                "archived_drafts": len(drafts),
+                "editable_draft_id": replacement_draft_id,
+            })
+        else:
+            # Compatible drafts stay editable and are retargeted in place.
+            for _draft, row, logical_period in draft_sessions:
+                replacement = new_by_period[logical_period]
+                update = {
+                    "period_number": logical_period,
+                    "slot_number": replacement["slot_number"],
+                    "time_slot_id": replacement["id"],
+                    "start_time": replacement["start_time"],
+                    "end_time": replacement["end_time"],
+                }
+                if "period" in row:
+                    update["period"] = logical_period
+                await gd_update_one(
+                    session, "timetable_sessions", {"id": row.get("id")}, update,
+                )
+            reconciliation["remapped_sessions"] = len(draft_sessions)
+            reconciliation["editable_draft_id"] = (
+                drafts[0].get("id") if drafts else None
             )
 
         final_h, final_m = divmod(current_minutes, 60)
@@ -280,7 +396,12 @@ class TimeSlotsService:
             "settings.school_day_end": day_end,
         })
 
-        return {"regenerated": True, "count": len(slots), "day_end": day_end}
+        return {
+            "regenerated": True,
+            "count": len(slots),
+            "day_end": day_end,
+            "draft_reconciliation": reconciliation,
+        }
 
     @staticmethod
     async def list_time_slots(session, current_user: dict, x_school_context: str = None) -> list:

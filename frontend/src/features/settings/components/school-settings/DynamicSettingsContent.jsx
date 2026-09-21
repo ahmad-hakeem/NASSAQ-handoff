@@ -329,6 +329,15 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
             </div>
           </div>
 
+          <div
+            className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sky-950"
+            role="note"
+            data-testid="timing-structural-change-policy"
+          >
+            <p className="font-bold">{t('timingStructuralChangeTitle')}</p>
+            <p className="mt-1 text-sm leading-6">{t('timingStructuralChangeNotice')}</p>
+          </div>
+
           <Card className="bg-white shadow-sm">
             <CardHeader>
               <CardTitle className="text-xl flex items-center gap-2"><Clock className="h-5 w-5 text-[#1C3D74]" />إعدادات التوقيت والحصص</CardTitle>

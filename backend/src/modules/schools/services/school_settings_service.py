@@ -1022,9 +1022,23 @@ class SchoolSettingsService:
                     await gd_insert(session, "school_settings", normalized)
 
                 regeneration = {"regenerated": False, "reason": "timing_unchanged"}
+                reconciliation = {
+                    "remapped_sessions": 0,
+                    "archived_drafts": 0,
+                    "excluded_sessions": 0,
+                    "editable_draft_id": None,
+                }
+                cancelled_generation_runs = 0
                 if timing_changed:
+                    from services.timetable_generation_fence import (
+                        cancel_active_generation_runs,
+                    )
                     from src.modules.schools.services.time_slots_service import TimeSlotsService
+                    cancelled_generation_runs = await cancel_active_generation_runs(
+                        session, school_id
+                    )
                     regeneration = await TimeSlotsService.regenerate_time_slots(session, school_id)
+                    reconciliation = regeneration["draft_reconciliation"]
 
                 await audit_engine.log_data_change(
                     action=AuditAction.TENANT_UPDATED.value,
@@ -1033,8 +1047,10 @@ class SchoolSettingsService:
                     entity_id=school_id,
                     tenant_id=school_id,
                     new_values={
-                        "action": "UPDATE_SETTINGS",
+                        "action": "UPDATE_SETTINGS_AND_RECONCILE_DRAFT",
                         "settings_version": current_version + 1,
+                        "draft_reconciliation": reconciliation,
+                        "cancelled_generation_runs": cancelled_generation_runs,
                     },
                 )
                 saved = await SchoolSettingsService.get_school_settings(
@@ -1052,4 +1068,6 @@ class SchoolSettingsService:
             "message": "تم تحديث إعدادات المدرسة بالكامل بنجاح",
             "settings": saved,
             "time_slots_regenerated": regeneration,
+            "draft_reconciliation": reconciliation,
+            "cancelled_generation_runs": cancelled_generation_runs,
         }

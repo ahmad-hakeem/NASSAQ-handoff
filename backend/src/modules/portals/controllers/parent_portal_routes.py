@@ -368,9 +368,7 @@ async def _resolve_class_today_sessions(session, school_id, class_id, today_en):
     timetable = await gd_find_one(session, "timetables", {
         "school_id": school_id,
         "status": "published",
-    }) or await gd_find_one(session, "timetables", {
-        "school_id": school_id,
-    }, sort=[("created_at", -1)])
+    })
     if not timetable:
         return []
 
@@ -1387,8 +1385,11 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
                 for i in range(1, n_periods + 1)
             ]
         elif child.get("class_id"):
-            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
-                sort=[("created_at", -1)])
+            timetable = await gd_find_one(
+                db.session,
+                "timetables",
+                {"school_id": school_id, "status": "published"},
+            )
             if timetable:
                 all_sessions = await find_live_timetable_sessions(db.session, {
                         "school_id": school_id,
@@ -3802,8 +3803,11 @@ def setup_parent_portal_routes(db, get_current_user, require_roles, UserRole):
         teachers = []
 
         if child.get("class_id"):
-            timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"}) or await gd_find_one(db.session, "timetables", {"school_id": school_id},
-                sort=[("created_at", -1)])
+            timetable = await gd_find_one(
+                db.session,
+                "timetables",
+                {"school_id": school_id, "status": "published"},
+            )
             if timetable:
                 sessions = await find_live_timetable_sessions(db.session, {
                         "school_id": school_id,

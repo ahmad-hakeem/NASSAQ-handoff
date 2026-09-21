@@ -87,6 +87,7 @@ function ancillaryResponse(url) {
 describe('useSchoolSettings timetable settings persistence', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorage.removeItem('nassaq_language');
     mockApiGet.mockImplementation(async (url) => (
       url === '/school/settings'
         ? { data: canonicalSettings() }
@@ -135,6 +136,52 @@ describe('useSchoolSettings timetable settings persistence', () => {
     ));
     await act(async () => result.current.fetchData());
     expect(result.current.timingSettings.breakDuration).toBe(25);
+  });
+
+  it.each([
+    [
+      'ar',
+      'تم حفظ الإعدادات. تم الاحتفاظ بـ 4 حصة متوافقة، وأرشفة 1 مسودة سابقة في السجل، وعدم نسخ 2 موضعاً غير متوافق.',
+    ],
+    [
+      'en',
+      'Settings saved. 4 compatible sessions retained, 1 prior drafts archived as history, and 2 incompatible placements not copied.',
+    ],
+  ])('shows the %s reconciliation summary and notifies the schedule refresh callback', async (language, expected) => {
+    localStorage.setItem('nassaq_language', language);
+    const onTimingSettingsSaved = jest.fn();
+    mockApiPut.mockResolvedValue({
+      data: {
+        success: true,
+        settings: canonicalSettings({ settings_version: 9 }),
+        draft_reconciliation: {
+          remapped_sessions: 4,
+          archived_drafts: 1,
+          excluded_sessions: 2,
+          editable_draft_id: 'draft-new',
+        },
+      },
+    });
+
+    const { result } = renderHook(() => useSchoolSettings({ onTimingSettingsSaved }));
+    await waitFor(() => expect(result.current.settingsVersion).toBe(8));
+    act(() => result.current.handleSettingChange('breakDuration', 25));
+
+    await act(async () => result.current.saveAllSettings());
+
+    expect(mockToastSuccess).toHaveBeenCalledWith(expected);
+    expect(result.current.inlineAlert).toEqual({
+      show: true,
+      type: 'success',
+      message: expected,
+    });
+    expect(onTimingSettingsSaved).toHaveBeenCalledWith(expect.objectContaining({
+      draftReconciliation: expect.objectContaining({
+        editable_draft_id: 'draft-new',
+      }),
+    }));
+    expect(mockApiGet).toHaveBeenCalledWith('/timetable-readiness/check');
+    expect(mockApiGet).toHaveBeenCalledWith('/time-slots?school_id=school-1');
   });
 
   it('preserves valid zero values across all canonical aliases', async () => {

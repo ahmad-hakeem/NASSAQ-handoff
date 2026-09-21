@@ -542,18 +542,223 @@ async def test_timing_regeneration_retargets_draft_session_but_not_archived_hist
         history["time_slot_id"], history["start_time"], history["end_time"],
     ) == (old_fourth["id"], old_fourth["start_time"], old_fourth["end_time"])
 
-    rejected = await client.put(
+    reconciled = await client.put(
         "/school/settings",
         headers=school_principal_headers,
         json={"periodsPerDay": 3, "expectedVersion": 2},
     )
-    assert rejected.status_code == 422
-    assert "draft_sessions_use_removed_periods" in rejected.text
-    error = rejected.json()["error"]
-    assert error["code"] == "TIMING_VALIDATION_ERROR"
-    assert error["reason"] == "draft_sessions_use_removed_periods"
-    assert error["field"] == "periods_per_day"
+    assert reconciled.status_code == 200, reconciled.text
+    summary = reconciled.json()["draft_reconciliation"]
+    assert summary == {
+        "remapped_sessions": 0,
+        "archived_drafts": 1,
+        "excluded_sessions": 1,
+        "editable_draft_id": summary["editable_draft_id"],
+    }
+    assert summary["editable_draft_id"]
+    old_draft = await gd_find_one(db.session, "timetables", {"id": draft_id})
+    assert old_draft["status"] == "archived"
+    assert await gd_find_one(
+        db.session, "timetable_sessions", {"id": "draft-session"}
+    )
+    clean_draft = await gd_find_one(
+        db.session, "timetables", {"id": summary["editable_draft_id"]}
+    )
+    assert clean_draft["status"] == "draft"
+    assert not await gd_find(
+        db.session, "timetable_sessions",
+        {"timetable_id": summary["editable_draft_id"]},
+    )
     persisted = await gd_find_one(
         db.session, "school_settings", {"school_id": tenant_a},
     )
-    assert persisted["periods_per_day"] == 5
+    assert persisted["periods_per_day"] == 3
+
+
+@pytest.mark.asyncio
+async def test_structural_reconciliation_archives_mixed_draft_and_clones_only_compatible(
+    client, tenant_a, tenant_b, school_principal_headers,
+):
+    await _seed_settings(tenant_a)
+    await _seed_settings(tenant_b)
+    seeded = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"dayStart": "07:05", "breaks": [], "expectedVersion": 0},
+    )
+    assert seeded.status_code == 200, seeded.text
+    old_slots = await gd_find(
+        db.session, "time_slots", {"school_id": tenant_a},
+        order_by="slot_number", desc_order=False,
+    )
+    teaching = [slot for slot in old_slots if not slot.get("is_break")]
+
+    draft_id = str(uuid.uuid4())
+    history_id = str(uuid.uuid4())
+    other_id = str(uuid.uuid4())
+    await gd_insert(db.session, "timetables", {
+        "id": draft_id, "school_id": tenant_a, "name": "Mixed",
+        "status": "draft", "is_published": False,
+    })
+    await gd_insert(db.session, "timetables", {
+        "id": history_id, "school_id": tenant_a, "name": "Prior history",
+        "status": "archived", "is_published": False,
+    })
+    await gd_insert(db.session, "timetables", {
+        "id": other_id, "school_id": tenant_b, "name": "Other school",
+        "status": "draft", "is_published": False,
+    })
+
+    rows = [
+        {
+            "id": "compatible-raw", "day_of_week": "sunday",
+            "slot_number": teaching[1]["slot_number"],
+            "teacher_id": "teacher-preserved", "class_id": "class-preserved",
+            "subject_id": "subject-preserved",
+        },
+        {
+            "id": "compatible-times-only", "day_of_week": "sunday",
+            "start_time": teaching[2]["start_time"],
+            "end_time": teaching[2]["end_time"],
+        },
+        {"id": "removed-period", "day_of_week": "sunday", "period_number": 7},
+        {"id": "removed-day", "day_of_week": "monday", "period_number": 1},
+        {
+            "id": "inactive-removed", "day_of_week": "sunday",
+            "period_number": 7, "is_active": False,
+        },
+    ]
+    for row in rows:
+        await gd_insert(db.session, "timetable_sessions", {
+            "school_id": tenant_a, "timetable_id": draft_id, **row,
+        })
+    await gd_insert(db.session, "timetable_sessions", {
+        "id": "history-row", "school_id": tenant_a,
+        "timetable_id": history_id, "day_of_week": "sunday",
+        "period_number": 7, "teacher_id": "history-teacher",
+    })
+    await gd_insert(db.session, "timetable_sessions", {
+        "id": "other-row", "school_id": tenant_b,
+        "timetable_id": other_id, "day_of_week": "sunday",
+        "period_number": 7,
+    })
+
+    response = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={
+            "periodsPerDay": 5,
+            "activeWeekdays": ["sunday"],
+            "expectedVersion": 1,
+        },
+    )
+    assert response.status_code == 200, response.text
+    summary = response.json()["draft_reconciliation"]
+    assert summary["remapped_sessions"] == 2
+    assert summary["archived_drafts"] == 1
+    assert summary["excluded_sessions"] == 2
+    assert summary["editable_draft_id"]
+
+    clones = await gd_find(
+        db.session, "timetable_sessions",
+        {"timetable_id": summary["editable_draft_id"]},
+    )
+    assert len(clones) == 2
+    preserved = next(row for row in clones if row.get("teacher_id") == "teacher-preserved")
+    assert (
+        preserved["class_id"], preserved["subject_id"], preserved["period_number"]
+    ) == ("class-preserved", "subject-preserved", 2)
+    assert sorted(row["period_number"] for row in clones) == [2, 3]
+
+    # Prior history, the archived source snapshot (including inactive rows),
+    # and another school's editable draft are not rewritten.
+    assert (await gd_find_one(
+        db.session, "timetable_sessions", {"id": "history-row"}
+    ))["teacher_id"] == "history-teacher"
+    assert (await gd_find_one(
+        db.session, "timetable_sessions", {"id": "inactive-removed"}
+    ))["is_active"] is False
+    assert (await gd_find_one(
+        db.session, "timetables", {"id": other_id}
+    ))["status"] == "draft"
+    assert (await gd_find_one(
+        db.session, "timetable_sessions", {"id": "other-row"}
+    ))["period_number"] == 7
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_failure_rolls_back_settings_slots_and_draft(
+    client, tenant_a, school_principal_headers, monkeypatch,
+):
+    from src.modules.schools.services.time_slots_service import TimeSlotsService
+
+    await _seed_settings(tenant_a)
+    draft_id = str(uuid.uuid4())
+    await gd_insert(db.session, "timetables", {
+        "id": draft_id, "school_id": tenant_a, "name": "Rollback draft",
+        "status": "draft", "is_published": False,
+    })
+    run_id = str(uuid.uuid4())
+    await gd_insert(db.session, "timetable_runs", {
+        "id": run_id, "school_id": tenant_a, "status": "generating",
+    })
+
+    async def fail_after_settings_write(_session, _school_id):
+        raise RuntimeError("injected reconciliation failure")
+
+    monkeypatch.setattr(TimeSlotsService, "regenerate_time_slots", fail_after_settings_write)
+    response = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"periodsPerDay": 5, "expectedVersion": 0},
+    )
+    assert response.status_code == 500
+    persisted = await gd_find_one(
+        db.session, "school_settings", {"school_id": tenant_a},
+    )
+    assert persisted["periods_per_day"] == 7
+    assert persisted["custom_settings"]["settings_version"] == 0
+    assert (await gd_find_one(
+        db.session, "timetables", {"id": draft_id}
+    ))["status"] == "draft"
+    assert (await gd_find_one(
+        db.session, "timetable_runs", {"id": run_id}
+    ))["status"] == "generating"
+
+
+@pytest.mark.asyncio
+async def test_structural_change_cancels_only_own_active_generation_runs(
+    client, tenant_a, tenant_b, school_principal_headers,
+):
+    await _seed_settings(tenant_a)
+    await _seed_settings(tenant_b)
+    own_active = str(uuid.uuid4())
+    own_finished = str(uuid.uuid4())
+    other_active = str(uuid.uuid4())
+    for run_id, school_id, status in (
+        (own_active, tenant_a, "optimizing"),
+        (own_finished, tenant_a, "completed"),
+        (other_active, tenant_b, "generating"),
+    ):
+        await gd_insert(db.session, "timetable_runs", {
+            "id": run_id, "school_id": school_id, "status": status,
+        })
+
+    response = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"periodDuration": 40, "expectedVersion": 0},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["cancelled_generation_runs"] == 1
+    cancelled = await gd_find_one(
+        db.session, "timetable_runs", {"id": own_active},
+    )
+    assert cancelled["status"] == "failed"
+    assert cancelled["error_code"] == "GENERATION_SETTINGS_CHANGED"
+    assert (await gd_find_one(
+        db.session, "timetable_runs", {"id": own_finished}
+    ))["status"] == "completed"
+    assert (await gd_find_one(
+        db.session, "timetable_runs", {"id": other_active}
+    ))["status"] == "generating"

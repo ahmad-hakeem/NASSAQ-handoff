@@ -35,10 +35,17 @@ Timing changes are rejected while a published timetable exists. The UI offers
 explicit confirmation to unpublish while preserving any current draft. It never
 unpublishes automatically on save.
 
-After unpublishing, saving regenerates slots and retargets active draft session
-timings. Assignments in periods that would be removed cause rejection rather than
-silent data loss. Published and archived session history is not rewritten.
-Review the updated draft, then publish it again.
+After unpublishing, saving regenerates slots and retargets compatible active
+draft session timings. If periods or working days are removed, incompatible
+draft versions are archived and a new editable draft retains only compatible
+placements. An entirely incompatible draft produces a clean empty successor.
+Archived placements are retained, but retired from operational queries.
+Review the updated draft, fill any missing placements, then publish it again.
+
+Unpublishing now always archives the formerly published version and either
+retains an existing editable draft or clones one. Explicit history reads retain
+archived placements. Teacher and parent operational reads require publication;
+they do not show the unpublished editable copy.
 
 Settings updates and publish/unpublish/ensure-draft share a school-scoped
 transaction lock. The settings tab echoes a version to reject stale writes;
@@ -52,6 +59,32 @@ The form applies the canonical save response, refreshes readiness/slot count,
 retains unsaved edits on errors, and rejects stale asynchronous responses.
 Loading errors do not silently initialize a saveable default form.
 Version conflicts offer an explicit reload that replaces the local draft.
+Successful structural saves refresh the schedule grid and version list and clear
+stale cell/session selections. No persistent backend timetable cache was found
+on the investigated paths.
+
+## Draft reconciliation and generation
+
+Affected entities are school_settings, time_slots, timetables,
+timetable_sessions, timetable_runs and audit_logs. Settings/time slots are
+school-scoped; timetable/session history is retained under archived versions.
+Teacher/class/subject assignment entities are not deleted by reconciliation.
+
+Settings, slot regeneration, archival, compatible placement cloning, audit and
+active-run cancellation commit together. Injected failures verify rollback.
+The response includes draft_reconciliation counts (remapped_sessions,
+archived_drafts, excluded_sessions, editable_draft_id) and
+cancelled_generation_runs. Arabic/English success messages explain the result.
+
+Active pending/validating/loading/generating/optimizing runs are invalidated on
+timing changes. A captured settings version is checked under the school lifecycle
+lock immediately before generation output writes, rejecting stale results.
+
+Focused reconciliation verification: 69 backend tests passed together,
+including settings/master-grid, unpublish/republish, teacher/parent visibility,
+generation fencing and rollback. Fourteen focused frontend tests passed and the
+production frontend build compiled. These do not establish production behavior
+before the changes are published.
 
 ## Verification limits
 

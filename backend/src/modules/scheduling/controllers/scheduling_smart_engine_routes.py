@@ -32,6 +32,7 @@ from src.common.utils.subject_display import subject_display_name
 from src.modules.scheduling.controllers._publish_gate import assert_publishable
 from sqlalchemy import text
 from engines.timetable_session_lifecycle import find_live_timetable_sessions
+from services.timetable_generation_fence import get_timetable_settings_version
 
 
 from shared_models import (
@@ -156,6 +157,7 @@ async def smart_generate_timetable(
     """
     assert_school_access(current_user, str(school_id))
     request = request or SmartTimetableGenerateRequest()
+    settings_version = await get_timetable_settings_version(db.session, school_id)
 
     # حمولة سياق حكيم — نُجمِّع البيانات الفعليّة من تبويبات إعدادات الجدول
     # الخمسة (التوقيت/الفصول/الإسناد/عدم التوفر/قيود الجدول) ونمرّرها صراحةً
@@ -176,6 +178,7 @@ async def smart_generate_timetable(
         created_by=current_user.get("id", "system"),
         calling_user=current_user,
         context_payload=context_payload,
+        expected_settings_version=settings_version,
     )
     
     return result.model_dump()
@@ -345,6 +348,7 @@ async def _run_generation_job(
     created_by: str,
     calling_user: Dict[str, Any],
     context_payload: Dict[str, Any],
+    expected_settings_version: Optional[int] = None,
 ) -> None:
     """Execute a queued generation with its OWN database session.
 
@@ -378,6 +382,7 @@ async def _run_generation_job(
                     calling_user=calling_user,
                     context_payload=context_payload,
                     run_id=run_id,
+                    expected_settings_version=expected_settings_version,
                 )
                 # Persist the parts of GenerationResult the UI needs but that
                 # have no home on the run row (Hakim insight list, the
@@ -477,6 +482,7 @@ async def smart_generate_timetable_job(
     """
     assert_school_access(current_user, str(school_id))
     request = request or SmartTimetableGenerateRequest()
+    settings_version = await get_timetable_settings_version(db.session, school_id)
 
     # One generation per school at a time. Two concurrent runs would race to
     # write the same draft and burn two of the very few CPU workers on a result
@@ -533,6 +539,7 @@ async def smart_generate_timetable_job(
         "conflicts_count": 0,
         "unscheduled_count": 0,
         "notes": "",
+        "settings_version": settings_version,
     })
     # Commit before scheduling: under BaseHTTPMiddleware the background task's
     # own session can start before pg_session_middleware commits this one, and
@@ -557,6 +564,7 @@ async def smart_generate_timetable_job(
             "school_id": current_user.get("school_id"),
         },
         context_payload,
+        settings_version,
     )
 
     return {
@@ -1001,18 +1009,25 @@ async def get_active_timetable_sessions(
     current_user: dict = Depends(get_current_user),
     x_school_context: Optional[str] = Header(None)
 ):
-    """
-    الحصول على حصص الجدول النشط (المنشور أو المسودة)
-    Get sessions for the active timetable
-    """
+    """Get published sessions, with draft fallback only for timetable editors."""
     school_id = resolve_school_id(current_user, x_school_context)
     if not school_id:
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
+    assert_school_access(current_user, school_id)
     
-    # Find active (published) timetable first, then draft
+    # Operational consumers (teacher/parent/student) must never see an
+    # unpublished work-in-progress. Principals/admins use this endpoint as an
+    # explicit editor preview, so they may fall back to the current draft.
     timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "published"})
-    
-    if not timetable:
+    draft_roles = {
+        UserRole.PLATFORM_ADMIN.value,
+        UserRole.SCHOOL_PRINCIPAL.value,
+        UserRole.SCHOOL_ADMIN.value,
+        UserRole.SCHOOL_SUB_ADMIN.value,
+    }
+    role = current_user.get("role")
+    role_value = role.value if isinstance(role, UserRole) else str(role or "")
+    if not timetable and role_value in draft_roles:
         timetable = await gd_find_one(db.session, "timetables", {"school_id": school_id, "status": "draft"})
     
     if not timetable:
@@ -1084,12 +1099,27 @@ async def smart_get_timetable_sessions(
     if not timetable:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
     assert_school_access(current_user, str(timetable.get("school_id")))
-    sessions = await smart_scheduling_engine.get_timetable_sessions(
-        timetable_id=timetable_id,
-        class_id=class_id,
-        teacher_id=teacher_id,
-        day_of_week=day_of_week
-    )
+    if timetable.get("status") == TimetableStatus.ARCHIVED.value:
+        # ID-addressed archive detail is a history API: retained/retired rows
+        # are evidence and must remain inspectable even though operational
+        # readers exclude them.
+        archive_query = {"timetable_id": timetable_id}
+        if class_id:
+            archive_query["class_id"] = class_id
+        if teacher_id:
+            archive_query["teacher_id"] = teacher_id
+        if day_of_week:
+            archive_query["day_of_week"] = day_of_week
+        sessions = await gd_find(
+            db.session, "timetable_sessions", archive_query, limit=50000
+        )
+    else:
+        sessions = await smart_scheduling_engine.get_timetable_sessions(
+            timetable_id=timetable_id,
+            class_id=class_id,
+            teacher_id=teacher_id,
+            day_of_week=day_of_week
+        )
 
     # Batch fetch related entities (massive perf win vs N+1 queries)
     teacher_ids = list({s.get("teacher_id") for s in sessions if s.get("teacher_id")})
@@ -1514,11 +1544,14 @@ async def unpublish_timetable(
     now = datetime.now(timezone.utc).isoformat()
     user_id = current_user.get("id", "system")
     retained_draft_id = existing_drafts[0].get("id") if existing_drafts else None
-    next_status = (
-        TimetableStatus.ARCHIVED.value
-        if retained_draft_id
-        else TimetableStatus.DRAFT.value
-    )
+    # A published row is immutable history. When no editable draft exists,
+    # clone it first, then archive it; changing PUBLISHED -> DRAFT in place
+    # destroys the only record of what teachers and parents previously saw.
+    if not retained_draft_id:
+        retained_draft_id = await smart_scheduling_engine._clone_timetable_as_draft(
+            timetable, user_id
+        )
+    next_status = TimetableStatus.ARCHIVED.value
     lifecycle_updates = {
         "status": next_status,
         "is_published": False,
@@ -1528,23 +1561,37 @@ async def unpublish_timetable(
     await gd_update_one(
         db.session, "timetables", {"id": timetable_id}, lifecycle_updates
     )
+    # Keep the rows as history while ensuring broad operational occupancy
+    # queries cannot treat the archived version as a live placement.
+    await gd_update_many(
+        db.session,
+        "timetable_sessions",
+        {"timetable_id": timetable_id},
+        {
+            "is_active": False,
+            "status": "cancelled",
+            "retired_at": now,
+            "retirement_reason": "timetable_unpublished",
+            "updated_at": now,
+        },
+    )
 
     updated = await gd_find_one(db.session, "timetables", {"id": timetable_id})
     return {
         "ok": True,
         "timetable_id": timetable_id,
         "status": (updated or {}).get("status", next_status),
-        "editable_draft_id": retained_draft_id or timetable_id,
-        "kept_existing_draft": bool(retained_draft_id),
+        "editable_draft_id": retained_draft_id,
+        "kept_existing_draft": bool(existing_drafts),
         "message_ar": (
             "تم إلغاء نشر الجدول مع الاحتفاظ بالمسودة الحالية."
-            if retained_draft_id
-            else "تم إلغاء نشر الجدول وعاد إلى المسودة."
+            if existing_drafts
+            else "تم إلغاء نشر الجدول وحفظه في السجل، وإنشاء مسودة قابلة للتعديل."
         ),
         "message_en": (
             "Timetable unpublished; the existing editable draft was kept."
-            if retained_draft_id
-            else "Timetable unpublished and returned to draft."
+            if existing_drafts
+            else "Timetable unpublished into history and cloned to an editable draft."
         ),
     }
 

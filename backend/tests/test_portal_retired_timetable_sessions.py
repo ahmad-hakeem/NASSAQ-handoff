@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from dependencies import create_access_token, db
 from engines.sql_utils import gd_insert
@@ -164,7 +165,10 @@ async def test_parent_schedule_and_today_only_expose_live_tenant_rows(client):
     timetable_id = await _timetable(school_id)
     teacher_id = await _teacher(school_id, "Live teacher")
     subject_id = await _subject(school_id, "Live subject")
-    today = datetime.now().strftime("%A").lower()
+    # Production resolves "today" in the school's Saudi timezone. UTC crosses
+    # into the next school day at 21:00 and made this regression intermittently
+    # seed the wrong weekday.
+    today = datetime.now(ZoneInfo("Asia/Riyadh")).strftime("%A").lower()
 
     await _session(
         school_id, timetable_id, class_id, day=today, period=1,

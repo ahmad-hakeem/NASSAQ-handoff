@@ -617,6 +617,189 @@ async def test_unpublish_can_keep_existing_editable_draft_without_discarding_dat
     )
 
 
+@pytest.mark.asyncio
+async def test_unpublish_without_draft_archives_history_and_clones_editable_copy(
+    client,
+    tenant_a,
+):
+    principal = await _mk_user(tenant_a, UserRole.SCHOOL_PRINCIPAL)
+    teacher_user, teacher = await _mk_teacher(tenant_a)
+    classroom = await _mk_class(tenant_a)
+    subject = await _mk_subject(tenant_a)
+    published = await _mk_timetable(tenant_a, status="published", name="Live")
+    live_session = await _mk_session(
+        tenant_a,
+        published["id"],
+        teacher_id=teacher["id"],
+        class_id=classroom["id"],
+        subject_id=subject["id"],
+        day="sunday",
+        period=1,
+    )
+
+    response = await client.post(
+        f"/smart-scheduling/timetable/{published['id']}/unpublish",
+        headers=_headers(principal),
+        json={},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "archived"
+    assert body["editable_draft_id"] != published["id"]
+    assert body["kept_existing_draft"] is False
+
+    archived = await gd_find_one(db.session, "timetables", {"id": published["id"]})
+    draft = await gd_find_one(
+        db.session, "timetables", {"id": body["editable_draft_id"]}
+    )
+    retained = await gd_find_one(
+        db.session, "timetable_sessions", {"id": live_session["id"]}
+    )
+    cloned = await gd_find_one(
+        db.session,
+        "timetable_sessions",
+        {"timetable_id": body["editable_draft_id"]},
+    )
+    assert archived["status"] == "archived"
+    assert draft["status"] == "draft"
+    assert retained["is_active"] is False
+    assert retained["status"] == "cancelled"
+    assert cloned is not None
+    assert cloned["teacher_id"] == teacher["id"]
+    assert cloned.get("is_active") is not False
+
+
+@pytest.mark.asyncio
+async def test_unpublish_and_republish_never_leaks_draft_or_archive_to_portals(
+    client,
+    tenant_a,
+):
+    principal = await _mk_user(tenant_a, UserRole.SCHOOL_PRINCIPAL)
+    teacher_user, teacher = await _mk_teacher(tenant_a)
+    classroom = await _mk_class(tenant_a)
+    parent, child = await _mk_parent_child(tenant_a, classroom["id"])
+    subject = await _mk_subject(tenant_a)
+    published = await _mk_timetable(tenant_a, status="published", name="Live v1")
+    historical = await _mk_session(
+        tenant_a,
+        published["id"],
+        teacher_id=teacher["id"],
+        class_id=classroom["id"],
+        subject_id=subject["id"],
+        day="sunday",
+        period=1,
+    )
+    # Stale metadata on an otherwise-live legacy row must not contaminate the
+    # editable clone.
+    await gd_update_one(
+        db.session,
+        "timetable_sessions",
+        {"id": historical["id"]},
+        {
+            "is_active": True,
+            "retired_at": "2020-01-01T00:00:00+00:00",
+            "retirement_reason": "stale_legacy_marker",
+        },
+    )
+
+    unpublished = await client.post(
+        f"/smart-scheduling/timetable/{published['id']}/unpublish",
+        headers=_headers(principal),
+        json={},
+    )
+    assert unpublished.status_code == 200, unpublished.text
+    draft_id = unpublished.json()["editable_draft_id"]
+
+    # The general active endpoint is authenticated for all roles, but draft
+    # fallback is an editor privilege. The principal can preview; operational
+    # teacher/parent callers get an honest empty result while unpublished.
+    principal_preview = await client.get(
+        "/smart-scheduling/timetable/active/sessions",
+        headers=_headers(principal),
+    )
+    teacher_active = await client.get(
+        "/smart-scheduling/timetable/active/sessions",
+        headers=_headers(teacher_user),
+    )
+    parent_active = await client.get(
+        "/smart-scheduling/timetable/active/sessions",
+        headers=_headers(parent),
+    )
+    assert principal_preview.status_code == 200
+    assert principal_preview.json()["timetable_id"] == draft_id
+    assert principal_preview.json()["total"] == 1
+    assert teacher_active.status_code == 200
+    assert teacher_active.json()["total"] == 0
+    assert parent_active.status_code == 200
+    assert parent_active.json()["total"] == 0
+
+    teacher_unpublished = await client.get(
+        f"/teacher/schedule/{teacher['id']}",
+        headers=_headers(teacher_user),
+    )
+    parent_unpublished = await client.get(
+        f"/parent-portal/child/{child['id']}/schedule",
+        headers=_headers(parent),
+    )
+    assert teacher_unpublished.status_code == 200
+    assert teacher_unpublished.json() == []
+    assert parent_unpublished.status_code == 200
+    assert not any(parent_unpublished.json()["schedule"].values())
+
+    # Explicit history remains available and includes retired rows; operational
+    # live filtering is intentionally not applied to this ID-addressed API.
+    history = await client.get(
+        f"/smart-scheduling/timetable/{published['id']}/sessions",
+        headers=_headers(principal),
+    )
+    assert history.status_code == 200, history.text
+    assert {row["id"] for row in history.json()["sessions"]} == {historical["id"]}
+
+    clone_rows = await gd_find(
+        db.session,
+        "timetable_sessions",
+        {"timetable_id": draft_id},
+        limit=10,
+    )
+    assert len(clone_rows) == 1
+    clone = clone_rows[0]
+    assert clone["is_active"] is True
+    assert clone["status"] == "scheduled"
+    assert clone.get("retired_at") is None
+    assert clone.get("retirement_reason") is None
+
+    await _isolate_hard_constraints()
+    republished = await client.post(
+        "/schedule/publish",
+        json={"school_id": tenant_a, "timetable_id": draft_id},
+        headers=_headers(principal),
+    )
+    assert republished.status_code == 200, republished.text
+
+    teacher_live = await client.get(
+        f"/teacher/schedule/{teacher['id']}",
+        headers=_headers(teacher_user),
+    )
+    parent_live = await client.get(
+        f"/parent-portal/child/{child['id']}/schedule",
+        headers=_headers(parent),
+    )
+    assert teacher_live.status_code == 200
+    assert {
+        row["schedule_session_id"] for row in teacher_live.json()
+    } == {clone["id"]}
+    assert historical["id"] not in teacher_live.text
+    assert parent_live.status_code == 200
+    parent_entries = [
+        entry
+        for entries in parent_live.json()["schedule"].values()
+        for entry in entries
+    ]
+    assert len(parent_entries) == 1
+    assert parent_entries[0]["subject"] == subject["name_ar"]
+    assert parent_entries[0]["teacher"] == teacher["full_name"]
+
+
 def test_all_draft_lifecycle_routes_take_the_shared_school_lock():
     """Publish, unpublish and ensure-draft must use one serialization lock."""
     from src.modules.scheduling.controllers import scheduling_smart_engine_routes

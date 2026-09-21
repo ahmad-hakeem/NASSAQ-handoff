@@ -39,7 +39,11 @@ import { useTranslation, useTheme } from '@/shared/contexts/ThemeContext';
 const SCHEDULE_TAB_IDS = ['timings', 'classes', 'subjects', 'teacher-assignments', 'unavailability', 'constraints'];
 const DEFAULT_SUB_TAB = 'timings';
 
-export default function ScheduleSettingsTabContent({ onUnpublishPublished, unpublishingPublished = false }) {
+export default function ScheduleSettingsTabContent({
+  onUnpublishPublished,
+  unpublishingPublished = false,
+  onTimingSettingsSaved,
+}) {
   const { t } = useTranslation();
   const { direction } = useTheme();
   const scheduleSubTabs = useMemo(() => ([
@@ -50,7 +54,7 @@ export default function ScheduleSettingsTabContent({ onUnpublishPublished, unpub
     { id: 'unavailability', label: t('settingsTabUnavailability'), icon: UserX },
     { id: 'constraints', label: t('settingsTabConstraints'), icon: Shield },
   ]), [t]);
-  const settingsHook = useSchoolSettings();
+  const settingsHook = useSchoolSettings({ onTimingSettingsSaved });
   const hook = {
     ...settingsHook,
     onUnpublishPublished,

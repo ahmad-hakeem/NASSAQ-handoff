@@ -3062,6 +3062,7 @@ class SmartSchedulingEngine:
         class_ids: Optional[List[str]] = None,
         context_payload: Optional[Dict[str, Any]] = None,
         run_id: Optional[str] = None,
+        expected_settings_version: Optional[int] = None,
     ) -> GenerationResult:
         """
         التوليد الرئيسي للجدول
@@ -3079,6 +3080,15 @@ class SmartSchedulingEngine:
             generate more classes into it).
         """
         self._assert_tenant(school_id, calling_user)
+        from services.timetable_generation_fence import (
+            GenerationSettingsChanged,
+            assert_generation_settings_current,
+            get_timetable_settings_version,
+        )
+        if expected_settings_version is None:
+            expected_settings_version = await get_timetable_settings_version(
+                self.session, school_id
+            )
 
         # generation_summary timer — captured here so elapsed_ms reflects the
         # full run (validation, hydration, generation, optimization, persist).
@@ -3234,6 +3244,11 @@ class SmartSchedulingEngine:
             await gd_insert(self.session, "timetable_runs", run_doc)
         
         try:
+            # A queued run may have been cancelled by a settings transaction
+            # before its background task got CPU time.
+            await assert_generation_settings_current(
+                self.session, school_id, expected_settings_version
+            )
             # Phase 1: Validate
             await self._log_run(run_id, "info", "بدء التحقق من جاهزية البيانات", {"phase": 1})
             await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {"status": TimetableRunStatus.VALIDATING.value, "completion_percentage": 5})
@@ -3391,6 +3406,16 @@ class SmartSchedulingEngine:
                 term_doc = await gd_find_one(self.session, "terms", {"id": term_id})
                 if term_doc:
                     semester_val = term_doc.get("semester", 1) or 1
+
+            # The solve is deliberately lock-free. Only the output commit is
+            # serialized with settings/publish lifecycle changes. A changed
+            # version raises before any draft/session mutation.
+            await assert_generation_settings_current(
+                self.session,
+                school_id,
+                expected_settings_version,
+                acquire_lifecycle_lock=True,
+            )
             
             # Per-class generation reuses the latest draft when one exists,
             # so the principal can build the school timetable class-by-class
@@ -3729,11 +3754,17 @@ class SmartSchedulingEngine:
             tb = traceback.format_exc()
             logger.error(f"Timetable generation error: {e}\n{tb}")
             await self._log_run(run_id, "error", f"خطأ في التوليد: {str(e)}", {"exception": str(e), "traceback": tb})
-            await gd_update_one(self.session, "timetable_runs", {"id": run_id}, {
+            failure_patch = {
                 "status": TimetableRunStatus.FAILED.value,
                 "finished_at": datetime.now(timezone.utc).isoformat(),
                 "notes": str(e)
-            })
+            }
+            if isinstance(e, GenerationSettingsChanged):
+                failure_patch["error_code"] = GenerationSettingsChanged.code
+                failure_patch["completion_percentage"] = 100
+            await gd_update_one(
+                self.session, "timetable_runs", {"id": run_id}, failure_patch
+            )
             return GenerationResult(
                 success=False,
                 run_id=run_id,
@@ -4247,8 +4278,25 @@ class SmartSchedulingEngine:
         for sess in source_sessions:
             doc = {
                 k: v for k, v in sess.items()
-                if k not in ("id", "_id", "_collection")
+                if k not in ("id", "_id", "_collection", "data")
             }
+            explicitly_retired = (
+                sess.get("is_active") is False
+                or sess.get("status") == "cancelled"
+            )
+            if not explicitly_retired:
+                # Legacy rows can carry stale retirement metadata despite
+                # being operational. A fresh editable clone must not inherit
+                # those tombstone markers.
+                doc["is_active"] = True
+                doc["status"] = "scheduled"
+                for key in (
+                    "retired_at",
+                    "retired_reason",
+                    "retirement_reason",
+                    "retired_by",
+                ):
+                    doc.pop(key, None)
             doc["timetable_id"] = new_id
             # نُثبّت school_id صراحةً: مسارات النقل/التبديل تقرؤه مباشرةً من
             # الحصة، فنتفادى حالات بيانات قديمة قد تخلو منه.

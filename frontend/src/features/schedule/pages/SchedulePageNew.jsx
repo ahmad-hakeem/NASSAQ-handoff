@@ -1452,6 +1452,39 @@ export default function SchedulePageNew() {
     }
   }, [api, schoolId, t]);
 
+  const handleTimingSettingsSaved = useCallback(async ({ draftReconciliation } = {}) => {
+    // Structural settings can replace the editable draft, so no cell/session
+    // identifier captured before the save is safe to keep selected.
+    setDrawerOpen(false);
+    setDrawerSlot(null);
+    setBulkOpen(false);
+    setBulkTarget(null);
+    setEditDrawerOpen(false);
+    setEditDrawerContext(null);
+    setUnresolvedConflicts([]);
+
+    // A non-null editable draft id is the backend's canonical signal that
+    // reconciliation produced/reused a draft. Show that draft immediately.
+    // When it is null (for example a non-structural save), preserve the
+    // operator's active published/draft view rather than forcing a switch.
+    const nextView = draftReconciliation?.editable_draft_id ? 'draft' : scheduleView;
+    if (nextView !== scheduleView) setScheduleView(nextView);
+
+    const versionsRequest = api.get('/smart-scheduling/timetable/versions', {
+      headers: { 'X-School-Context': schoolId },
+    }).then((resp) => {
+      setVersionsData(Array.isArray(resp?.data?.versions) ? resp.data.versions : []);
+    }).catch(() => {
+      // The save itself is already committed; a transient history refresh
+      // must not turn that successful operation into a false save failure.
+    });
+
+    await Promise.all([
+      loadGrid(nextView, undefined, { silent: true }),
+      versionsRequest,
+    ]);
+  }, [api, loadGrid, scheduleView, schoolId, setScheduleView]);
+
   const handleUnpublish = useCallback((timetableId, { keepExistingDraft = false } = {}) => {
     nassaqConfirm(
       keepExistingDraft
@@ -1808,6 +1841,7 @@ export default function SchedulePageNew() {
               <ScheduleSettingsTabContent
                 onUnpublishPublished={handleUnpublishForTimingSettings}
                 unpublishingPublished={unpublishing}
+                onTimingSettingsSaved={handleTimingSettingsSaved}
               />
             </div>
           </div>

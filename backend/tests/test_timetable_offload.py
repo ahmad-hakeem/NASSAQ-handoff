@@ -134,7 +134,12 @@ def test_wrappers_delegate_to_the_timetable_pool():
 def test_generation_route_does_not_call_sync_cores():
     """Route code must never reach past the wrappers into a core."""
     routes_path = os.path.join(
-        BACKEND_DIR, "routes", "scheduling_smart_engine_routes.py"
+        BACKEND_DIR,
+        "src",
+        "modules",
+        "scheduling",
+        "controllers",
+        "scheduling_smart_engine_routes.py",
     )
     src = open(routes_path, encoding="utf-8").read()
     for core in PHASES.values():
@@ -481,7 +486,12 @@ def test_claim_is_serialized_by_an_advisory_lock():
     statically because reproducing the interleaving in-process is flaky.
     """
     routes_path = os.path.join(
-        BACKEND_DIR, "routes", "scheduling_smart_engine_routes.py"
+        BACKEND_DIR,
+        "src",
+        "modules",
+        "scheduling",
+        "controllers",
+        "scheduling_smart_engine_routes.py",
     )
     src = open(routes_path, encoding="utf-8").read()
     tree = ast.parse(src)
@@ -513,7 +523,7 @@ async def test_live_run_with_fresh_heartbeat_is_not_reaped(school_a_id, monkeypa
     lets a second generation start beside the first, both writing the same
     draft. Liveness is the heartbeat, not the start time.
     """
-    from routes import scheduling_smart_engine_routes as mod
+    from src.modules.scheduling.controllers import scheduling_smart_engine_routes as mod
     from config import config as cfg
 
     monkeypatch.setattr(cfg, "TIMETABLE_JOB_STALE_AFTER_S", 60, raising=False)
@@ -544,7 +554,7 @@ async def test_reap_does_not_overwrite_a_finished_run(school_a_id, monkeypatch):
     A worker that finishes in the same window as a reaping poll must keep its
     real result; a blind UPDATE would rewrite a completed run as failed.
     """
-    from routes import scheduling_smart_engine_routes as mod
+    from src.modules.scheduling.controllers import scheduling_smart_engine_routes as mod
     from config import config as cfg
 
     monkeypatch.setattr(cfg, "TIMETABLE_JOB_STALE_AFTER_S", 1, raising=False)
@@ -560,6 +570,76 @@ async def test_reap_does_not_overwrite_a_finished_run(school_a_id, monkeypatch):
     assert row["status"] == "completed", (
         "the reaper clobbered a run that had already finished"
     )
+
+
+async def test_settings_change_cancels_queued_and_running_generation(school_a_id):
+    from services.timetable_generation_fence import cancel_active_generation_runs
+
+    queued = await _mk_run(school_a_id, status="pending")
+    running = await _mk_run(school_a_id, status="generating")
+    await db.session.commit()
+
+    count = await cancel_active_generation_runs(db.session, school_a_id)
+    await db.session.commit()
+
+    assert count == 2
+    for run_id in (queued, running):
+        row = await gd_find_one(db.session, "timetable_runs", {"id": run_id})
+        assert row["status"] == "failed"
+        assert row["error_code"] == "GENERATION_SETTINGS_CHANGED"
+
+
+async def test_generation_settings_fence_rejects_stale_snapshot(school_a_id):
+    from engines.sql_utils import gd_update_one
+    from services.timetable_generation_fence import (
+        GenerationSettingsChanged,
+        assert_generation_settings_current,
+        get_timetable_settings_version,
+    )
+
+    settings = await gd_find_one(
+        db.session, "school_settings", {"school_id": school_a_id}
+    )
+    if not settings:
+        await gd_insert(
+            db.session,
+            "school_settings",
+            {
+                "id": str(uuid.uuid4()),
+                "school_id": school_a_id,
+                "custom_settings": {"settings_version": 4},
+            },
+        )
+    else:
+        custom = dict(settings.get("custom_settings") or {})
+        custom["settings_version"] = 4
+        await gd_update_one(
+            db.session,
+            "school_settings",
+            {"school_id": school_a_id},
+            {"custom_settings": custom},
+        )
+    await db.session.commit()
+    captured = await get_timetable_settings_version(db.session, school_a_id)
+    assert captured == 4
+
+    row = await gd_find_one(
+        db.session, "school_settings", {"school_id": school_a_id}
+    )
+    custom = dict(row.get("custom_settings") or {})
+    custom["settings_version"] = 5
+    await gd_update_one(
+        db.session,
+        "school_settings",
+        {"school_id": school_a_id},
+        {"custom_settings": custom},
+    )
+    await db.session.commit()
+
+    with pytest.raises(GenerationSettingsChanged):
+        await assert_generation_settings_current(
+            db.session, school_a_id, captured
+        )
 
 
 async def test_engine_run_state_is_not_shared_between_runs():
@@ -589,7 +669,7 @@ async def test_job_restores_the_request_session(school_a_id, monkeypatch):
     The job rebinds it to its own session; leaving it rebound hands a closed
     session to anything scheduled after us in the same context.
     """
-    from routes import scheduling_smart_engine_routes as mod
+    from src.modules.scheduling.controllers import scheduling_smart_engine_routes as mod
 
     before = db.session
 

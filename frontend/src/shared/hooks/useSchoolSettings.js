@@ -73,7 +73,7 @@ const normalizeBreaks = (payload) => {
   }));
 };
 
-export function useSchoolSettings() {
+export function useSchoolSettings({ onTimingSettingsSaved } = {}) {
   const navigate = useNavigate();
   const location = useLocation();
   const { api, user } = useAuth();
@@ -479,14 +479,36 @@ export function useSchoolSettings() {
       }
 
       const regen = res.data?.time_slots_regenerated;
-      if (regen?.regenerated) {
-        toast.success(`تم حفظ الإعدادات وإعادة توليد ${regen.count} فترة زمنية`);
-        setTimeSlotsCount(regen.count);
-      } else {
-        toast.success('تم حفظ جميع الإعدادات بنجاح');
-      }
-      api.get('/timetable-readiness/check').then(r => setReadinessData(r.data)).catch(err => { if (process.env.NODE_ENV === 'development') console.warn('Timetable readiness check failed:', err.message); });
-      fetchTimeSlotsCount();
+      if (regen?.regenerated) setTimeSlotsCount(regen.count);
+
+      const reconciliation = res.data?.draft_reconciliation || {};
+      const summary = t('timingSettingsReconciliationSuccess', {
+        remapped: Number(reconciliation.remapped_sessions || 0),
+        archived: Number(reconciliation.archived_drafts || 0),
+        excluded: Number(reconciliation.excluded_sessions || 0),
+      });
+      toast.success(summary);
+      setInlineAlert({ show: true, type: 'success', message: summary });
+
+      // Refresh settings-owned derivatives only after the canonical response
+      // has been accepted. A failure above deliberately leaves the local draft
+      // and every dependent view untouched.
+      const schoolId = user?.tenant_id || user?.school_id;
+      await Promise.all([
+        api.get('/timetable-readiness/check')
+          .then(r => setReadinessData(r.data))
+          .catch(err => { if (process.env.NODE_ENV === 'development') console.warn('Timetable readiness check failed:', err.message); }),
+        schoolId
+          ? api.get(`/time-slots?school_id=${schoolId}`)
+              .then(r => setTimeSlotsCount(Array.isArray(r.data) ? r.data.length : 0))
+              .catch(err => { if (process.env.NODE_ENV === 'development') console.warn('Time slots refresh failed:', err.message); })
+          : Promise.resolve(),
+      ]);
+      await onTimingSettingsSaved?.({
+        settings: canonicalSettings,
+        draftReconciliation: reconciliation,
+      });
+      return true;
     } catch (error) {
       console.error('Save error:', error);
       const errorBody = error?.response?.data;
@@ -514,6 +536,7 @@ export function useSchoolSettings() {
         isConflict: error?.response?.status === 409 && code === 'settings_version_conflict',
       });
       nassaqError(message);
+      return false;
     } finally {
       setSaving(false);
     }
