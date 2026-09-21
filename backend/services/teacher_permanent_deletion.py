@@ -427,7 +427,6 @@ async def permanently_delete_teacher(
             if ((teacher.user_id is not None and not teacher_claim)
                     or (user.teacher_id is not None and not user_claim)
                     or not (teacher_claim or user_claim)
-                    or (expected_user_id is None and not (teacher_claim and user_claim))
                     or user.tenant_id != teacher.school_id or user.role != "teacher"
                     or user.linked_roles or user.parent_id or user.student_id
                     or user.primary_tenant_id not in (None, teacher.school_id)):

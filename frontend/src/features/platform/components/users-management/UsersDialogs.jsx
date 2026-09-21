@@ -150,6 +150,7 @@ export function DeleteDialog({
   onConfirm,
   isDeleting = false,
   deletionError = null,
+  showSharedAccountWarning = true,
 }) {
   const isTeacher = user?.role === 'teacher';
 
@@ -170,10 +171,14 @@ export function DeleteDialog({
                 <span className="text-muted-foreground text-sm">
                   ستبقى السجلات التعليمية والتاريخية السابقة محفوظة باسم «معلم محذوف».
                 </span>
-                <br />
-                <span className="text-red-600 text-sm">
-                  إذا وُجدت ارتباطات مشتركة أو غير مؤكدة فلن يتم الحذف، وستلزم مراجعة مسؤول المنصة.
-                </span>
+                {showSharedAccountWarning ? (
+                  <>
+                    <br />
+                    <span className="text-red-600 text-sm">
+                      إذا وُجدت ارتباطات مشتركة أو غير مؤكدة فلن يتم الحذف، وستلزم مراجعة مسؤول المنصة.
+                    </span>
+                  </>
+                ) : null}
               </>
             ) : (
               <>

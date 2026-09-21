@@ -17,6 +17,8 @@ import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
 import { maskInternalId } from '@/shared/models/utils/internalId';
 import { TeacherBirthDateDisplay, TeacherBirthDateField } from '@/shared/components/forms/TeacherBirthDate';
 import { validateTeacherBirthDate } from '@/shared/models/utils/teacherBirthDate';
+import { getUserDeletionError } from '@/shared/models/utils/userDeletionError';
+import { DeleteDialog } from '@/features/platform/components/users-management/UsersDialogs';
 import {
   User, BookOpen, Edit, Save, X, Phone, Mail, Hash,
   MapPin, Loader2, Award, Briefcase, Copy, Eye, EyeOff, History,
@@ -51,6 +53,8 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
   const [credForm, setCredForm] = useState({ new_email: '', new_password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deletionError, setDeletionError] = useState(null);
   const deleteRequestRef = useRef(false);
 
   const fetchProfile = useCallback(async () => {
@@ -72,6 +76,8 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
       setActiveTab('info');
       setEditing(false);
       setEditSection(null);
+      setShowDeleteDialog(false);
+      setDeletionError(null);
       fetchProfile();
     }
   }, [open, teacher?.id, fetchProfile]);
@@ -186,27 +192,23 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
     }
   };
 
-  const handleDelete = () => {
-    nassaqConfirm(
-      `${t('teacherPermanentDeleteWarning')}\n\n${t('teacherPermanentDeleteRetention')}`,
-      async () => {
-        if (deleteRequestRef.current) return;
-        deleteRequestRef.current = true;
-        setActionLoading('delete');
-        try {
-          await api.delete(`/teachers/${teacher.id}`);
-          await onRefresh?.();
-          toast.success(t('teacherDeletedSuccessfully'));
-          onClose?.();
-        } catch (e) {
-          nassaqError(getFormErrorMessage(e, { t }) || (t('failedToDeleteTeacher')));
-        } finally {
-          deleteRequestRef.current = false;
-          setActionLoading('');
-        }
-      },
-      { title: t('confirmPermanentDelete'), confirmText: t('yesDeletePermanently'), cancelText: t('cancel') }
-    );
+  const handleDelete = async () => {
+    if (deleteRequestRef.current) return;
+    deleteRequestRef.current = true;
+    setDeletionError(null);
+    setActionLoading('delete');
+    try {
+      await api.delete(`/teachers/${teacher.id}`);
+      await onRefresh?.();
+      toast.success(t('teacherDeletedSuccessfully'));
+      setShowDeleteDialog(false);
+      onClose?.();
+    } catch (e) {
+      setDeletionError(getUserDeletionError(e, 'teacher'));
+    } finally {
+      deleteRequestRef.current = false;
+      setActionLoading('');
+    }
   };
 
   const copyToClipboard = (text, label) => {
@@ -739,7 +741,10 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                   <Button
                     variant="outline"
                     className="justify-start h-auto py-3 border-red-200 hover:bg-red-50 w-full"
-                    onClick={handleDelete}
+                    onClick={() => {
+                      setDeletionError(null);
+                      setShowDeleteDialog(true);
+                    }}
                     disabled={!!actionLoading}
                   >
                     <Trash2 className="h-4 w-4 me-2 text-red-500" />
@@ -755,6 +760,19 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
           )}
         </div>
       </DialogContent>
+      <DeleteDialog
+        user={showDeleteDialog ? { ...teacher, role: 'teacher' } : null}
+        onClose={() => {
+          if (!deleteRequestRef.current) {
+            setDeletionError(null);
+            setShowDeleteDialog(false);
+          }
+        }}
+        onConfirm={handleDelete}
+        isDeleting={actionLoading === 'delete'}
+        deletionError={deletionError}
+        showSharedAccountWarning={false}
+      />
     </Dialog>
   );
 }

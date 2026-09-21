@@ -547,26 +547,20 @@ describe('TeacherProfileDialog — Professional Data Rendering', () => {
 });
 
 describe('TeacherProfileDialog — permanent deletion', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  test('shows the approved warning, prevents duplicate submission, and refreshes before closing', async () => {
-    let resolveDelete;
-    const onRefresh = jest.fn().mockResolvedValue(undefined);
-    const onClose = jest.fn();
-    mockApi.get.mockResolvedValue({
-      data: {
-        profile: {
-          basic_info: { full_name: 'معلم للحذف', status: 'active' },
-          professional_info: {},
-          operational_info: {},
-          assignments: [],
-        },
+  const profileResponse = {
+    data: {
+      profile: {
+        basic_info: { full_name: 'معلم للحذف', status: 'active' },
+        professional_info: {},
+        operational_info: {},
+        assignments: [],
       },
-    });
-    mockApi.delete.mockReturnValue(new Promise(resolve => { resolveDelete = resolve; }));
+    },
+  };
 
+  const renderDeletionDialog = (props = {}) => {
+    const onRefresh = props.onRefresh || jest.fn();
+    const onClose = props.onClose || jest.fn();
     render(
       <ThemeProvider>
         <TeacherProfileDialog
@@ -577,25 +571,37 @@ describe('TeacherProfileDialog — permanent deletion', () => {
         />
       </ThemeProvider>
     );
+    return { onRefresh, onClose };
+  };
 
+  const openDeleteConfirmation = async () => {
     clickRadixTab(await screen.findByRole('tab', { name: /إجراءات|actions/i }));
     fireEvent.click(await screen.findByRole('button', { name: /حذف المعلم نهائياً|delete teacher permanently/i }));
+    return screen.getAllByRole('button', { name: /حذف المعلم نهائياً/ }).at(-1);
+  };
 
-    expect(mockNassaqConfirm).toHaveBeenCalledWith(
-      expect.stringContaining('هذا الحذف نهائي وقد يؤثر على السجلات المرتبطة بالمعلم.'),
-      expect.any(Function),
-      expect.objectContaining({
-        title: 'تأكيد الحذف النهائي',
-        confirmText: 'نعم، احذف نهائياً',
-      })
-    );
-    expect(mockNassaqConfirm.mock.calls[0][0]).toMatch(/معلم محذوف/);
-    expect(mockNassaqConfirm.mock.calls[0][0]).toMatch(/لا يمكن استعادته/);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockApi.get.mockResolvedValue(profileResponse);
+  });
+
+  test('confirms permanent deletion, prevents duplicate submission, and refreshes before closing', async () => {
+    let resolveDelete;
+    const onRefresh = jest.fn().mockResolvedValue(undefined);
+    const onClose = jest.fn();
+    mockApi.delete.mockReturnValue(new Promise(resolve => { resolveDelete = resolve; }));
+    renderDeletionDialog({ onRefresh, onClose });
+    const confirm = await openDeleteConfirmation();
+
+    expect(screen.getByText(/تحرير البريد الإلكتروني ورقم الهاتف والهوية/)).toBeInTheDocument();
+    expect(screen.getByText(/السجلات التعليمية والتاريخية السابقة محفوظة/)).toBeInTheDocument();
+    expect(screen.queryByText(/ارتباطات مشتركة أو غير مؤكدة/)).not.toBeInTheDocument();
 
     let firstSubmission;
     await act(async () => {
-      firstSubmission = mockNassaqConfirm.mock.calls[0][1]();
-      await mockNassaqConfirm.mock.calls[0][1]();
+      fireEvent.click(confirm);
+      firstSubmission = Promise.resolve();
+      fireEvent.click(confirm);
     });
     expect(mockApi.delete).toHaveBeenCalledTimes(1);
     expect(onRefresh).not.toHaveBeenCalled();
@@ -605,51 +611,68 @@ describe('TeacherProfileDialog — permanent deletion', () => {
       resolveDelete({ data: { success: true } });
       await firstSubmission;
     });
-    expect(onRefresh).toHaveBeenCalledTimes(1);
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
   });
 
-  test('surfaces a platform-review 409 without closing or refreshing', async () => {
-    const onRefresh = jest.fn();
-    const onClose = jest.fn();
-    mockApi.get.mockResolvedValue({
-      data: {
-        profile: {
-          basic_info: { full_name: 'معلم مشترك', status: 'active' },
-          professional_info: {},
-          operational_info: {},
-          assignments: [],
-        },
-      },
-    });
+  test('persists safe structured 409 dependency details and resolution without PII', async () => {
     mockApi.delete.mockRejectedValue({
       response: {
         status: 409,
         data: {
-          success: false,
-          error: { code: 'TEACHER_DELETE_REVIEW_REQUIRED', message: 'الحساب مرتبط بأكثر من دور ويتطلب مراجعة مسؤول المنصة' },
+          error: {
+            code: 'DELETE_DEPENDENCY_BLOCKED',
+            message: 'يجب إزالة التكليف النشط أولاً.',
+            detail: {
+              dependencies: [{
+                reason: 'active_assignment',
+                category: 'school_owned',
+                table: 'teacher_assignments',
+                count: 2,
+                resolution: 'أزل التكليف النشط ثم أعد المحاولة.',
+                email: 'must-not-render@example.com',
+              }],
+            },
+          },
         },
       },
     });
 
-    render(
-      <ThemeProvider>
-        <TeacherProfileDialog
-          open={true}
-          onClose={onClose}
-          teacher={{ id: 'shared-teacher', full_name: 'معلم مشترك' }}
-          onRefresh={onRefresh}
-        />
-      </ThemeProvider>
-    );
-    clickRadixTab(await screen.findByRole('tab', { name: /إجراءات|actions/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /حذف المعلم نهائياً|delete teacher permanently/i }));
-    await act(async () => {
-      await mockNassaqConfirm.mock.calls[0][1]();
-    });
+    const { onRefresh, onClose } = renderDeletionDialog();
+    fireEvent.click(await openDeleteConfirmation());
 
-    expect(mockNassaqError).toHaveBeenCalledWith('الحساب مرتبط بأكثر من دور ويتطلب مراجعة مسؤول المنصة');
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('يجب إزالة التكليف النشط أولاً.');
+    expect(alert).toHaveTextContent('DELETE_DEPENDENCY_BLOCKED');
+    expect(alert).toHaveTextContent('active_assignment');
+    expect(alert).toHaveTextContent('أزل التكليف النشط ثم أعد المحاولة.');
+    expect(alert).not.toHaveTextContent('must-not-render@example.com');
     expect(onRefresh).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [403, 'لا تملك صلاحية حذف هذا الحساب.'],
+    [500, 'تعذر إكمال حذف الحساب. لم يُحذف أي شيء؛ حاول مرة أخرى.'],
+  ])('persists the safe fallback for an unstructured HTTP %s response', async (status, message) => {
+    mockApi.delete.mockRejectedValue({ response: { status, data: {} } });
+    renderDeletionDialog();
+    fireEvent.click(await openDeleteConfirmation());
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+  });
+
+  test('clears a previous deletion failure when confirmation is dismissed and reopened', async () => {
+    mockApi.delete.mockRejectedValue({ response: { status: 403, data: {} } });
+    renderDeletionDialog();
+    fireEvent.click(await openDeleteConfirmation());
+    expect(await screen.findByRole('alert')).toHaveTextContent('لا تملك صلاحية');
+
+    fireEvent.click(screen.getByRole('button', { name: 'إلغاء' }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: /حذف المعلم نهائياً|delete teacher permanently/i }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
