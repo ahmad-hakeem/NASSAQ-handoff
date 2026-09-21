@@ -133,9 +133,18 @@ class TimeSlotsService:
                 }
 
         if not breaks_are_explicit and not break_after_map:
-            if periods >= 3:
-                break_after_map[3] = {"name": "الاستراحة", "name_en": "Break", "duration": break_dur, "is_prayer": False}
-            if periods >= 6:
+            # Legacy rows have no explicit breaks array. Keep that absence
+            # meaningful while still honoring their editable primary break
+            # position; do not materialize a new breaks list in settings.
+            legacy_break_after = _bounded_int(
+                cs.get("breakAfterPeriod", cs.get("break_after_period", 3)),
+                3,
+                1,
+                periods,
+            )
+            if periods >= legacy_break_after:
+                break_after_map[legacy_break_after] = {"name": "الاستراحة", "name_en": "Break", "duration": break_dur, "is_prayer": False}
+            if periods >= 6 and legacy_break_after != 6:
                 break_after_map[6] = {"name": "الصلاة", "name_en": "Prayer", "duration": prayer_dur, "is_prayer": True}
 
         h, m = map(int, day_start.split(":"))

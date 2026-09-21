@@ -58,6 +58,11 @@ _DIGIT_TRANSLATION = str.maketrans(
     "01234567890123456789",
 )
 _TIMING_ERROR_CODE = "TIMING_VALIDATION_ERROR"
+_TIMING_PROFILE_NAMES = {"summer", "winter", "ramadan"}
+_TIMING_PROFILE_FIELDS = {
+    "dayStart", "dayEnd", "periodsPerDay", "periodDuration",
+    "breakDuration", "breakAfterPeriod", "breaks",
+}
 
 
 def _timing_error(reason: str, field: str, message: str, **metadata) -> HTTPException:
@@ -212,6 +217,166 @@ def _parse_time(value: Any, field: str) -> tuple[str, int]:
         )
     hours, minutes = (int(part) for part in normalized.split(":"))
     return normalized, hours * 60 + minutes
+
+
+def _current_timing_profile(settings: Optional[dict], custom: Optional[dict] = None) -> dict:
+    """Project the effective canonical columns into the seasonal wire contract."""
+    settings = settings or {}
+    custom = custom if custom is not None else (settings.get("custom_settings") or {})
+    periods = _resolve_canonical_value(settings, "periods_per_day", 7)
+    raw_break_after = custom.get(
+        "breakAfterPeriod", custom.get("break_after_period", 3)
+    )
+    try:
+        break_after = min(max(int(raw_break_after), 1), max(int(periods), 1))
+    except (TypeError, ValueError):
+        break_after = min(3, max(int(periods), 1))
+    return {
+        "dayStart": _resolve_canonical_value(settings, "start_time", "07:00"),
+        "dayEnd": _resolve_canonical_value(settings, "end_time", "14:00"),
+        "periodsPerDay": periods,
+        "periodDuration": _resolve_canonical_value(settings, "period_duration", 45),
+        "breakDuration": _resolve_canonical_value(settings, "break_duration", 15),
+        "breakAfterPeriod": break_after,
+        "breaks": _resolve_breaks(settings),
+    }
+
+
+def _normalize_timing_profile(
+    value: Any, base: dict, field: str, *, canonical_errors: bool = False
+) -> dict:
+    """Validate and complete one allowlisted profile without leaking metadata."""
+    canonical_fields = {
+        "dayStart": "start_time",
+        "dayEnd": "end_time",
+        "periodsPerDay": "periods_per_day",
+        "periodDuration": "period_duration",
+        "breakDuration": "break_duration",
+        "breakAfterPeriod": "breakAfterPeriod",
+        "breaks": "breaks",
+    }
+
+    def error_field(name: str) -> str:
+        return canonical_fields[name] if canonical_errors else f"{field}.{name}"
+
+    if not isinstance(value, dict):
+        raise _timing_error(
+            "invalid_timing_profile", field, f"{field} must be an object."
+        )
+    unknown = set(value) - _TIMING_PROFILE_FIELDS
+    if unknown:
+        invalid = sorted(unknown)[0]
+        raise _timing_error(
+            "invalid_timing_profile_field",
+            f"{field}.{invalid}",
+            f"{field} contains an unsupported field.",
+        )
+
+    merged = {key: value.get(key, base.get(key)) for key in _TIMING_PROFILE_FIELDS}
+    merged["periodsPerDay"] = _parse_int(
+        merged["periodsPerDay"], error_field("periodsPerDay"), 1, 12
+    )
+    merged["periodDuration"] = _parse_int(
+        merged["periodDuration"], error_field("periodDuration"), 20, 90
+    )
+    merged["breakDuration"] = _parse_int(
+        merged["breakDuration"], error_field("breakDuration"), 0, 60
+    )
+    if (
+        "breakAfterPeriod" not in value
+        and merged["breakAfterPeriod"] > merged["periodsPerDay"]
+    ):
+        merged["breakAfterPeriod"] = merged["periodsPerDay"]
+    merged["breakAfterPeriod"] = _parse_int(
+        merged["breakAfterPeriod"],
+        error_field("breakAfterPeriod"),
+        1,
+        merged["periodsPerDay"],
+    )
+    merged["dayStart"], start_minutes = _parse_time(
+        merged["dayStart"], error_field("dayStart")
+    )
+    merged["dayEnd"], end_minutes = _parse_time(
+        merged["dayEnd"], error_field("dayEnd")
+    )
+    if end_minutes <= start_minutes:
+        raise _timing_error(
+            "invalid_time_order",
+            error_field("dayEnd"),
+            "dayEnd must be after dayStart; overnight school days are not supported.",
+        )
+
+    breaks = merged.get("breaks")
+    if breaks is None:
+        breaks = []
+    if not isinstance(breaks, list):
+        raise _timing_error(
+            "invalid_breaks", error_field("breaks"), f"{field}.breaks must be a list."
+        )
+    normalized_breaks = []
+    seen_after = set()
+    break_minutes = 0
+    for index, raw_item in enumerate(breaks):
+        item_field = (
+            f"breaks[{index}]" if canonical_errors
+            else f"{field}.breaks[{index}]"
+        )
+        if not isinstance(raw_item, dict):
+            raise _timing_error(
+                "invalid_break", item_field, f"{item_field} must be an object."
+            )
+        item = dict(raw_item)
+        day = item.get("day")
+        if day not in (None, "", "all"):
+            raise _timing_error(
+                "unsupported_break_day",
+                f"{item_field}.day",
+                "Day-specific breaks are not supported by shared time slots.",
+                day=str(day),
+            )
+        raw_after = item.get("afterPeriod", item.get("after_period"))
+        if raw_after is None:
+            raise _timing_error(
+                "missing_break_position",
+                f"{item_field}.afterPeriod",
+                f"{item_field}.afterPeriod is required.",
+            )
+        after = _parse_int(
+            raw_after, f"{item_field}.afterPeriod", 1, merged["periodsPerDay"]
+        )
+        if after in seen_after:
+            raise _timing_error(
+                "duplicate_break_position",
+                f"{item_field}.afterPeriod",
+                "Only one break is allowed after each period.",
+                after_period=after,
+            )
+        seen_after.add(after)
+        raw_duration = item.get("duration")
+        duration = merged["breakDuration"] if raw_duration is None else _parse_int(
+            raw_duration, f"{item_field}.duration", 0, 180
+        )
+        item["afterPeriod"] = after
+        item["duration"] = None if raw_duration is None else duration
+        normalized_breaks.append(item)
+        break_minutes += duration
+    merged["breaks"] = normalized_breaks
+
+    available_minutes = end_minutes - start_minutes
+    lesson_minutes = merged["periodsPerDay"] * merged["periodDuration"]
+    required_minutes = lesson_minutes + break_minutes
+    if required_minutes > available_minutes:
+        raise _timing_error(
+            "school_day_too_short",
+            error_field("dayEnd"),
+            "School day is too short for the configured lessons and breaks.",
+            available_minutes=available_minutes,
+            lesson_minutes=lesson_minutes,
+            break_minutes=break_minutes,
+            required_minutes=required_minutes,
+            shortage_minutes=required_minutes - available_minutes,
+        )
+    return merged
 
 
 def _normalize_working_days(value: Any) -> dict:
@@ -522,6 +687,41 @@ class SchoolSettingsService:
         settings_version = cs.get("settings_version", 0)
         if not isinstance(settings_version, int) or isinstance(settings_version, bool):
             settings_version = 0
+        attendance_pattern = cs.get(
+            "attendancePattern", cs.get("attendance_pattern", "winter")
+        )
+        if attendance_pattern not in _TIMING_PROFILE_NAMES:
+            attendance_pattern = "winter"
+        active_profile = {
+            "dayStart": start_t,
+            "dayEnd": end_t,
+            "periodsPerDay": periods_pd,
+            "periodDuration": period_dur,
+            "breakDuration": break_dur,
+            "breakAfterPeriod": cs.get(
+                "breakAfterPeriod", cs.get("break_after_period", 3)
+            ),
+            "breaks": breaks,
+        }
+        timing_profiles = {}
+        stored_profiles = cs.get("timingProfiles")
+        if isinstance(stored_profiles, dict):
+            for name, profile in stored_profiles.items():
+                if name in _TIMING_PROFILE_NAMES and isinstance(profile, dict):
+                    timing_profiles[name] = {
+                        **active_profile,
+                        **{
+                            key: profile[key]
+                            for key in _TIMING_PROFILE_FIELDS
+                            if key in profile
+                        },
+                    }
+        # Canonical columns remain authoritative for the selected profile.
+        timing_profiles[attendance_pattern] = active_profile
+        response_cs = dict(cs)
+        response_cs["attendancePattern"] = attendance_pattern
+        response_cs.pop("attendance_pattern", None)
+        response_cs["timingProfiles"] = timing_profiles
 
         clean_settings = {
             **settings,
@@ -550,9 +750,10 @@ class SchoolSettingsService:
             "academicYear": cs.get("academicYear", cs.get("academic_year", "1446")),
             "currentSemester": cs.get("currentSemester", cs.get("current_semester", "1")),
             "breakAfterPeriod": cs.get("breakAfterPeriod", cs.get("break_after_period", 3)),
-            "attendancePattern": cs.get("attendancePattern", cs.get("attendance_pattern", "winter")),
+            "attendancePattern": attendance_pattern,
+            "timingProfiles": timing_profiles,
             "maxStandbyPerWeek": cs.get("maxStandbyPerWeek", cs.get("max_standby_per_week", 5)),
-            "custom_settings": cs,
+            "custom_settings": response_cs,
         }
         return clean_settings
 
@@ -806,6 +1007,146 @@ class SchoolSettingsService:
         # all writes, including legacy ones, still serialize on the school
         # advisory lock and advance the version.
 
+        current_pattern = cs.get(
+            "attendancePattern", cs.get("attendance_pattern", "winter")
+        )
+        if current_pattern not in _TIMING_PROFILE_NAMES:
+            current_pattern = "winter"
+        requested_pattern = payload.pop(
+            "attendancePattern", payload.pop("attendance_pattern", current_pattern)
+        )
+        if requested_pattern not in _TIMING_PROFILE_NAMES:
+            raise _timing_error(
+                "invalid_timing_profile",
+                "attendancePattern",
+                "attendancePattern must be summer, winter, or ramadan.",
+            )
+        pattern_changed = requested_pattern != current_pattern
+
+        breaks_were_explicit = _has_breaks_setting(existing)
+        flat_breaks_supplied = "breaks" in payload
+        supplied_profiles = payload.pop("timingProfiles", None)
+        if supplied_profiles is not None and not isinstance(supplied_profiles, dict):
+            raise _timing_error(
+                "invalid_timing_profiles",
+                "timingProfiles",
+                "timingProfiles must be an object.",
+            )
+        supplied_profiles = supplied_profiles or {}
+        unknown_profile_names = set(supplied_profiles) - _TIMING_PROFILE_NAMES
+        if unknown_profile_names:
+            invalid = sorted(unknown_profile_names)[0]
+            raise _timing_error(
+                "invalid_timing_profile",
+                f"timingProfiles.{invalid}",
+                "Unknown timing profile; expected summer, winter, or ramadan.",
+            )
+
+        current_profile = _normalize_timing_profile(
+            _current_timing_profile(existing, cs),
+            _current_timing_profile(existing, cs),
+            f"timingProfiles.{current_pattern}",
+        )
+        raw_stored_profiles = cs.get("timingProfiles")
+        stored_profiles = {}
+        if isinstance(raw_stored_profiles, dict):
+            for profile_name, raw_profile in raw_stored_profiles.items():
+                if profile_name in _TIMING_PROFILE_NAMES and isinstance(raw_profile, dict):
+                    stored_profiles[profile_name] = {
+                        key: value
+                        for key, value in raw_profile.items()
+                        if key in _TIMING_PROFILE_FIELDS
+                    }
+        # Always snapshot the outgoing canonical timings before resolving the
+        # selected season. This is what makes switching away and back lossless.
+        stored_profiles[current_pattern] = current_profile
+
+        for profile_name, raw_profile in supplied_profiles.items():
+            stored_base = stored_profiles.get(profile_name)
+            if isinstance(stored_base, dict):
+                stored_base = {
+                    key: value
+                    for key, value in stored_base.items()
+                    if key in _TIMING_PROFILE_FIELDS
+                }
+                stored_base = {**current_profile, **stored_base}
+            else:
+                stored_base = current_profile
+            stored_profiles[profile_name] = _normalize_timing_profile(
+                raw_profile,
+                stored_base,
+                f"timingProfiles.{profile_name}",
+            )
+
+        selected_base = stored_profiles.get(requested_pattern)
+        if isinstance(selected_base, dict):
+            selected_base = {
+                key: value
+                for key, value in selected_base.items()
+                if key in _TIMING_PROFILE_FIELDS
+            }
+            selected_base = {**current_profile, **selected_base}
+        else:
+            # A never-edited target inherits the school's current timings.
+            # Seasonal defaults would silently invent operating hours.
+            selected_base = current_profile
+        flat_profile_overrides = {}
+        profile_aliases = {
+            "dayStart": _CANONICAL_ALIASES["start_time"],
+            "dayEnd": _CANONICAL_ALIASES["end_time"],
+            "periodsPerDay": _CANONICAL_ALIASES["periods_per_day"],
+            "periodDuration": _CANONICAL_ALIASES["period_duration"],
+            "breakDuration": _CANONICAL_ALIASES["break_duration"],
+        }
+        for profile_field, aliases in profile_aliases.items():
+            if any(alias in payload for alias in aliases):
+                flat_profile_overrides[profile_field] = _first_present(payload, aliases)
+        if "breakAfterPeriod" in payload:
+            flat_profile_overrides["breakAfterPeriod"] = payload["breakAfterPeriod"]
+        elif "break_after_period" in payload:
+            flat_profile_overrides["breakAfterPeriod"] = payload["break_after_period"]
+        if "breaks" in payload:
+            flat_profile_overrides["breaks"] = payload["breaks"]
+        selected_profile = _normalize_timing_profile(
+            flat_profile_overrides,
+            selected_base,
+            f"timingProfiles.{requested_pattern}",
+            canonical_errors=True,
+        )
+        stored_profiles[requested_pattern] = selected_profile
+        selected_profile_breaks_supplied = (
+            isinstance(supplied_profiles.get(requested_pattern), dict)
+            and "breaks" in supplied_profiles[requested_pattern]
+        )
+        materialize_selected_breaks = (
+            breaks_were_explicit
+            or flat_breaks_supplied
+            or selected_profile_breaks_supplied
+            or (
+                pattern_changed
+                and isinstance(raw_stored_profiles, dict)
+                and requested_pattern in raw_stored_profiles
+            )
+        )
+        legacy_break_position_changed = (
+            not breaks_were_explicit
+            and current_profile["breakAfterPeriod"]
+            != selected_profile["breakAfterPeriod"]
+        )
+
+        # Hydrate canonical columns from the selected profile. Explicit flat
+        # fields have already won above, preserving the legacy PUT contract.
+        payload.update({
+            "dayStart": selected_profile["dayStart"],
+            "dayEnd": selected_profile["dayEnd"],
+            "periodsPerDay": selected_profile["periodsPerDay"],
+            "periodDuration": selected_profile["periodDuration"],
+            "breakDuration": selected_profile["breakDuration"],
+            "breakAfterPeriod": selected_profile["breakAfterPeriod"],
+        })
+        if materialize_selected_breaks:
+            payload["breaks"] = selected_profile["breaks"]
+
         canonical_updates = {}
         for canonical, aliases in _CANONICAL_ALIASES.items():
             if any(alias in payload for alias in aliases):
@@ -963,7 +1304,7 @@ class SchoolSettingsService:
             "start_time", "end_time", "periods_per_day",
             "period_duration", "break_duration", "working_days",
         }
-        timing_changed = any(
+        timing_changed = pattern_changed or legacy_break_position_changed or any(
             _resolve_canonical_value(existing, field) != value
             for field, value in canonical_updates.items()
             if field in timing_fields
@@ -1002,6 +1343,9 @@ class SchoolSettingsService:
             if key not in _ALL_CANONICAL_INPUT_KEYS
         }
         clean_cs.update(extras)
+        clean_cs["attendancePattern"] = requested_pattern
+        clean_cs.pop("attendance_pattern", None)
+        clean_cs["timingProfiles"] = stored_profiles
         clean_cs["settings_version"] = current_version + 1
         normalized = normalize_school_settings_doc({
             **canonical_updates,

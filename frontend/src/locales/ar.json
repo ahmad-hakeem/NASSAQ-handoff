@@ -5622,5 +5622,15 @@
   "inheritBaseBreakDuration": "استخدام مدة الاستراحة الأساسية",
   "timingSettingsVersionConflict": "عُدّلت إعدادات التوقيت في جلسة أخرى. احتفظنا بمسودتك؛ حمّل أحدث نسخة لمراجعتها.",
   "timingPublishedGuard": "يجب إلغاء نشر الجدول بأمان قبل تعديل إعدادات التوقيت.",
-  "timingSaveFailed": "تعذّر حفظ إعدادات التوقيت. حاول مرة أخرى."
+  "timingSaveFailed": "تعذّر حفظ إعدادات التوقيت. حاول مرة أخرى.",
+  "seasonalTimingTitle": "ملف توقيت الدوام",
+  "seasonalTimingSelected": "قيد التحرير",
+  "seasonalTimingDescription": "اختر ملفًا لتعديل توقيته واستراحاته بشكل مستقل.",
+  "seasonalTimingPattern_summer": "الدوام الصيفي",
+  "seasonalTimingPattern_winter": "الدوام الشتوي",
+  "seasonalTimingPattern_ramadan": "دوام رمضان",
+  "seasonalTimingEditingProfile": "أنت تعدّل الآن توقيت واستراحات: {{pattern}}",
+  "seasonalTimingNotAppliedUntilSave": "هذا الاختيار والتعديلات مسودة محلية ولن تُطبّق على الجدول التشغيلي حتى تضغط حفظ.",
+  "seasonalTimingFirstUseCopy": "عند فتح ملف غير مُعدّ سابقًا، ننسخ إليه التوقيت والاستراحات المعروضة حاليًا؛ ولا نفترض ساعات جديدة.",
+  "seasonalTimingWorkingDaysShared": "أيام الدراسة مشتركة على مستوى المدرسة وتُطبّق على جميع ملفات الدوام."
 }

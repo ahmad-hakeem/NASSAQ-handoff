@@ -16,6 +16,30 @@ Break definitions and a settings version live in custom JSON; no migration is
 required. A null break duration means inherit BASE, including on subsequent saves;
 an explicit empty break list means no breaks.
 
+For legacy rows with no `breaks` key, `breakAfterPeriod` controls the existing
+implicit primary break. Changing only that value is therefore an effective timing
+change: it is publication-guarded and regenerates slots, but does not materialize
+a `breaks` array. Once a break list is explicit, including `[]` or a zero-minute
+break, that list remains authoritative and `breakAfterPeriod` metadata cannot add
+or move a break.
+
+Schools may keep separate `summer`, `winter`, and `ramadan` timing profiles.
+`attendancePattern` selects the active profile and `timingProfiles` is an object
+keyed by those three enum values. Each profile is limited to `dayStart`, `dayEnd`,
+`periodsPerDay`, `periodDuration`, `breakDuration`, `breakAfterPeriod`, and
+`breaks`; working days remain school-wide. GET always returns the active canonical
+flat aliases as well as the profile map. For a legacy row, only the active profile
+is projected from canonical values; the API does not invent seasonal hours.
+
+On PUT, omitting `attendancePattern` retains the existing active profile. A newly
+selected profile with no saved values copies the current canonical timings.
+Explicit flat timing fields override the selected profile. The outgoing active
+profile is snapshotted before switching, and all supplied profiles are validated
+before any write. Profile objects reject non-timing metadata and unknown profile
+names. Profiles are stored in `school_settings.custom_settings`, while the active
+profile is materialized into the existing canonical columns so generators, time
+slots, manual scheduling, and displays continue to use one effective source.
+
 The current form sends `PUT /api/school/settings`, including `breakDuration: 25`
 and `expected_version` from GET. The response includes `settings` containing the
 saved canonical values and compatible aliases, plus `time_slots_regenerated`.
@@ -34,6 +58,9 @@ regeneration failures roll back. Successful writes commit before success.
 Timing changes are rejected while a published timetable exists. The UI offers
 explicit confirmation to unpublish while preserving any current draft. It never
 unpublishes automatically on save.
+Changing `attendancePattern` is itself an effective timing-policy change and is
+also rejected while published, even when the two profiles currently have equal
+clock values.
 
 After unpublishing, saving regenerates slots and retargets compatible active
 draft session timings. If periods or working days are removed, incompatible

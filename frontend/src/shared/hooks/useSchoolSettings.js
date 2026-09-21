@@ -31,6 +31,15 @@ const settingValue = (source, camelKey, snakeKey, fallback) => (
 );
 
 const unwrapCanonicalSettings = (payload) => payload?.settings ?? payload ?? {};
+const TIMING_PROFILE_KEYS = ['summer', 'winter', 'ramadan'];
+const TIMING_PROFILE_FIELDS = [
+  'dayStart',
+  'dayEnd',
+  'periodsPerDay',
+  'periodDuration',
+  'breakDuration',
+  'breakAfterPeriod',
+];
 
 const normalizeTimingSettings = (payload) => {
   const source = unwrapCanonicalSettings(payload);
@@ -71,6 +80,44 @@ const normalizeBreaks = (payload) => {
     customType: item.customType ?? item.custom_type ?? '',
     day: item.day ?? 'all',
   }));
+};
+
+const cloneBreaks = (breaks = []) => breaks.map(item => ({ ...item }));
+
+const timingProfileFromDraft = (timing, breaks) => ({
+  ...Object.fromEntries(TIMING_PROFILE_FIELDS.map(field => [field, timing[field]])),
+  breaks: cloneBreaks(breaks),
+});
+
+const normalizeTimingProfile = (payload, fallbackTiming, fallbackBreaks = []) => {
+  const normalized = normalizeTimingSettings({
+    ...fallbackTiming,
+    ...payload,
+  });
+  const normalizedBreaks = normalizeBreaks(payload);
+  return timingProfileFromDraft(
+    normalized,
+    normalizedBreaks === null ? fallbackBreaks : normalizedBreaks,
+  );
+};
+
+const hydrateTimingProfiles = (payload) => {
+  const source = unwrapCanonicalSettings(payload);
+  const timing = normalizeTimingSettings(source);
+  const breaks = normalizeBreaks(source) ?? [];
+  const rawProfiles = settingValue(source, 'timingProfiles', 'timing_profiles', {});
+  const profiles = {};
+
+  TIMING_PROFILE_KEYS.forEach(key => {
+    if (rawProfiles?.[key]) {
+      profiles[key] = normalizeTimingProfile(rawProfiles[key], timing, breaks);
+    }
+  });
+
+  // The canonical flat fields are the operational source of truth for the
+  // active pattern and may have been normalized by the server.
+  profiles[timing.attendancePattern] = timingProfileFromDraft(timing, breaks);
+  return { timing, breaks, profiles };
 };
 
 export function useSchoolSettings({ onTimingSettingsSaved } = {}) {
@@ -201,6 +248,7 @@ export function useSchoolSettings({ onTimingSettingsSaved } = {}) {
   });
 
   const [timingSettings, setTimingSettings] = useState(DEFAULT_TIMING_SETTINGS);
+  const [timingProfiles, setTimingProfiles] = useState({});
   const [timeSlotsCount, setTimeSlotsCount] = useState(null);
   const [generatingSlots, setGeneratingSlots] = useState(false);
 
@@ -269,7 +317,9 @@ export function useSchoolSettings({ onTimingSettingsSaved } = {}) {
         setSettings(canonicalSettings);
         setSettingsLoadError('');
         setSettingsVersion(settingValue(canonicalSettings, 'settingsVersion', 'settings_version', null));
-        setTimingSettings(normalizeTimingSettings(canonicalSettings));
+        const hydratedTimings = hydrateTimingProfiles(canonicalSettings);
+        setTimingSettings(hydratedTimings.timing);
+        setTimingProfiles(hydratedTimings.profiles);
 
         const workingDays = settingValue(canonicalSettings, 'workingDays', 'working_days', null);
         if (Array.isArray(workingDays)) {
@@ -284,8 +334,7 @@ export function useSchoolSettings({ onTimingSettingsSaved } = {}) {
           });
         }
 
-        const normalizedBreaks = normalizeBreaks(canonicalSettings);
-        if (normalizedBreaks) setBreakTimes(normalizedBreaks);
+        setBreakTimes(hydratedTimings.breaks);
         if (discardTimingDraft) {
           setHasChanges(false);
           setTimingSaveError(null);
@@ -415,6 +464,11 @@ export function useSchoolSettings({ onTimingSettingsSaved } = {}) {
       const dayNames = { sunday: 'الأحد', monday: 'الإثنين', tuesday: 'الثلاثاء', wednesday: 'الأربعاء', thursday: 'الخميس', friday: 'الجمعة', saturday: 'السبت' };
       const workingDays = Object.entries(workDays).filter(([_, active]) => active).map(([day]) => dayNames[day]);
       const weekendDays = Object.entries(workDays).filter(([_, active]) => !active).map(([day]) => dayNames[day]);
+      const timingProfilesToSave = {
+        ...timingProfiles,
+        [timingSettings.attendancePattern]: timingProfileFromDraft(timingSettings, breakTimes),
+      };
+      setTimingProfiles(timingProfilesToSave);
 
       const dataToSave = {
         academicYear: timingSettings.academicYear,
@@ -430,6 +484,7 @@ export function useSchoolSettings({ onTimingSettingsSaved } = {}) {
         attendancePattern: timingSettings.attendancePattern,
         maxStandbyPerWeek: timingSettings.maxStandbyPerWeek,
         expected_version: settingsVersion,
+        timingProfiles: timingProfilesToSave,
         breaks: breakTimes.map(b => ({
           id: b.id,
           name: b.name,
@@ -459,9 +514,10 @@ export function useSchoolSettings({ onTimingSettingsSaved } = {}) {
 
       if (draftRevisionAtSave === settingsDraftRevisionRef.current) {
         setSettings(canonicalSettings);
-        setTimingSettings(normalizeTimingSettings(canonicalSettings));
-        const normalizedBreaks = normalizeBreaks(canonicalSettings);
-        if (normalizedBreaks) setBreakTimes(normalizedBreaks);
+        const hydratedTimings = hydrateTimingProfiles(canonicalSettings);
+        setTimingSettings(hydratedTimings.timing);
+        setTimingProfiles(hydratedTimings.profiles);
+        setBreakTimes(hydratedTimings.breaks);
         const canonicalWorkingDays = settingValue(canonicalSettings, 'workingDays', 'working_days', null);
         if (Array.isArray(canonicalWorkingDays)) {
           const active = new Set(canonicalWorkingDays);
@@ -702,6 +758,32 @@ export function useSchoolSettings({ onTimingSettingsSaved } = {}) {
 
   const handleSettingChange = (key, value) => {
     settingsDraftRevisionRef.current += 1;
+    if (key === 'attendancePattern' && TIMING_PROFILE_KEYS.includes(value)) {
+      const currentProfile = timingProfileFromDraft(timingSettings, breakTimes);
+      setTimingProfiles(previousProfiles => {
+        const profilesWithCurrentDraft = {
+          ...previousProfiles,
+          [timingSettings.attendancePattern]: currentProfile,
+        };
+        const targetProfile = profilesWithCurrentDraft[value]
+          ? normalizeTimingProfile(profilesWithCurrentDraft[value], timingSettings, breakTimes)
+          : timingProfileFromDraft(timingSettings, breakTimes);
+
+        setTimingSettings(previous => ({
+          ...previous,
+          ...Object.fromEntries(TIMING_PROFILE_FIELDS.map(field => [field, targetProfile[field]])),
+          attendancePattern: value,
+        }));
+        setBreakTimes(cloneBreaks(targetProfile.breaks));
+
+        return {
+          ...profilesWithCurrentDraft,
+          [value]: targetProfile,
+        };
+      });
+      setHasChanges(true);
+      return;
+    }
     setTimingSettings(prev => ({ ...prev, [key]: value }));
     setHasChanges(true);
   };
@@ -1340,7 +1422,7 @@ export function useSchoolSettings({ onTimingSettingsSaved } = {}) {
     editingBreak, setEditingBreak, unavailabilityType, setUnavailabilityType,
     showNoorImportModal, setShowNoorImportModal, noorImportType, setNoorImportType,
     editedSchoolInfo, setEditedSchoolInfo,
-    workDays, timingSettings, timeSlotsCount, generatingSlots,
+    workDays, timingSettings, timingProfiles, timeSlotsCount, generatingSlots,
     breakTimes, teacherUnavailability, classUnavailability,
     hardConstraints, softConstraints, activeHardTab, setActiveHardTab, activeSoftTab, setActiveSoftTab,
     customSoftConstraints, setCustomSoftConstraints,

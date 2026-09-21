@@ -341,7 +341,11 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
           <Card className="bg-white shadow-sm">
             <CardHeader>
               <CardTitle className="text-xl flex items-center gap-2"><Clock className="h-5 w-5 text-[#1C3D74]" />إعدادات التوقيت والحصص</CardTitle>
-              <CardDescription>حدد هيكل اليوم الدراسي وعدد الحصص</CardDescription>
+              <CardDescription>
+                {t('seasonalTimingEditingProfile', {
+                  pattern: t(`seasonalTimingPattern_${timingSettings.attendancePattern}`),
+                })}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-2 gap-6">
@@ -475,6 +479,9 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                   ? `${Object.values(workDays).filter(Boolean).length} أيام دراسة محددة`
                   : 'لم يتم تحديد أيام الدراسة بعد'}
               </p>
+              <p className="mt-2 text-sm text-slate-600" data-testid="seasonal-working-days-note">
+                {t('seasonalTimingWorkingDaysShared')}
+              </p>
             </CardContent>
           </Card>
 
@@ -482,17 +489,23 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-xl flex items-center gap-2"><Calendar className="h-5 w-5 text-[#1C3D74]" />نمط الدوام</CardTitle>
-                  <CardDescription>اختر نمط الدوام المناسب للمدرسة</CardDescription>
+                  <CardTitle className="text-xl flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-[#1C3D74]" />
+                    {t('seasonalTimingTitle')}
+                    <Badge variant="secondary">
+                      {t('seasonalTimingSelected')}
+                    </Badge>
+                  </CardTitle>
+                  <CardDescription>{t('seasonalTimingDescription')}</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-4">
                 {[
-                  { value: 'summer', label: 'دوام صيفي', icon: '☀️' },
-                  { value: 'winter', label: 'دوام شتوي', icon: '❄️' },
-                  { value: 'ramadan', label: 'دوام رمضان', icon: '🌙' }
+                  { value: 'summer', label: t('seasonalTimingPattern_summer'), icon: '☀️' },
+                  { value: 'winter', label: t('seasonalTimingPattern_winter'), icon: '❄️' },
+                  { value: 'ramadan', label: t('seasonalTimingPattern_ramadan'), icon: '🌙' }
                 ].map((pattern) => (
                   <div
                     key={pattern.value}
@@ -509,6 +522,14 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                     {timingSettings.attendancePattern === pattern.value && <CheckCircle2 className="h-4 w-4 mx-auto mt-2 text-[#1C3D74]" />}
                   </div>
                 ))}
+              </div>
+              <div
+                className="mt-4 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm leading-6 text-sky-950"
+                role="note"
+                data-testid="seasonal-timing-save-note"
+              >
+                <p className="font-semibold">{t('seasonalTimingNotAppliedUntilSave')}</p>
+                <p>{t('seasonalTimingFirstUseCopy')}</p>
               </div>
             </CardContent>
           </Card>

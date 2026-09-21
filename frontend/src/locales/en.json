@@ -5622,5 +5622,15 @@
   "inheritBaseBreakDuration": "Use the base break duration",
   "timingSettingsVersionConflict": "Timing settings changed in another session. Your draft was preserved; load the latest version to review it.",
   "timingPublishedGuard": "Safely unpublish the timetable before changing timing settings.",
-  "timingSaveFailed": "Could not save timing settings. Please try again."
+  "timingSaveFailed": "Could not save timing settings. Please try again.",
+  "seasonalTimingTitle": "Attendance timing profile",
+  "seasonalTimingSelected": "Editing",
+  "seasonalTimingDescription": "Choose a profile to edit its timings and breaks independently.",
+  "seasonalTimingPattern_summer": "Summer schedule",
+  "seasonalTimingPattern_winter": "Winter schedule",
+  "seasonalTimingPattern_ramadan": "Ramadan schedule",
+  "seasonalTimingEditingProfile": "You are editing timings and breaks for: {{pattern}}",
+  "seasonalTimingNotAppliedUntilSave": "This selection and its edits are a local draft and will not affect the operational timetable until you click Save.",
+  "seasonalTimingFirstUseCopy": "When you first open an unconfigured profile, its timings and breaks are copied from the settings currently shown; no new hours are assumed.",
+  "seasonalTimingWorkingDaysShared": "School days are shared school-wide and apply to every attendance profile."
 }

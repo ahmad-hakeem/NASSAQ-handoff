@@ -762,3 +762,336 @@ async def test_structural_change_cancels_only_own_active_generation_runs(
     assert (await gd_find_one(
         db.session, "timetable_runs", {"id": other_active}
     ))["status"] == "generating"
+
+
+@pytest.mark.asyncio
+async def test_seasonal_profiles_switch_persist_reload_and_drive_generated_slots(
+    client, tenant_a, school_principal_headers,
+):
+    await _seed_settings(tenant_a)
+
+    summer = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={
+            "attendancePattern": "summer",
+            "dayStart": "08:00",
+            "dayEnd": "12:00",
+            "periodsPerDay": 4,
+            "periodDuration": 30,
+            "breakDuration": 10,
+            "breakAfterPeriod": 2,
+            "breaks": [{"afterPeriod": 2, "duration": None, "type": "break"}],
+            "expectedVersion": 0,
+        },
+    )
+    assert summer.status_code == 200, summer.text
+    saved = summer.json()["settings"]
+    assert saved["attendancePattern"] == "summer"
+    assert saved["timingProfiles"]["winter"]["dayStart"] == "07:00"
+    assert saved["timingProfiles"]["summer"]["dayStart"] == "08:00"
+    assert saved["dayStart"] == "08:00"
+
+    slots = await gd_find(
+        db.session, "time_slots", {"school_id": tenant_a},
+        order_by="slot_number", desc_order=False,
+    )
+    teaching = [slot for slot in slots if not slot.get("is_break")]
+    assert len(teaching) == 4
+    assert (teaching[0]["start_time"], teaching[0]["end_time"]) == ("08:00", "08:30")
+
+    winter = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"attendancePattern": "winter", "expectedVersion": 1},
+    )
+    assert winter.status_code == 200, winter.text
+    assert winter.json()["settings"]["dayStart"] == "07:00"
+    assert winter.json()["settings"]["periodsPerDay"] == 7
+
+    reloaded = await client.get("/school/settings", headers=school_principal_headers)
+    assert reloaded.status_code == 200
+    assert reloaded.json()["attendancePattern"] == "winter"
+    assert reloaded.json()["timingProfiles"]["summer"]["dayStart"] == "08:00"
+
+
+@pytest.mark.asyncio
+async def test_legacy_profile_initializes_only_active_season_without_invented_hours(
+    client, tenant_a, school_principal_headers,
+):
+    await _seed_settings(tenant_a)
+    await db.session.execute(
+        text(
+            "UPDATE school_settings "
+            "SET custom_settings = custom_settings || "
+            "CAST('{\"attendancePattern\":\"ramadan\"}' AS jsonb) "
+            "WHERE school_id = :school_id"
+        ),
+        {"school_id": tenant_a},
+    )
+    await db.session.flush()
+
+    response = await client.get("/school/settings", headers=school_principal_headers)
+    assert response.status_code == 200
+    settings = response.json()
+    assert settings["attendancePattern"] == "ramadan"
+    assert set(settings["timingProfiles"]) == {"ramadan"}
+    assert settings["timingProfiles"]["ramadan"]["dayStart"] == settings["dayStart"]
+    assert settings["timingProfiles"]["ramadan"]["dayEnd"] == settings["dayEnd"]
+
+
+@pytest.mark.asyncio
+async def test_absent_target_profile_copies_current_timing_and_is_school_isolated(
+    client, tenant_a, tenant_b, school_principal_headers,
+):
+    await _seed_settings(tenant_a)
+    await _seed_settings(tenant_b, break_duration=33)
+
+    switched = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"attendancePattern": "ramadan", "expectedVersion": 0},
+    )
+    assert switched.status_code == 200, switched.text
+    active = switched.json()["settings"]
+    assert active["timingProfiles"]["ramadan"] == active["timingProfiles"]["winter"]
+
+    other = await gd_find_one(db.session, "school_settings", {"school_id": tenant_b})
+    assert "timingProfiles" not in other["custom_settings"]
+    assert other["break_duration"] == 33
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "timing_profiles",
+    [
+        {"spring": {"dayStart": "08:00"}},
+        {"summer": {"dayStart": "08:00", "academicYear": "1448"}},
+        {"summer": {"dayStart": "08:00", "periodDuration": 5}},
+    ],
+)
+async def test_invalid_profile_payload_rolls_back_atomically(
+    client, tenant_a, school_principal_headers, timing_profiles,
+):
+    await _seed_settings(tenant_a)
+    response = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={
+            "attendancePattern": "summer",
+            "timingProfiles": timing_profiles,
+            "expectedVersion": 0,
+        },
+    )
+    assert response.status_code == 422
+    row = await gd_find_one(db.session, "school_settings", {"school_id": tenant_a})
+    assert row["start_time"] == "07:00"
+    assert row["custom_settings"]["settings_version"] == 0
+    assert "timingProfiles" not in row["custom_settings"]
+
+
+@pytest.mark.asyncio
+async def test_pattern_only_switch_requires_unpublish_even_when_timings_match(
+    client, tenant_a, school_principal_headers,
+):
+    await _seed_settings(tenant_a)
+    await gd_insert(db.session, "timetables", {
+        "id": str(uuid.uuid4()),
+        "school_id": tenant_a,
+        "name": "Published",
+        "status": "published",
+        "is_published": True,
+    })
+    response = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"attendancePattern": "summer", "expectedVersion": 0},
+    )
+    assert response.status_code == 409
+    assert "published_timetable_requires_unpublish" in response.text
+    row = await gd_find_one(db.session, "school_settings", {"school_id": tenant_a})
+    assert row["custom_settings"].get("attendancePattern") is None
+    assert row["custom_settings"]["settings_version"] == 0
+
+
+@pytest.mark.asyncio
+async def test_unknown_attendance_pattern_is_rejected_without_mutation(
+    client, tenant_a, school_principal_headers,
+):
+    await _seed_settings(tenant_a)
+    response = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"attendancePattern": "spring", "expectedVersion": 0},
+    )
+    assert response.status_code == 422
+    row = await gd_find_one(db.session, "school_settings", {"school_id": tenant_a})
+    assert row["start_time"] == "07:00"
+    assert row["custom_settings"]["settings_version"] == 0
+
+
+@pytest.mark.asyncio
+async def test_profile_switch_reconciles_draft_and_stale_version_cannot_switch_back(
+    client, tenant_a, school_principal_headers,
+):
+    await _seed_settings(tenant_a)
+    configured = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={
+            "timingProfiles": {
+                "summer": {
+                    "dayStart": "08:00",
+                    "dayEnd": "11:00",
+                    "periodsPerDay": 3,
+                    "periodDuration": 30,
+                    "breakDuration": 10,
+                    "breakAfterPeriod": 2,
+                    "breaks": [],
+                },
+            },
+            "expectedVersion": 0,
+        },
+    )
+    assert configured.status_code == 200, configured.text
+
+    draft_id = str(uuid.uuid4())
+    await gd_insert(db.session, "timetables", {
+        "id": draft_id,
+        "school_id": tenant_a,
+        "name": "Seven-period draft",
+        "status": "draft",
+        "is_published": False,
+    })
+    await gd_insert(db.session, "timetable_sessions", {
+        "id": str(uuid.uuid4()),
+        "school_id": tenant_a,
+        "timetable_id": draft_id,
+        "day_of_week": "sunday",
+        "period_number": 5,
+    })
+
+    switched = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"attendancePattern": "summer", "expectedVersion": 1},
+    )
+    assert switched.status_code == 200, switched.text
+    assert switched.json()["draft_reconciliation"]["archived_drafts"] == 1
+    assert switched.json()["draft_reconciliation"]["excluded_sessions"] == 1
+    assert switched.json()["settings"]["periodsPerDay"] == 3
+
+    stale = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"attendancePattern": "winter", "expectedVersion": 1},
+    )
+    assert stale.status_code == 409
+    refreshed = await client.get("/school/settings", headers=school_principal_headers)
+    assert refreshed.json()["attendancePattern"] == "summer"
+    assert refreshed.json()["settings_version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_legacy_break_after_only_edit_regenerates_without_materializing_breaks(
+    client, tenant_a, school_principal_headers,
+):
+    from src.modules.schools.services.time_slots_service import TimeSlotsService
+
+    await _seed_settings(tenant_a)
+    await TimeSlotsService.regenerate_time_slots(db.session, tenant_a)
+    initial = await gd_find(
+        db.session, "time_slots", {"school_id": tenant_a},
+        order_by="slot_number", desc_order=False,
+    )
+    initial_break = next(slot for slot in initial if slot.get("is_break"))
+    assert initial_break["slot_number"] == 4  # after teaching period 3
+
+    response = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"breakAfterPeriod": 2, "expectedVersion": 0},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["time_slots_regenerated"]["regenerated"] is True
+
+    row = await gd_find_one(db.session, "school_settings", {"school_id": tenant_a})
+    assert "breaks" not in row["custom_settings"]
+    assert row["custom_settings"]["breakAfterPeriod"] == 2
+    regenerated = await gd_find(
+        db.session, "time_slots", {"school_id": tenant_a},
+        order_by="slot_number", desc_order=False,
+    )
+    first_break = next(slot for slot in regenerated if slot.get("is_break"))
+    assert first_break["slot_number"] == 3  # after teaching period 2
+
+
+@pytest.mark.asyncio
+async def test_legacy_break_after_only_edit_is_blocked_while_published(
+    client, tenant_a, school_principal_headers,
+):
+    await _seed_settings(tenant_a)
+    await gd_insert(db.session, "timetables", {
+        "id": str(uuid.uuid4()),
+        "school_id": tenant_a,
+        "name": "Published",
+        "status": "published",
+        "is_published": True,
+    })
+
+    response = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"breakAfterPeriod": 2, "expectedVersion": 0},
+    )
+    assert response.status_code == 409
+    assert "published_timetable_requires_unpublish" in response.text
+    row = await gd_find_one(db.session, "school_settings", {"school_id": tenant_a})
+    assert row["custom_settings"].get("breakAfterPeriod") is None
+    assert "breaks" not in row["custom_settings"]
+    assert row["custom_settings"]["settings_version"] == 0
+
+
+@pytest.mark.asyncio
+async def test_break_after_metadata_does_not_override_explicit_zero_or_no_breaks(
+    client, tenant_a, school_principal_headers,
+):
+    await _seed_settings(tenant_a)
+    zero_break = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={
+            "breaks": [{"afterPeriod": 2, "duration": 0, "type": "break"}],
+            "expectedVersion": 0,
+        },
+    )
+    assert zero_break.status_code == 200, zero_break.text
+
+    metadata_only = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"breakAfterPeriod": 1, "expectedVersion": 1},
+    )
+    assert metadata_only.status_code == 200, metadata_only.text
+    assert metadata_only.json()["time_slots_regenerated"]["regenerated"] is False
+    slots = await gd_find(db.session, "time_slots", {"school_id": tenant_a})
+    breaks = [slot for slot in slots if slot.get("is_break")]
+    assert len(breaks) == 1
+    assert breaks[0]["duration_minutes"] == 0
+    assert breaks[0]["slot_number"] == 3
+
+    no_breaks = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"breaks": [], "expectedVersion": 2},
+    )
+    assert no_breaks.status_code == 200, no_breaks.text
+    after_no_break_metadata = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={"breakAfterPeriod": 2, "expectedVersion": 3},
+    )
+    assert after_no_break_metadata.status_code == 200, after_no_break_metadata.text
+    assert after_no_break_metadata.json()["time_slots_regenerated"]["regenerated"] is False
+    slots = await gd_find(db.session, "time_slots", {"school_id": tenant_a})
+    assert not [slot for slot in slots if slot.get("is_break")]

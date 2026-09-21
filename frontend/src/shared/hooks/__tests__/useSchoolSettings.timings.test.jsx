@@ -73,6 +73,17 @@ const canonicalSettings = (overrides = {}) => ({
   ...overrides,
 });
 
+const profile = (overrides = {}) => ({
+  dayStart: '07:10',
+  dayEnd: '13:30',
+  periodsPerDay: 7,
+  periodDuration: 45,
+  breakDuration: 20,
+  breakAfterPeriod: 3,
+  breaks: [],
+  ...overrides,
+});
+
 function ancillaryResponse(url) {
   if (url.includes('/hard-constraints')) return { data: { hard_constraints: [] } };
   if (url.includes('/soft-constraints')) return { data: { soft_constraints: [] } };
@@ -136,6 +147,135 @@ describe('useSchoolSettings timetable settings persistence', () => {
     ));
     await act(async () => result.current.fetchData());
     expect(result.current.timingSettings.breakDuration).toBe(25);
+  });
+
+  it('keeps distinct unsaved timings and breaks while switching profiles and persists the whole map', async () => {
+    mockApiGet.mockImplementation(async (url) => (
+      url === '/school/settings'
+        ? {
+            data: canonicalSettings({
+              breaks: [{ id: 'w1', name: 'Winter', after_period: 3, duration: 20, type: 'break' }],
+              timingProfiles: {
+                summer: profile({ dayStart: '06:30', breaks: [{ id: 's1', name: 'Summer', afterPeriod: 2, duration: 10, type: 'break' }] }),
+                winter: profile({ dayStart: '07:10', breaks: [{ id: 'w1', name: 'Winter', afterPeriod: 3, duration: 20, type: 'break' }] }),
+              },
+            }),
+          }
+        : ancillaryResponse(url)
+    ));
+    mockApiPut.mockResolvedValue({
+      data: {
+        success: true,
+        settings: canonicalSettings({
+          attendance_pattern: 'summer',
+          day_start: '06:45',
+          breaks: [{ id: 's1', name: 'Summer edited', after_period: 2, duration: 15, type: 'break' }],
+          settings_version: 9,
+          timingProfiles: {
+            summer: profile({ dayStart: '06:45', breaks: [{ id: 's1', name: 'Summer edited', afterPeriod: 2, duration: 15, type: 'break' }] }),
+            winter: profile({ dayStart: '07:20', breaks: [{ id: 'w1', name: 'Winter', afterPeriod: 3, duration: 20, type: 'break' }] }),
+          },
+        }),
+      },
+    });
+    const { result } = renderHook(() => useSchoolSettings());
+    await waitFor(() => expect(result.current.breakTimes[0]?.name).toBe('Winter'));
+
+    act(() => result.current.handleSettingChange('dayStart', '07:20'));
+    act(() => result.current.handleSettingChange('attendancePattern', 'summer'));
+    expect(result.current.timingSettings.dayStart).toBe('06:30');
+    expect(result.current.breakTimes[0].name).toBe('Summer');
+    act(() => result.current.handleSettingChange('dayStart', '06:45'));
+    act(() => result.current.setEditingBreak(result.current.breakTimes[0]));
+    act(() => result.current.handleSaveBreak({
+      name: 'Summer edited', afterPeriod: 2, duration: 15, type: 'break',
+    }));
+
+    act(() => result.current.handleSettingChange('attendancePattern', 'winter'));
+    expect(result.current.timingSettings.dayStart).toBe('07:20');
+    expect(result.current.breakTimes[0].name).toBe('Winter');
+    act(() => result.current.handleSettingChange('attendancePattern', 'summer'));
+    expect(result.current.timingSettings.dayStart).toBe('06:45');
+    expect(result.current.breakTimes[0].name).toBe('Summer edited');
+
+    await act(async () => result.current.saveAllSettings());
+    expect(mockApiPut).toHaveBeenCalledWith('/school/settings', expect.objectContaining({
+      attendancePattern: 'summer',
+      dayStart: '06:45',
+      workingDays: ['الأحد', 'الإثنين'],
+      timingProfiles: expect.objectContaining({
+        summer: expect.objectContaining({
+          dayStart: '06:45',
+          breaks: [expect.objectContaining({ name: 'Summer edited' })],
+        }),
+        winter: expect.objectContaining({
+          dayStart: '07:20',
+          breaks: [expect.objectContaining({ name: 'Winter' })],
+        }),
+      }),
+    }));
+    expect(result.current.timingSettings.dayStart).toBe('06:45');
+    expect(result.current.timingProfiles.winter.dayStart).toBe('07:20');
+  });
+
+  it('copies the current timing and breaks when a profile is selected for the first time', async () => {
+    mockApiGet.mockImplementation(async (url) => (
+      url === '/school/settings'
+        ? {
+            data: canonicalSettings({
+              day_start: '08:05',
+              day_end: '14:20',
+              breaks: [{ id: 'current', name: 'Current break', after_period: 2, duration: 10, type: 'break' }],
+              timingProfiles: {
+                winter: profile({
+                  dayStart: '06:00',
+                  breaks: [{ id: 'stale', name: 'Stale nested active', afterPeriod: 1, duration: 5, type: 'break' }],
+                }),
+              },
+            }),
+          }
+        : ancillaryResponse(url)
+    ));
+    const { result } = renderHook(() => useSchoolSettings());
+    await waitFor(() => expect(result.current.timingSettings.dayStart).toBe('08:05'));
+
+    act(() => result.current.handleSettingChange('attendancePattern', 'ramadan'));
+
+    expect(result.current.timingSettings.dayStart).toBe('08:05');
+    expect(result.current.timingSettings.dayEnd).toBe('14:20');
+    expect(result.current.breakTimes[0].name).toBe('Current break');
+    expect(result.current.timingProfiles.ramadan).toEqual(expect.objectContaining({
+      dayStart: '08:05',
+      breaks: [expect.objectContaining({ name: 'Current break' })],
+    }));
+  });
+
+  it('retains every profile draft after a failed save and discards all profiles on explicit reload', async () => {
+    mockApiGet.mockImplementation(async (url) => (
+      url === '/school/settings'
+        ? { data: canonicalSettings({ timingProfiles: { winter: profile(), summer: profile({ dayStart: '06:30' }) } }) }
+        : ancillaryResponse(url)
+    ));
+    mockApiPut.mockRejectedValue({
+      response: { status: 500, data: { success: false, error: { message: 'تعذّر الحفظ' } } },
+    });
+    const { result } = renderHook(() => useSchoolSettings());
+    await waitFor(() => expect(result.current.settingsVersion).toBe(8));
+    act(() => result.current.handleSettingChange('dayStart', '07:25'));
+    act(() => result.current.handleSettingChange('attendancePattern', 'summer'));
+    act(() => result.current.handleSettingChange('dayStart', '06:45'));
+
+    await act(async () => result.current.saveAllSettings());
+    expect(result.current.timingSettings.dayStart).toBe('06:45');
+    act(() => result.current.handleSettingChange('attendancePattern', 'winter'));
+    expect(result.current.timingSettings.dayStart).toBe('07:25');
+
+    await act(async () => result.current.reloadTimingSettings());
+    expect(result.current.timingSettings.attendancePattern).toBe('winter');
+    expect(result.current.timingSettings.dayStart).toBe('07:10');
+    act(() => result.current.handleSettingChange('attendancePattern', 'summer'));
+    expect(result.current.timingSettings.dayStart).toBe('06:30');
+    expect(result.current.hasChanges).toBe(true);
   });
 
   it.each([
