@@ -15,6 +15,9 @@ const messages = {
   futureBirthDate: 'Birth date cannot be in the future.',
   hijriConversionUnavailable: 'Hijri conversion is unavailable for this date.',
   invalidStoredGregorianDate: 'Invalid stored Gregorian date',
+  invalidHijriDate: 'Enter a valid Hijri date in DD/MM/YYYY format.',
+  futureHijriBirthDate: 'Hijri birth date cannot be in the future.',
+  hijriInputPlaceholder: 'DD/MM/YYYY',
   notProvided: 'Not provided',
 };
 const t = (key) => messages[key] || key;
@@ -32,8 +35,91 @@ describe('TeacherBirthDate shared field and display', () => {
     );
 
     expect(screen.getByLabelText('Gregorian birth date')).toHaveValue('2024-03-11');
-    expect(screen.getByText('1445-09-01 AH')).toBeInTheDocument();
+    expect(screen.getByLabelText('Hijri birth date')).toHaveValue('01/09/1445');
     expect(screen.getByText('YYYY-MM-DD (Gregorian)')).toBeInTheDocument();
+  });
+
+  test('editing Hijri updates the canonical Gregorian date and Arabic digits are accepted', () => {
+    const onChange = jest.fn();
+    const onValidityChange = jest.fn();
+    render(
+      <TeacherBirthDateField
+        id="dob"
+        value=""
+        onChange={onChange}
+        onValidityChange={onValidityChange}
+        t={t}
+        today="2026-01-02"
+      />
+    );
+    fireEvent.change(screen.getByLabelText('Hijri birth date'), {
+      target: { value: '٠١/٠٩/١٤٤٥' },
+    });
+    expect(onChange).toHaveBeenLastCalledWith('2024-03-11');
+    expect(onValidityChange).toHaveBeenLastCalledWith(true);
+  });
+
+  test('last edited Gregorian date recalculates the Hijri draft', () => {
+    const Harness = () => {
+      const [value, setValue] = React.useState('2024-03-11');
+      return <TeacherBirthDateField id="dob" value={value} onChange={setValue} t={t} today="2026-01-02" />;
+    };
+    render(<Harness />);
+    fireEvent.change(screen.getByLabelText('Hijri birth date'), { target: { value: '24/09/1420' } });
+    expect(screen.getByLabelText('Gregorian birth date')).toHaveValue('2000-01-01');
+    fireEvent.change(screen.getByLabelText('Gregorian birth date'), { target: { value: '2024-03-11' } });
+    expect(screen.getByLabelText('Hijri birth date')).toHaveValue('01/09/1445');
+  });
+
+  test('keeps an invalid or incomplete Hijri draft visible and propagates invalidity', () => {
+    const onChange = jest.fn();
+    const onValidityChange = jest.fn();
+    render(
+      <TeacherBirthDateField
+        id="dob"
+        value="2024-03-11"
+        onChange={onChange}
+        onValidityChange={onValidityChange}
+        t={t}
+        today="2026-01-02"
+      />
+    );
+    fireEvent.change(screen.getByLabelText('Hijri birth date'), { target: { value: '31/09/' } });
+    expect(screen.getByLabelText('Hijri birth date')).toHaveValue('31/09/');
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a valid Hijri date');
+    expect(onValidityChange).toHaveBeenLastCalledWith(false);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test('same-value Gregorian edit resets an invalid Hijri draft and error', () => {
+    const onValidityChange = jest.fn();
+    render(
+      <TeacherBirthDateField
+        id="dob"
+        value="2024-03-11"
+        onChange={() => {}}
+        onValidityChange={onValidityChange}
+        t={t}
+        today="2026-01-02"
+      />
+    );
+    fireEvent.change(screen.getByLabelText('Hijri birth date'), { target: { value: '31/09/' } });
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+
+    const gregorianInput = screen.getByLabelText('Gregorian birth date');
+    // Simulate a browser-emitted change event whose canonical value is unchanged.
+    gregorianInput._valueTracker?.setValue('2024-03-10');
+    fireEvent.change(gregorianInput, { target: { value: '2024-03-11' } });
+    expect(screen.getByLabelText('Hijri birth date')).toHaveValue('01/09/1445');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(onValidityChange).toHaveBeenLastCalledWith(true);
+  });
+
+  test('clearing Hijri clears the canonical Gregorian value', () => {
+    const onChange = jest.fn();
+    render(<TeacherBirthDateField id="dob" value="2024-03-11" onChange={onChange} t={t} today="2026-01-02" />);
+    fireEvent.change(screen.getByLabelText('Hijri birth date'), { target: { value: '' } });
+    expect(onChange).toHaveBeenLastCalledWith('');
   });
 
   test('announces invalid and future errors and does not render NaN', () => {
@@ -93,5 +179,17 @@ describe('TeacherBirthDate shared field and display', () => {
     );
     expect(screen.getByRole('button', { name: 'مسح تاريخ الميلاد' })).toBeInTheDocument();
     expect(ar.clearTeacherBirthDate).toBe('مسح تاريخ الميلاد');
+  });
+
+  test('uses the localized Arabic Hijri input placeholder', () => {
+    render(
+      <TeacherBirthDateField
+        value=""
+        onChange={() => {}}
+        t={(key) => ar[key] || key}
+        locale="ar"
+      />
+    );
+    expect(screen.getByLabelText(ar.hijriBirthDate)).toHaveAttribute('placeholder', 'يوم/شهر/سنة');
   });
 });

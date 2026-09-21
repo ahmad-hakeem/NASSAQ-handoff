@@ -4,12 +4,12 @@ API endpoints for teacher management by school principals
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional, List
-from pydantic import BaseModel, Field, EmailStr, field_validator
+from pydantic import AliasChoices, BaseModel, Field, EmailStr, model_validator
 from enum import Enum
 import logging
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct
 from src.modules.schools.controllers.school_settings_mod import _ensure_teacher_linked_to_all_classes
-from src.common.utils.date_only import normalize_optional_past_date
+from src.common.utils.date_only import resolve_optional_birth_dates
 
 
 logger = logging.getLogger(__name__)
@@ -42,16 +42,25 @@ class TeacherBasicInfoRequest(BaseModel):
     full_name_ar: str = Field(..., min_length=3)
     full_name_en: Optional[str] = None
     national_id: str = Field(..., min_length=10, max_length=10)
-    date_of_birth: Optional[str] = None
+    date_of_birth: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("date_of_birth", "birthDateGregorian"),
+    )
+    birth_date_hijri: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("birth_date_hijri", "birthDateHijri"),
+    )
     gender: Gender
     nationality: str = Field(default="SA")
     phone: str
     email: EmailStr
 
-    @field_validator("date_of_birth", mode="before")
-    @classmethod
-    def validate_date_of_birth(cls, value):
-        return normalize_optional_past_date(value)
+    @model_validator(mode="after")
+    def validate_birth_dates(self):
+        self.date_of_birth, self.birth_date_hijri = resolve_optional_birth_dates(
+            self.date_of_birth, self.birth_date_hijri
+        )
+        return self
 
 class TeacherQualificationsRequest(BaseModel):
     academic_degree: str
@@ -189,6 +198,7 @@ def create_teacher_management_routes(db, get_current_user):
             full_name_en=request.basic_info.full_name_en,
             national_id=request.basic_info.national_id,
             date_of_birth=request.basic_info.date_of_birth,
+            birth_date_hijri=request.basic_info.birth_date_hijri,
             gender=EngineGender(request.basic_info.gender.value),
             nationality=request.basic_info.nationality,
             phone=request.basic_info.phone,

@@ -361,7 +361,7 @@ describe('TeacherProfileDialog — Professional Data Rendering', () => {
     expect(screen.getByText(/١٤٤٥-٠٩-٠١ هـ/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /تعديل|edit/i }));
     fireEvent.change(screen.getByTestId('profile-teacher-dob'), { target: { value: '2000-01-01' } });
-    expect(screen.getByText(/١٤٢٠-٠٩-٢٤ هـ/)).toBeInTheDocument();
+    expect(screen.getByTestId('profile-teacher-dob-hijri')).toHaveValue('24/09/1420');
     fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
 
     await waitFor(() => expect(mockApi.put).toHaveBeenCalledWith(
@@ -506,6 +506,43 @@ describe('TeacherProfileDialog — Professional Data Rendering', () => {
       '/principal/teacher/t-clear-legacy-dob/basic-info',
       expect.objectContaining({ date_of_birth: null })
     ));
+  });
+
+  test('blocks an incomplete Hijri edit and saves a valid Hijri edit as Gregorian only', async () => {
+    mockApi.get.mockResolvedValue({
+      data: {
+        profile: {
+          basic_info: { full_name: 'معلم', date_of_birth: '2024-03-11' },
+          contact_info: {},
+          professional_info: {},
+          operational_info: { status: 'active' },
+        },
+      },
+    });
+    mockApi.put.mockResolvedValue({ data: { success: true } });
+    render(
+      <ThemeProvider>
+        <TeacherProfileDialog
+          open={true}
+          onClose={() => {}}
+          teacher={{ id: 't-edit-hijri', full_name: 'معلم' }}
+          onRefresh={() => {}}
+        />
+      </ThemeProvider>
+    );
+    await screen.findByText('2024-03-11');
+    fireEvent.click(screen.getByRole('button', { name: /تعديل|edit/i }));
+    fireEvent.change(screen.getByTestId('profile-teacher-dob-hijri'), { target: { value: '31/09/' } });
+    fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
+    expect(mockApi.put).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(/هجري|Hijri/i);
+
+    fireEvent.change(screen.getByTestId('profile-teacher-dob-hijri'), { target: { value: '01/06/1446' } });
+    expect(screen.getByTestId('profile-teacher-dob')).toHaveValue('2024-12-02');
+    fireEvent.click(screen.getByRole('button', { name: /حفظ|save/i }));
+    await waitFor(() => expect(mockApi.put).toHaveBeenCalled());
+    expect(mockApi.put.mock.calls[0][1].date_of_birth).toBe('2024-12-02');
+    expect(mockApi.put.mock.calls[0][1]).not.toHaveProperty('birth_date_hijri');
   });
 });
 

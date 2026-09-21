@@ -11,7 +11,7 @@ import string
 import qrcode
 import io
 import base64
-from pydantic import BaseModel, Field, EmailStr, field_validator
+from pydantic import BaseModel, Field, EmailStr, model_validator
 from enum import Enum
 
 from sqlalchemy import select, func, or_
@@ -21,7 +21,7 @@ from engines.sql_utils import (
     model_to_dict, models_to_dicts, dict_to_model, apply_updates,
     gd_find, gd_find_one, gd_insert, gd_count,
 )
-from src.common.utils.date_only import normalize_optional_past_date
+from src.common.utils.date_only import resolve_optional_birth_dates
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +52,18 @@ class TeacherBasicInfo(BaseModel):
     full_name_en: Optional[str] = Field(None, max_length=100)
     national_id: str = Field(..., min_length=10, max_length=10)
     date_of_birth: Optional[str] = None
+    birth_date_hijri: Optional[str] = None
     gender: Gender
     nationality: str = Field(default="SA")
     phone: str = Field(...)
     email: EmailStr
 
-    @field_validator("date_of_birth", mode="before")
-    @classmethod
-    def validate_date_of_birth(cls, value):
-        return normalize_optional_past_date(value)
+    @model_validator(mode="after")
+    def validate_birth_dates(self):
+        self.date_of_birth, self.birth_date_hijri = resolve_optional_birth_dates(
+            self.date_of_birth, self.birth_date_hijri
+        )
+        return self
 
 class TeacherQualifications(BaseModel):
     academic_degree: str
@@ -260,6 +263,8 @@ class TeacherManagementEngine:
             return {
                 "success": True,
                 "teacher_id": teacher_id,
+                "date_of_birth": request.basic_info.date_of_birth,
+                "birth_date_hijri": request.basic_info.birth_date_hijri,
                 "qr_code": qr_code,
                 "user_account": user_result,
                 "message": "تم إضافة المعلم بنجاح",

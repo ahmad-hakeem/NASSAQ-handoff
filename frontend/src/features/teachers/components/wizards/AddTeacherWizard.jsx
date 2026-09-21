@@ -140,6 +140,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
   const [submitting, setSubmitting] = useState(false);
   const submissionLock = useRef(false);
   const [errors, setErrors] = useState({});
+  const [birthDateInputValid, setBirthDateInputValid] = useState(true);
   const [result, setResult] = useState(null);
 
   const [basicData, setBasicData] = useState({ nationality: 'SA' });
@@ -202,6 +203,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
       const birthDate = validateTeacherBirthDate(basicData.date_of_birth);
       if (birthDate.status === 'invalid') newErrors.date_of_birth = t('invalidGregorianDate');
       if (birthDate.status === 'future') newErrors.date_of_birth = t('futureBirthDate');
+      if (!birthDateInputValid) newErrors.hijri_date_of_birth = t('invalidHijriDate');
     } else if (step === 2) {
       const experience = qualData.years_of_experience;
       if (
@@ -344,6 +346,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
     setSubjectData({ subject_ids: [], grade_ids: [], max_periods_per_week: 24 });
     setScheduleData({ contract_type: 'permanent', available_days: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'] });
     setErrors({});
+    setBirthDateInputValid(true);
     setResult(null);
     submissionLock.current = false;
     setSubmitting(false);
@@ -472,6 +475,7 @@ export const AddTeacherWizard = ({ open, onOpenChange, onSuccess }) => {
                     t={t}
                     locale={isRTL ? 'ar' : 'en'}
                     error={errors.date_of_birth}
+                    onValidityChange={setBirthDateInputValid}
                   />
                   <FormField label={t('phone5')} required error={errors.phone}>
                     <Input value={basicData.phone || ''} onChange={(e) => setBasicData(p => ({ ...p, phone: e.target.value }))} className={`h-10 rounded-lg ${errors.phone ? 'border-red-500' : ''}`} dir="ltr" data-testid="teacher-phone" placeholder="05xxxxxxxx" />

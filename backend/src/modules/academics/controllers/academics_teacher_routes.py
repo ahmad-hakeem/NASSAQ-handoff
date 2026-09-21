@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Header, Query, Bo
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from starlette.responses import StreamingResponse
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, model_validator
+from pydantic import AliasChoices, BaseModel, Field, ConfigDict, EmailStr, model_validator
 from typing import List, Optional, Any, Dict
 from datetime import datetime, timezone, timedelta
 import uuid, os, logging, json, random, re, io, base64
@@ -28,7 +28,7 @@ from dependencies import (
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_pull
 from engines.entity_counts import reconcile_school_counts
 from src.core.guards.tenant_guard import require_request_school_id
-from src.common.utils.date_only import normalize_optional_past_date
+from src.common.utils.date_only import resolve_optional_birth_dates
 from pg_models import Teacher, User
 
 
@@ -468,7 +468,14 @@ class TeacherWizardCreate(BaseModel):
     national_id: Optional[str] = None
     gender: Optional[str] = "male"
     nationality: Optional[str] = "sa"
-    date_of_birth: Optional[str] = None
+    date_of_birth: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("date_of_birth", "birthDateGregorian"),
+    )
+    birth_date_hijri: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("birth_date_hijri", "birthDateHijri"),
+    )
     subject_ids: Optional[List[str]] = []
     grade_ids: Optional[List[str]] = []
     primary_subject_id: Optional[str] = None
@@ -831,11 +838,18 @@ async def create_teacher_wizard(
         national_id = data.basic_info.get("national_id") or data.national_id
         gender = data.basic_info.get("gender") or data.gender
         nationality = data.basic_info.get("nationality") or data.nationality
-        date_of_birth = (
-            data.basic_info["date_of_birth"]
-            if "date_of_birth" in data.basic_info
-            else data.date_of_birth
-        )
+        if "date_of_birth" in data.basic_info:
+            date_of_birth = data.basic_info["date_of_birth"]
+        elif "birthDateGregorian" in data.basic_info:
+            date_of_birth = data.basic_info["birthDateGregorian"]
+        else:
+            date_of_birth = data.date_of_birth
+        if "birth_date_hijri" in data.basic_info:
+            birth_date_hijri = data.basic_info["birth_date_hijri"]
+        elif "birthDateHijri" in data.basic_info:
+            birth_date_hijri = data.basic_info["birthDateHijri"]
+        else:
+            birth_date_hijri = data.birth_date_hijri
     else:
         full_name = data.full_name
         full_name_en = data.full_name_en
@@ -845,13 +859,16 @@ async def create_teacher_wizard(
         gender = data.gender
         nationality = data.nationality
         date_of_birth = data.date_of_birth
+        birth_date_hijri = data.birth_date_hijri
 
     try:
-        date_of_birth = normalize_optional_past_date(date_of_birth)
+        date_of_birth, birth_date_hijri = resolve_optional_birth_dates(
+            date_of_birth, birth_date_hijri
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"date_of_birth: {exc}",
+            detail=f"date_of_birth/birth_date_hijri: {exc}",
         ) from exc
     
     qualifications = data.qualifications or {}
@@ -1064,6 +1081,8 @@ async def create_teacher_wizard(
             "temp_password": temp_password,
             "specialization": specialization,
             "rank": teacher_rank,
+            "date_of_birth": date_of_birth,
+            "birth_date_hijri": birth_date_hijri,
         },
         "teacher_id": teacher_id,
         "user_account": {

@@ -47,6 +47,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
   const [experienceError, setExperienceError] = useState('');
   const [birthDateError, setBirthDateError] = useState('');
   const [birthDateDirty, setBirthDateDirty] = useState(false);
+  const [birthDateInputValid, setBirthDateInputValid] = useState(true);
   const [credForm, setCredForm] = useState({ new_email: '', new_password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
@@ -77,6 +78,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
 
   const handleSaveBasicInfo = async () => {
     const { date_of_birth: rawBirthDate, ...basicInfo } = formData;
+    if (birthDateDirty && !birthDateInputValid) return;
     if (birthDateDirty) {
       const birthDate = validateTeacherBirthDate(rawBirthDate);
       if (birthDate.status === 'invalid') {
@@ -217,6 +219,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
     if (section === 'basic') {
       setBirthDateError('');
       setBirthDateDirty(false);
+      setBirthDateInputValid(true);
       setFormData({ ...p?.basic_info, ...p?.contact_info });
     } else if (section === 'professional') {
       setExperienceError('');
@@ -350,6 +353,10 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
                       locale={isRTL ? 'ar' : 'en'}
                       error={birthDateError}
                       legacyUnchanged={!birthDateDirty}
+                      onValidityChange={(valid) => {
+                        setBirthDateInputValid(valid);
+                        setBirthDateDirty(true);
+                      }}
                       testId="profile-teacher-dob"
                       className="col-span-2"
                     />

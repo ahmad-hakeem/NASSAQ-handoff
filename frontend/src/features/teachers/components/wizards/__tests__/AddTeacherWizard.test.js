@@ -313,7 +313,7 @@ describe('AddTeacherWizard - teacher birth date', () => {
     mockApi.post.mockResolvedValue({ data: { success: true, teacher_id: 'T-dob' } });
     await renderWizard();
     fireEvent.change(screen.getByTestId('teacher-dob'), { target: { value: '2024-03-11' } });
-    expect(screen.getByText('1445-09-01 AH')).toBeInTheDocument();
+    expect(screen.getByTestId('teacher-dob-hijri')).toHaveValue('01/09/1445');
 
     await fillThroughReview();
     expect(screen.getByText('2024-03-11')).toBeInTheDocument();
@@ -351,6 +351,31 @@ describe('AddTeacherWizard - teacher birth date', () => {
     await act(async () => fireEvent.click(screen.getByText('confirmSave')));
     await waitFor(() => expect(mockApi.post).toHaveBeenCalled());
     expect(mockApi.post.mock.calls[0][1].basic_info.date_of_birth).toBeNull();
+  });
+
+  test('accepts Hijri-only entry, synchronizes Gregorian, and submits Gregorian only', async () => {
+    mockApi.post.mockResolvedValue({ data: { success: true, teacher_id: 'T-hijri' } });
+    await renderWizard();
+    fireEvent.change(screen.getByTestId('teacher-dob-hijri'), { target: { value: '01/06/1446' } });
+    expect(screen.getByTestId('teacher-dob')).toHaveValue('2024-12-02');
+    await fillThroughReview();
+    await act(async () => fireEvent.click(screen.getByText('confirmSave')));
+    await waitFor(() => expect(mockApi.post).toHaveBeenCalled());
+    expect(mockApi.post.mock.calls[0][1].basic_info.date_of_birth).toBe('2024-12-02');
+    expect(mockApi.post.mock.calls[0][1].basic_info).not.toHaveProperty('birth_date_hijri');
+  });
+
+  test('blocks navigation while the last edited Hijri draft is incomplete', async () => {
+    await renderWizard();
+    fireEvent.change(screen.getByTestId('teacher-name-ar'), { target: { value: 'أحمد المعلم' } });
+    fireEvent.change(screen.getByTestId('teacher-national-id'), { target: { value: '1234567890' } });
+    fireEvent.click(screen.getByText('Male'));
+    fireEvent.change(screen.getByTestId('teacher-phone'), { target: { value: '0500000000' } });
+    fireEvent.change(screen.getByTestId('teacher-email'), { target: { value: 'ahmed@example.com' } });
+    fireEvent.change(screen.getByTestId('teacher-dob-hijri'), { target: { value: '31/09/' } });
+    fireEvent.click(screen.getByText('next'));
+    expect(screen.getByTestId('teacher-name-ar')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('invalidHijriDate');
   });
 });
 

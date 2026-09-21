@@ -4,7 +4,7 @@ NASSAQ Principal Management Routes
 Full CRUD + profile management for school principal on teacher/student/parent accounts
 """
 from fastapi import APIRouter, HTTPException, Depends, Body, Query
-from pydantic import BaseModel, EmailStr
+from pydantic import AliasChoices, BaseModel, EmailStr, Field
 from typing import Any, Optional, List, Dict
 from datetime import datetime, timezone
 import uuid
@@ -16,7 +16,10 @@ from dependencies import (
     require_recent_mfa,
 )
 from engines.sql_utils import gd_find, gd_find_one, gd_insert, gd_insert_many, gd_update_one, gd_update_many, gd_count, gd_delete_one, gd_delete_many, gd_distinct, _gd_unset
-from src.common.utils.date_only import normalize_optional_past_date
+from src.common.utils.date_only import (
+    derive_optional_hijri_date,
+    resolve_optional_birth_dates,
+)
 
 
 router = APIRouter(prefix="/principal", tags=["Principal Management"])
@@ -57,7 +60,14 @@ class UpdateProfileRequest(BaseModel):
     national_id: Optional[str] = None
     gender: Optional[str] = None
     nationality: Optional[str] = None
-    date_of_birth: Optional[str] = None
+    date_of_birth: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("date_of_birth", "birthDateGregorian"),
+    )
+    birth_date_hijri: Optional[str] = Field(
+        None,
+        validation_alias=AliasChoices("birth_date_hijri", "birthDateHijri"),
+    )
     marital_status: Optional[str] = None
     phone: Optional[str] = None
     alt_phone: Optional[str] = None
@@ -224,6 +234,9 @@ async def get_teacher_full_profile(
                 "gender": teacher.get("gender"),
                 "nationality": teacher.get("nationality"),
                 "date_of_birth": teacher.get("date_of_birth"),
+                "birth_date_hijri": derive_optional_hijri_date(
+                    teacher.get("date_of_birth")
+                ),
                 "marital_status": teacher.get("marital_status"),
                 "photo": teacher.get("photo")
             },
@@ -292,12 +305,16 @@ async def update_teacher_basic_info(
 
     # Unlike the older optional text fields, birth date has explicit PATCH-like
     # semantics: omitted preserves, while null/blank clears.
-    if "date_of_birth" in data.model_fields_set:
+    birth_date_fields = {"date_of_birth", "birth_date_hijri"}
+    if data.model_fields_set & birth_date_fields:
         try:
-            birth_date = normalize_optional_past_date(data.date_of_birth)
+            birth_date, birth_date_hijri = resolve_optional_birth_dates(
+                data.date_of_birth, data.birth_date_hijri
+            )
         except ValueError as exc:
             raise HTTPException(
-                status_code=422, detail=f"date_of_birth: {exc}"
+                status_code=422,
+                detail=f"date_of_birth/birth_date_hijri: {exc}",
             ) from exc
         if birth_date != teacher.get("date_of_birth"):
             updates["date_of_birth"] = birth_date
@@ -307,7 +324,13 @@ async def update_teacher_basic_info(
             }
 
     if not updates:
-        return {"success": True, "message": "لا توجد تغييرات"}
+        birth_date = teacher.get("date_of_birth")
+        return {
+            "success": True,
+            "message": "لا توجد تغييرات",
+            "date_of_birth": birth_date,
+            "birth_date_hijri": derive_optional_hijri_date(birth_date),
+        }
 
     user_row = await _resolve_user_account_with_heal("teacher", teacher, teacher_id, tenant_id)
 
@@ -333,7 +356,16 @@ async def update_teacher_basic_info(
     await gd_update_one(db.session, "teachers", {"id": teacher_id, **_entity_tenant_filter(tenant_id)}, updates)
     await _write_audit(tenant_id, "update_teacher_profile", "teacher", teacher_id, changes, current_user["id"])
 
-    return {"success": True, "message": "تم تحديث بيانات المعلم بنجاح", "changes": changes}
+    resulting_birth_date = updates.get(
+        "date_of_birth", teacher.get("date_of_birth")
+    )
+    return {
+        "success": True,
+        "message": "تم تحديث بيانات المعلم بنجاح",
+        "changes": changes,
+        "date_of_birth": resulting_birth_date,
+        "birth_date_hijri": derive_optional_hijri_date(resulting_birth_date),
+    }
 
 
 @router.put("/teacher/{teacher_id}/professional-info")
