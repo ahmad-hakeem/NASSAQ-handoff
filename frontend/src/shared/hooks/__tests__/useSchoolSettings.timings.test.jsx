@@ -24,6 +24,19 @@ jest.mock('@/shared/contexts/AuthContext', () => ({
   useAuth: () => mockAuth,
 }));
 
+jest.mock('@/shared/contexts/ThemeContext', () => ({
+  useTranslation: () => ({
+    t: (key, values = {}) => ({
+      timingValidationSchoolDayTooShort: `اليوم الدراسي أقصر من المطلوب بـ ${values.shortage} دقيقة.`,
+      timingValidationTimeOrder: 'يجب أن يكون وقت نهاية اليوم بعد وقت بدايته.',
+      timingValidationDaySpecificBreaks: 'يلزم تطبيق فترات الاستراحة على جميع الأيام.',
+      timingSettingsVersionConflict: 'عُدّلت الإعدادات في جلسة أخرى',
+      timingFieldDayEnd: 'وقت نهاية اليوم',
+      timingFieldSettings: 'إعدادات التوقيت',
+    }[key] || key),
+  }),
+}));
+
 jest.mock('@/shared/components/ui/NassaqAlertDialog', () => ({
   useNassaqAlert: () => ({
     nassaqWarning: jest.fn(),
@@ -150,6 +163,17 @@ describe('useSchoolSettings timetable settings persistence', () => {
     }));
   });
 
+  it('preserves a null break duration as inherited instead of replacing it with 15', async () => {
+    mockApiGet.mockImplementation(async (url) => (
+      url === '/school/settings'
+        ? { data: canonicalSettings({ breaks: [{ id: 1, name: 'Inherited', after_period: 2, duration: null, type: 'break' }] }) }
+        : ancillaryResponse(url)
+    ));
+    const { result } = renderHook(() => useSchoolSettings());
+    await waitFor(() => expect(result.current.breakTimes).toHaveLength(1));
+    expect(result.current.breakTimes[0].duration).toBeNull();
+  });
+
   it('keeps the draft and surfaces the backend message when saving fails', async () => {
     mockApiPut.mockRejectedValue({
       response: {
@@ -167,6 +191,44 @@ describe('useSchoolSettings timetable settings persistence', () => {
     expect(result.current.hasChanges).toBe(true);
     expect(mockNassaqError).toHaveBeenCalledWith('ألغِ نشر الجدول قبل تعديل التوقيت');
     expect(mockToastSuccess).not.toHaveBeenCalled();
+  });
+
+  it('blocks a locally invalid save and preserves the entered timing draft', async () => {
+    const { result } = renderHook(() => useSchoolSettings());
+    await waitFor(() => expect(result.current.settingsVersion).toBe(8));
+    act(() => result.current.handleSettingChange('dayEnd', '07:00'));
+    mockApiPut.mockClear();
+
+    await act(async () => result.current.saveAllSettings());
+
+    expect(mockApiPut).not.toHaveBeenCalled();
+    expect(result.current.timingSettings.dayEnd).toBe('07:00');
+    expect(result.current.hasChanges).toBe(true);
+    expect(mockNassaqError).toHaveBeenCalledWith('يجب أن يكون وقت نهاية اليوم بعد وقت بدايته؛ لا يمكن أن يمتد اليوم إلى اليوم التالي.');
+  });
+
+  it('localizes structured timing validation errors instead of showing backend English', async () => {
+    mockApiPut.mockRejectedValue({
+      response: {
+        status: 422,
+        data: {
+          detail: {
+            code: 'TIMING_VALIDATION_ERROR',
+            reason: 'school_day_too_short',
+            field: 'day_end',
+            shortage_minutes: 25,
+            message: 'School day is too short',
+          },
+        },
+      },
+    });
+    const { result } = renderHook(() => useSchoolSettings());
+    await waitFor(() => expect(result.current.settingsVersion).toBe(8));
+
+    await act(async () => result.current.saveAllSettings());
+
+    expect(mockNassaqError).toHaveBeenCalledWith('اليوم الدراسي أقصر من مجموع الحصص والاستراحات بـ 25 دقيقة.');
+    expect(result.current.hasChanges).toBe(false);
   });
 
   it('reports a settings GET failure instead of replacing it with defaults', async () => {
@@ -209,7 +271,7 @@ describe('useSchoolSettings timetable settings persistence', () => {
     expect(result.current.timingSettings.breakDuration).toBe(25);
     expect(result.current.hasChanges).toBe(true);
     expect(result.current.timingSaveError).toEqual({
-      message: 'عُدّلت الإعدادات في جلسة أخرى',
+      message: 'عُدّلت إعدادات التوقيت في جلسة أخرى. احتفظنا بمسودتك؛ حمّل أحدث نسخة لمراجعتها.',
       isConflict: true,
     });
 

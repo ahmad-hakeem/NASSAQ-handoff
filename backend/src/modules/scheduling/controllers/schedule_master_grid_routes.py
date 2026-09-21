@@ -179,7 +179,7 @@ async def _resolve_period_times(school_id: str, periods: list[int]) -> dict[str,
             ))
         except (TypeError, ValueError):
             break_dur_raw = 15
-        break_dur = min(max(break_dur_raw, 5), 60)
+        break_dur = min(max(break_dur_raw, 0), 60)
 
         try:
             prayer_dur_raw = int(_pick(
@@ -188,12 +188,23 @@ async def _resolve_period_times(school_id: str, periods: list[int]) -> dict[str,
             ))
         except (TypeError, ValueError):
             prayer_dur_raw = 20
-        prayer_dur = min(max(prayer_dur_raw, 5), 60)
+        prayer_dur = min(max(prayer_dur_raw, 0), 60)
 
-        # Map "after period N → duration". Same defaults as regen: break
-        # after 3 and prayer after 6 (when periods≥6) if no saved breaks.
+        # Map "after period N → duration". Presence is meaningful: an
+        # explicitly saved [] means no breaks, while null duration inherits
+        # the base and zero remains an intentional zero-minute break.
+        break_sources = (settings, nested, cs)
+        breaks_are_explicit = any("breaks" in source for source in break_sources)
+        saved_breaks = next(
+            (source.get("breaks") for source in break_sources if "breaks" in source),
+            [],
+        )
+        if not isinstance(saved_breaks, list):
+            saved_breaks = []
         break_after: dict[int, int] = {}
-        for b in (settings.get("breaks") or []):
+        for b in saved_breaks:
+            if not isinstance(b, dict):
+                continue
             after = b.get("afterPeriod") or b.get("after_period")
             try:
                 after = int(after) if after is not None else None
@@ -201,17 +212,19 @@ async def _resolve_period_times(school_id: str, periods: list[int]) -> dict[str,
                 after = None
             if after:
                 try:
-                    break_after[after] = int(b.get("duration") or break_dur)
+                    raw_duration = b.get("duration")
+                    break_after[after] = (
+                        break_dur if raw_duration is None else int(raw_duration)
+                    )
                 except (TypeError, ValueError):
                     break_after[after] = break_dur
-        if not break_after:
+        if not breaks_are_explicit and not break_after:
             n_periods = len(periods)
             if n_periods >= 3:
                 break_after[3] = break_dur
             if n_periods >= 6:
                 break_after[6] = prayer_dur
 
-        passing_time = 5
         cur = h * 60 + m
         for p in periods:
             try:
@@ -226,7 +239,7 @@ async def _resolve_period_times(school_id: str, periods: list[int]) -> dict[str,
                 "end": f"{eh:02d}:{em:02d}",
             }
             cur = end_min
-            cur += break_after.get(p_int, passing_time)
+            cur += break_after.get(p_int, 0)
     except Exception as _err:
         logger.warning("period_times resolution failed for school %s: %s", school_id, _err)
     return out

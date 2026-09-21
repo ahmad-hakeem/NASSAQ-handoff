@@ -53,6 +53,25 @@ _DAY_MAP = {
     "saturday": "السبت",
 }
 _AR_TO_DAY = {value: key for key, value in _DAY_MAP.items()}
+_DIGIT_TRANSLATION = str.maketrans(
+    "٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹",
+    "01234567890123456789",
+)
+_TIMING_ERROR_CODE = "TIMING_VALIDATION_ERROR"
+
+
+def _timing_error(reason: str, field: str, message: str, **metadata) -> HTTPException:
+    """Build the stable validation contract consumed by timetable settings."""
+    return HTTPException(
+        status_code=422,
+        detail={
+            "code": _TIMING_ERROR_CODE,
+            "reason": reason,
+            "field": field,
+            **metadata,
+            "message": message,
+        },
+    )
 
 
 def normalize_school_settings_doc(raw: dict) -> dict:
@@ -133,51 +152,123 @@ def _resolve_breaks(settings: Optional[dict]) -> list:
     return []
 
 
+def _has_breaks_setting(settings: Optional[dict]) -> bool:
+    settings = settings or {}
+    return any(
+        "breaks" in source
+        for source in (
+            settings,
+            settings.get("settings") or {},
+            settings.get("custom_settings") or {},
+        )
+    )
+
+
 def _parse_int(value: Any, field: str, minimum: int, maximum: int) -> int:
     if isinstance(value, bool):
-        raise HTTPException(status_code=422, detail=f"{field} must be an integer")
+        raise _timing_error(
+            "invalid_integer", field, f"{field} must be an integer."
+        )
+    normalized = value.translate(_DIGIT_TRANSLATION) if isinstance(value, str) else value
     try:
-        parsed = int(value)
+        parsed = int(normalized)
     except (TypeError, ValueError):
-        raise HTTPException(status_code=422, detail=f"{field} must be an integer")
+        raise _timing_error(
+            "invalid_integer", field, f"{field} must be an integer."
+        )
     if isinstance(value, float) and not value.is_integer():
-        raise HTTPException(status_code=422, detail=f"{field} must be an integer")
-    if isinstance(value, str) and not re.fullmatch(r"[+-]?\d+", value.strip()):
-        raise HTTPException(status_code=422, detail=f"{field} must be an integer")
+        raise _timing_error(
+            "invalid_integer", field, f"{field} must be an integer."
+        )
+    if isinstance(normalized, str) and not re.fullmatch(r"[+-]?\d+", normalized.strip()):
+        raise _timing_error(
+            "invalid_integer", field, f"{field} must be an integer."
+        )
     if not minimum <= parsed <= maximum:
-        raise HTTPException(
-            status_code=422,
-            detail=f"{field} must be between {minimum} and {maximum}",
+        raise _timing_error(
+            "out_of_range",
+            field,
+            f"{field} must be between {minimum} and {maximum}.",
+            minimum=minimum,
+            maximum=maximum,
+            actual=parsed,
         )
     return parsed
 
 
 def _parse_time(value: Any, field: str) -> tuple[str, int]:
-    if not isinstance(value, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
-        raise HTTPException(status_code=422, detail=f"{field} must use HH:MM")
-    hours, minutes = (int(part) for part in value.split(":"))
-    return value, hours * 60 + minutes
+    normalized = value.translate(_DIGIT_TRANSLATION) if isinstance(value, str) else value
+    if not isinstance(normalized, str) or not re.fullmatch(
+        r"(?:[01]\d|2[0-3]):[0-5]\d", normalized
+    ):
+        raise _timing_error(
+            "invalid_time_format", field, f"{field} must use local HH:mm format."
+        )
+    if normalized == "00:00":
+        raise _timing_error(
+            "midnight_not_allowed",
+            field,
+            "School-day times cannot be midnight or cross midnight.",
+        )
+    hours, minutes = (int(part) for part in normalized.split(":"))
+    return normalized, hours * 60 + minutes
 
 
 def _normalize_working_days(value: Any) -> dict:
     if isinstance(value, dict):
-        if set(value) - set(_DAY_MAP) or any(type(active) is not bool for active in value.values()):
-            raise HTTPException(status_code=422, detail="working_days contains invalid weekdays")
+        invalid = set(value) - set(_DAY_MAP)
+        if invalid:
+            raise _timing_error(
+                "invalid_weekday",
+                "working_days",
+                "working_days contains an invalid weekday.",
+                weekday=sorted(invalid)[0],
+            )
+        if any(type(active) is not bool for active in value.values()):
+            raise _timing_error(
+                "invalid_weekday_value",
+                "working_days",
+                "Each working_days value must be boolean.",
+            )
         result = {day: value.get(day, False) for day in _DAY_MAP}
     elif isinstance(value, list):
         if not value:
-            raise HTTPException(status_code=422, detail="At least one working day is required")
+            raise _timing_error(
+                "no_working_days",
+                "working_days",
+                "At least one working day is required.",
+            )
         resolved = []
         for day in value:
             key = day if day in _DAY_MAP else _AR_TO_DAY.get(day)
             if not key:
-                raise HTTPException(status_code=422, detail=f"Invalid working day: {day}")
+                raise _timing_error(
+                    "invalid_weekday",
+                    "working_days",
+                    "working_days contains an invalid weekday.",
+                    weekday=str(day),
+                )
+            if key in resolved:
+                raise _timing_error(
+                    "duplicate_weekday",
+                    "working_days",
+                    "working_days cannot contain duplicate weekdays.",
+                    weekday=key,
+                )
             resolved.append(key)
         result = {day: day in resolved for day in _DAY_MAP}
     else:
-        raise HTTPException(status_code=422, detail="working_days must be an object or list")
+        raise _timing_error(
+            "invalid_working_days",
+            "working_days",
+            "working_days must be an object or list.",
+        )
     if not any(result.values()):
-        raise HTTPException(status_code=422, detail="At least one working day is required")
+        raise _timing_error(
+            "no_working_days",
+            "working_days",
+            "At least one working day is required.",
+        )
     return result
 
 
@@ -387,7 +478,7 @@ class SchoolSettingsService:
                 timing["end"] = end_t
 
         breaks = _resolve_breaks(settings)
-        if not breaks:
+        if not _has_breaks_setting(settings):
             breaks = (default_settings or {}).get("breaks") or []
 
         periods_pd = _resolve_canonical_value(
@@ -750,17 +841,32 @@ class SchoolSettingsService:
                     canonical_updates[field], field
                 )[0]
 
-        periods = canonical_updates.get(
+        periods = _parse_int(
+            canonical_updates.get(
+                "periods_per_day",
+                _resolve_canonical_value(existing, "periods_per_day", 7),
+            ),
             "periods_per_day",
-            _resolve_canonical_value(existing, "periods_per_day", 7),
+            1,
+            12,
         )
-        period_duration = canonical_updates.get(
+        period_duration = _parse_int(
+            canonical_updates.get(
+                "period_duration",
+                _resolve_canonical_value(existing, "period_duration", 45),
+            ),
             "period_duration",
-            _resolve_canonical_value(existing, "period_duration", 45),
+            20,
+            90,
         )
-        break_duration = canonical_updates.get(
+        break_duration = _parse_int(
+            canonical_updates.get(
+                "break_duration",
+                _resolve_canonical_value(existing, "break_duration", 15),
+            ),
             "break_duration",
-            _resolve_canonical_value(existing, "break_duration", 15),
+            0,
+            60,
         )
         start_time = canonical_updates.get(
             "start_time", _resolve_canonical_value(existing, "start_time", "07:00")
@@ -771,26 +877,55 @@ class SchoolSettingsService:
         _, start_minutes = _parse_time(start_time, "start_time")
         _, end_minutes = _parse_time(end_time, "end_time")
         if end_minutes <= start_minutes:
-            raise HTTPException(status_code=422, detail="end_time must be after start_time")
+            raise _timing_error(
+                "invalid_time_order",
+                "end_time",
+                "end_time must be after start_time; overnight school days are not supported.",
+                start_minutes=start_minutes,
+                end_minutes=end_minutes,
+            )
 
         breaks = payload.get("breaks", _resolve_breaks(existing))
         if breaks is None:
             breaks = []
         if not isinstance(breaks, list):
-            raise HTTPException(status_code=422, detail="breaks must be a list")
+            raise _timing_error(
+                "invalid_breaks", "breaks", "breaks must be a list."
+            )
         normalized_breaks = []
         break_minutes = 0
         seen_after = set()
         for index, item in enumerate(breaks):
             if not isinstance(item, dict):
-                raise HTTPException(status_code=422, detail=f"breaks[{index}] must be an object")
+                raise _timing_error(
+                    "invalid_break",
+                    f"breaks[{index}]",
+                    f"breaks[{index}] must be an object.",
+                )
             item = dict(item)
+            day = item.get("day")
+            if day not in (None, "", "all"):
+                raise _timing_error(
+                    "unsupported_break_day",
+                    f"breaks[{index}].day",
+                    "Day-specific breaks are not supported by shared time slots.",
+                    day=str(day),
+                )
             raw_after = item.get("afterPeriod", item.get("after_period"))
             if raw_after is None:
-                raise HTTPException(status_code=422, detail=f"breaks[{index}].afterPeriod is required")
+                raise _timing_error(
+                    "missing_break_position",
+                    f"breaks[{index}].afterPeriod",
+                    f"breaks[{index}].afterPeriod is required.",
+                )
             after = _parse_int(raw_after, f"breaks[{index}].afterPeriod", 1, periods)
             if after in seen_after:
-                raise HTTPException(status_code=422, detail="Only one break is allowed after each period")
+                raise _timing_error(
+                    "duplicate_break_position",
+                    f"breaks[{index}].afterPeriod",
+                    "Only one break is allowed after each period.",
+                    after_period=after,
+                )
             seen_after.add(after)
             raw_duration = item.get("duration")
             # A null duration means BASE break duration.  Use ``is None``
@@ -809,19 +944,19 @@ class SchoolSettingsService:
         if "breaks" in payload:
             payload["breaks"] = normalized_breaks
 
-        # The current slot generator adds five passing minutes after every
-        # period that is not immediately followed by a configured break
-        # (including its final period).  Feasibility must model that exact
-        # schedule rather than accepting a day the generator cannot fit.
-        passing_minutes = 5 * (periods - len(seen_after))
-        required_minutes = periods * period_duration + break_minutes + passing_minutes
-        if required_minutes > end_minutes - start_minutes:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "School day is too short for the configured periods and breaks "
-                    f"({required_minutes} minutes required)."
-                ),
+        lesson_minutes = periods * period_duration
+        required_minutes = lesson_minutes + break_minutes
+        available_minutes = end_minutes - start_minutes
+        if required_minutes > available_minutes:
+            raise _timing_error(
+                "school_day_too_short",
+                "end_time",
+                "School day is too short for the configured lessons and breaks.",
+                available_minutes=available_minutes,
+                lesson_minutes=lesson_minutes,
+                break_minutes=break_minutes,
+                required_minutes=required_minutes,
+                shortage_minutes=required_minutes - available_minutes,
             )
 
         timing_fields = {

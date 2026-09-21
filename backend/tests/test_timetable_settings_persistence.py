@@ -200,7 +200,7 @@ async def test_invalid_update_rolls_back_all_fields_and_version(
 
 
 @pytest.mark.asyncio
-async def test_feasibility_accounts_for_generator_passing_minutes(
+async def test_exact_boundary_uses_only_lessons_and_submitted_breaks(
     client, tenant_a, school_principal_headers,
 ):
     await _seed_settings(tenant_a)
@@ -208,20 +208,132 @@ async def test_feasibility_accounts_for_generator_passing_minutes(
         "/school/settings",
         headers=school_principal_headers,
         json={
-            "dayStart": "07:00",
-            "dayEnd": "07:40",
+            "dayStart": "٠٧:٠٠",
+            "dayEnd": "۰۷:۴۰",
             "periodsPerDay": 2,
             "periodDuration": 20,
             "breaks": [],
             "expected_version": 0,
         },
     )
-    # Lessons consume 40 minutes, but the generator also emits 5 passing
-    # minutes after each of the two no-break periods.
+    assert response.status_code == 200, response.text
+    refreshed = await client.get(
+        "/school/settings", headers=school_principal_headers,
+    )
+    assert (refreshed.json()["dayStart"], refreshed.json()["dayEnd"]) == (
+        "07:00", "07:40",
+    )
+    assert refreshed.json()["breaks"] == []
+    slots = await gd_find(
+        db.session, "time_slots", {"school_id": tenant_a},
+        order_by="slot_number", desc_order=False,
+    )
+    assert [(slot["start_time"], slot["end_time"]) for slot in slots] == [
+        ("07:00", "07:20"),
+        ("07:20", "07:40"),
+    ]
+    assert response.json()["time_slots_regenerated"]["day_end"] == "07:40"
+
+
+@pytest.mark.asyncio
+async def test_short_day_returns_structured_duration_metadata_without_mutation(
+    client, tenant_a, school_principal_headers,
+):
+    await _seed_settings(tenant_a)
+    response = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={
+            "dayStart": "٠٧:٠٠",
+            "dayEnd": "۰۸:۰۰",
+            "periodsPerDay": 2,
+            "periodDuration": 25,
+            "breakDuration": 10,
+            "breaks": [
+                {"afterPeriod": 1, "duration": None, "day": "all"},
+                {"afterPeriod": 2, "duration": 5, "day": "all"},
+            ],
+            "expected_version": 0,
+        },
+    )
     assert response.status_code == 422
+    assert response.json()["error"]["detail"] == {
+        "code": "TIMING_VALIDATION_ERROR",
+        "reason": "school_day_too_short",
+        "field": "end_time",
+        "available_minutes": 60,
+        "lesson_minutes": 50,
+        "break_minutes": 15,
+        "required_minutes": 65,
+        "shortage_minutes": 5,
+        "message": "School day is too short for the configured lessons and breaks.",
+    }
     row = await gd_find_one(db.session, "school_settings", {"school_id": tenant_a})
-    assert row["periods_per_day"] == 7
+    assert row["start_time"] == "07:00"
     assert row["custom_settings"]["settings_version"] == 0
+
+
+@pytest.mark.asyncio
+async def test_day_specific_break_is_structured_rejection_and_preserves_existing_settings(
+    client, tenant_a, school_principal_headers,
+):
+    await _seed_settings(tenant_a)
+    response = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={
+            "breaks": [{
+                "afterPeriod": 2, "duration": 10, "day": "sunday",
+            }],
+            "expected_version": 0,
+        },
+    )
+    assert response.status_code == 422
+    detail = response.json()["error"]["detail"]
+    assert detail["code"] == "TIMING_VALIDATION_ERROR"
+    assert detail["reason"] == "unsupported_break_day"
+    assert detail["field"] == "breaks[0].day"
+    assert detail["day"] == "sunday"
+    row = await gd_find_one(db.session, "school_settings", {"school_id": tenant_a})
+    assert "breaks" not in row["custom_settings"]
+    assert row["custom_settings"]["settings_version"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payload", "reason", "field"),
+    [
+        ({"periodsPerDay": 1.5}, "invalid_integer", "periods_per_day"),
+        ({"periodDuration": 19}, "out_of_range", "period_duration"),
+        ({"dayStart": "7:00"}, "invalid_time_format", "start_time"),
+        ({"dayStart": "00:00"}, "midnight_not_allowed", "start_time"),
+        ({"dayStart": "12:00", "dayEnd": "11:00"}, "invalid_time_order", "end_time"),
+        ({"activeWeekdays": ["noday"]}, "invalid_weekday", "working_days"),
+        ({"activeWeekdays": []}, "no_working_days", "working_days"),
+        ({"breaks": "bad"}, "invalid_breaks", "breaks"),
+        ({"breaks": [{}]}, "missing_break_position", "breaks[0].afterPeriod"),
+        (
+            {"breaks": [{"afterPeriod": 2}, {"afterPeriod": 2}]},
+            "duplicate_break_position",
+            "breaks[1].afterPeriod",
+        ),
+    ],
+)
+async def test_timing_validation_family_has_stable_structured_details(
+    client, tenant_a, school_principal_headers, payload, reason, field,
+):
+    await _seed_settings(tenant_a)
+    response = await client.put(
+        "/school/settings",
+        headers=school_principal_headers,
+        json={**payload, "expected_version": 0},
+    )
+    assert response.status_code == 422
+    detail = response.json()["error"]["detail"]
+    assert detail["code"] == "TIMING_VALIDATION_ERROR"
+    assert detail["reason"] == reason
+    assert detail["field"] == field
+    assert isinstance(detail["message"], str) and detail["message"]
 
 
 @pytest.mark.asyncio
@@ -327,9 +439,9 @@ async def test_zero_custom_break_uses_canonical_base_and_consumers_match_slots(
     breaks = [slot for slot in slots if slot.get("is_break")]
     assert [(slot["start_time"], slot["end_time"]) for slot in teaching] == [
         ("08:00", "08:25"),
-        ("08:30", "08:55"),
-        ("08:55", "09:20"),
-        ("09:25", "09:50"),
+        ("08:25", "08:50"),
+        ("08:50", "09:15"),
+        ("09:15", "09:40"),
     ]
     assert len(breaks) == 1
     assert breaks[0]["duration_minutes"] == 0
@@ -437,6 +549,10 @@ async def test_timing_regeneration_retargets_draft_session_but_not_archived_hist
     )
     assert rejected.status_code == 422
     assert "draft_sessions_use_removed_periods" in rejected.text
+    error = rejected.json()["error"]
+    assert error["code"] == "TIMING_VALIDATION_ERROR"
+    assert error["reason"] == "draft_sessions_use_removed_periods"
+    assert error["field"] == "periods_per_day"
     persisted = await gd_find_one(
         db.session, "school_settings", {"school_id": tenant_a},
     )

@@ -124,7 +124,6 @@ class TimeSlotsService:
             if periods >= 6:
                 break_after_map[6] = {"name": "الصلاة", "name_en": "Prayer", "duration": prayer_dur, "is_prayer": True}
 
-        passing_time = 5
         h, m = map(int, day_start.split(":"))
         current_minutes = h * 60 + m
         slots = []
@@ -180,9 +179,6 @@ class TimeSlotsService:
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 })
                 current_minutes = be_minutes
-            else:
-                current_minutes += passing_time
-
         # Preserve the logical teaching period before replacing slot ids.  A
         # manual placement may store the old raw slot_number (which contains
         # gaps for breaks), so use the old slot id/raw-number maps as well as
@@ -246,7 +242,9 @@ class TimeSlotsService:
                     raise HTTPException(
                         status_code=422,
                         detail={
-                            "code": "draft_sessions_use_removed_periods",
+                            "code": "TIMING_VALIDATION_ERROR",
+                            "reason": "draft_sessions_use_removed_periods",
+                            "field": "periods_per_day",
                             "message": (
                                 "Cannot reduce periods_per_day while draft timetable "
                                 "sessions are assigned to a removed period."

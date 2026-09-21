@@ -28,6 +28,7 @@ function BreakModal({ hook }) {
   const [customDuration, setCustomDuration] = useState(editingBreak?.duration || 15);
   const [presetDuration, setPresetDuration] = useState(() => {
     const dur = editingBreak?.duration;
+    if (dur == null) return 'inherit';
     if (dur && [5, 10, 15, 20, 25, 30].includes(dur)) return String(dur);
     return '15';
   });
@@ -42,7 +43,7 @@ function BreakModal({ hook }) {
       setCustomDuration(dur);
     } else {
       setDurationMode('preset');
-      setPresetDuration(dur ? String(dur) : '15');
+      setPresetDuration(dur == null ? 'inherit' : String(dur));
     }
     setSelectedDay(editingBreak?.day || 'all');
   }, [editingBreak, showBreakModal]);
@@ -61,7 +62,9 @@ function BreakModal({ hook }) {
         <form onSubmit={(e) => {
           e.preventDefault();
           const formData = new FormData(e.target);
-          const duration = durationMode === 'custom' ? parseInt(customDuration) : parseInt(presetDuration);
+          const duration = durationMode === 'custom'
+            ? parseInt(customDuration)
+            : presetDuration === 'inherit' ? null : parseInt(presetDuration);
           handleSaveBreak({
             name: formData.get('name'),
             type: breakType,
@@ -108,6 +111,9 @@ function BreakModal({ hook }) {
                 <SelectItem value="الخميس">{t('thursday')}</SelectItem>
               </SelectContent>
             </Select>
+            <p className={`mt-2 text-xs ${selectedDay === 'all' ? 'text-slate-500' : 'font-semibold text-red-700'}`} role={selectedDay === 'all' ? undefined : 'alert'}>
+              {t('timingDaySpecificBreakRestriction')}
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -131,6 +137,7 @@ function BreakModal({ hook }) {
               }}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="inherit">{t('inheritBaseBreakDuration')}</SelectItem>
                   {[5, 10, 15, 20, 25, 30].map(n => <SelectItem key={n} value={String(n)}>{n} {t('minuteUnit')}</SelectItem>)}
                   <SelectItem value="custom">{t('customizeDuration')}</SelectItem>
                 </SelectContent>
@@ -151,7 +158,7 @@ function BreakModal({ hook }) {
           </div>
           <div className="flex justify-end gap-3 pt-4">
             <Button type="button" variant="outline" onClick={() => setShowBreakModal(false)}>{t('cancel')}</Button>
-            <Button type="submit" className="bg-[#1C3D74]">{editingBreak ? t('updateBtn') : t('addBtn')}</Button>
+            <Button type="submit" disabled={selectedDay !== 'all'} className="bg-[#1C3D74]">{editingBreak ? t('updateBtn') : t('addBtn')}</Button>
           </div>
         </form>
       </div>

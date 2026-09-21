@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
@@ -30,6 +30,7 @@ import {
 } from './DndComponents';
 import { useTheme, useTranslation } from '@/shared/contexts/ThemeContext';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+import { calculateTimingSummary, getTranslatedTimingSummary } from '@/shared/models/utils/timingValidation';
 import { SubjectsManager } from '@/features/academics/components/subjects/SubjectsManager';
 
 export function SchoolOperationalStatus({ status }) {
@@ -93,6 +94,10 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
     onUnpublishPublished, unpublishingPublished,
     timingSaveError, reloadTimingSettings,
   } = hook;
+  const timingSummary = useMemo(() => calculateTimingSummary({
+    ...timingSettings,
+    breaks: breakTimes,
+  }), [timingSettings, breakTimes]);
 
   const confirmBulkUnassignment = async () => {
     if (!bulkUnassignConfirmation || classAssignmentsBulkLoading) return;
@@ -287,7 +292,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
               <Button
                 type="button"
                 variant="outline"
-                className="mt-3 border-red-400 bg-white text-red-900 hover:bg-red-100"
+                className="mt-3 border-red-400 bg-white text-red-900 hover:bg-red-100 hover:text-red-900"
                 onClick={reloadTimingSettings}
                 data-testid="reload-conflicted-timing-settings"
               >
@@ -313,7 +318,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                 <Button
                   type="button"
                   variant="outline"
-                  className="shrink-0 border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
+                  className="shrink-0 border-amber-400 bg-white text-amber-900 hover:bg-amber-100 hover:text-amber-900"
                   onClick={onUnpublishPublished}
                   disabled={unpublishingPublished}
                   data-testid="unpublish-before-timing-save"
@@ -345,6 +350,22 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                         <SelectContent>{['00','05','10','15','20','25','30','35','40','45','50','55'].map(m => <SelectItem key={m} value={m} className="text-lg font-bold text-center">{m}</SelectItem>)}</SelectContent>
                       </Select>
                       <span className="text-sm text-slate-500 mr-1">صباحاً</span>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-sm text-slate-600 mb-2 block flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5 text-[#1C3D74]" />{t('timingFieldDayEnd')}
+                    </Label>
+                    <div className="flex items-center gap-2" data-testid="day-end-input">
+                      <Select value={timingSettings.dayEnd?.split(':')[0] || '13'} onValueChange={(h) => { const m = timingSettings.dayEnd?.split(':')[1] || '00'; handleSettingChange('dayEnd', `${h}:${m}`); }}>
+                        <SelectTrigger className="h-12 w-24 text-lg font-bold text-center border-[#1C3D74]/30 focus:border-[#1C3D74]"><SelectValue /></SelectTrigger>
+                        <SelectContent>{Array.from({ length: 19 }, (_, i) => String(i + 5).padStart(2, '0')).map(h => <SelectItem key={h} value={h} className="text-lg font-bold text-center">{h}</SelectItem>)}</SelectContent>
+                      </Select>
+                      <span className="text-2xl font-bold text-slate-400 select-none">:</span>
+                      <Select value={timingSettings.dayEnd?.split(':')[1] || '00'} onValueChange={(m) => { const h = timingSettings.dayEnd?.split(':')[0] || '13'; handleSettingChange('dayEnd', `${h}:${m}`); }}>
+                        <SelectTrigger className="h-12 w-24 text-lg font-bold text-center border-[#1C3D74]/30 focus:border-[#1C3D74]"><SelectValue /></SelectTrigger>
+                        <SelectContent>{['00','05','10','15','20','25','30','35','40','45','50','55'].map(m => <SelectItem key={m} value={m} className="text-lg font-bold text-center">{m}</SelectItem>)}</SelectContent>
+                      </Select>
                     </div>
                   </div>
                   <div>
@@ -394,14 +415,17 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                   </div>
                 </div>
               </div>
-              <div className="mt-6 p-4 bg-slate-50 rounded-xl">
-                <h4 className="font-medium text-slate-700 mb-3">ملخص اليوم الدراسي</h4>
-                <div className="grid grid-cols-4 gap-4">
-                  <div className="text-center p-3 bg-white rounded-lg"><p className="text-sm text-slate-500">بداية اليوم</p><p className="text-xl font-bold text-[#1C3D74]">{timingSettings.dayStart}</p></div>
-                  <div className="text-center p-3 bg-white rounded-lg"><p className="text-sm text-slate-500">عدد الحصص</p><p className="text-xl font-bold text-[#1C3D74]">{timingSettings.periodsPerDay}</p></div>
-                  <div className="text-center p-3 bg-white rounded-lg"><p className="text-sm text-slate-500">مدة الحصة</p><p className="text-xl font-bold text-[#1C3D74]">{timingSettings.periodDuration} د</p></div>
-                  <div className="text-center p-3 bg-white rounded-lg"><p className="text-sm text-slate-500">الاستراحة</p><p className="text-xl font-bold text-[#1C3D74]">{timingSettings.breakDuration} د</p></div>
+              <div className={`mt-6 p-4 rounded-xl border ${timingSummary.isValid ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-300'}`} data-testid="timing-live-summary">
+                <h4 className="font-medium text-slate-700 mb-3">{t('timingSummaryTitle')}</h4>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {getTranslatedTimingSummary(timingSummary, t).map(item => (
+                    <div key={item.key} className="text-center p-3 bg-white rounded-lg">
+                      <p className="text-sm text-slate-500">{item.label}</p>
+                      <p className={`text-xl font-bold ${timingSummary.isValid ? 'text-[#1C3D74]' : 'text-red-700'}`}>{item.value} {t('minuteUnit')}</p>
+                    </div>
+                  ))}
                 </div>
+                {!timingSummary.isValid && <p className="mt-3 font-semibold text-red-800" role="alert">{t('timingValidationSchoolDayTooShort', { shortage: timingSummary.shortageMinutes })}</p>}
               </div>
             </CardContent>
           </Card>
@@ -501,7 +525,7 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
                       <div>
                         <p className="font-medium">{breakTime.name}</p>
                         <p className="text-sm text-slate-500">
-                          بعد الحصة {breakTime.afterPeriod} • {breakTime.duration} دقيقة
+                          بعد الحصة {breakTime.afterPeriod} • {breakTime.duration == null ? t('inheritBaseBreakDuration') : `${breakTime.duration} ${t('minuteUnit')}`}
                           {breakTime.day && breakTime.day !== 'all' && ` • ${breakTime.day}`}
                           {breakTime.day === 'all' && ' • جميع الأيام'}
                           {breakTime.type === 'other' && breakTime.customType && ` • ${breakTime.customType}`}

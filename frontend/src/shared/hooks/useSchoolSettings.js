@@ -5,6 +5,13 @@ import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import { toast } from 'sonner';
 import { useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { getApiErrorCode, getApiErrorMessage } from '@/shared/models/utils/apiError';
+import ar from '@/locales/ar.json';
+import en from '@/locales/en.json';
+import {
+  localizeTimingValidationError,
+  normalizeLocalizedDigits,
+  validateTimingDraft,
+} from '@/shared/models/utils/timingValidation';
 
 const DEFAULT_TIMING_SETTINGS = {
   academicYear: '1446',
@@ -37,8 +44,8 @@ const normalizeTimingSettings = (payload) => {
   return {
     academicYear: settingValue(source, 'academicYear', 'academic_year', DEFAULT_TIMING_SETTINGS.academicYear),
     currentSemester: settingValue(source, 'currentSemester', 'current_semester', DEFAULT_TIMING_SETTINGS.currentSemester),
-    dayStart: settingValue(source, 'dayStart', 'day_start', DEFAULT_TIMING_SETTINGS.dayStart),
-    dayEnd: settingValue(source, 'dayEnd', 'day_end', DEFAULT_TIMING_SETTINGS.dayEnd),
+    dayStart: normalizeLocalizedDigits(settingValue(source, 'dayStart', 'day_start', DEFAULT_TIMING_SETTINGS.dayStart)),
+    dayEnd: normalizeLocalizedDigits(settingValue(source, 'dayEnd', 'day_end', DEFAULT_TIMING_SETTINGS.dayEnd)),
     periodsPerDay: settingValue(source, 'periodsPerDay', 'periods_per_day', DEFAULT_TIMING_SETTINGS.periodsPerDay),
     periodDuration: settingValue(source, 'periodDuration', 'period_duration', DEFAULT_TIMING_SETTINGS.periodDuration),
     breakDuration: settingValue(source, 'breakDuration', 'break_duration', DEFAULT_TIMING_SETTINGS.breakDuration),
@@ -57,7 +64,9 @@ const normalizeBreaks = (payload) => {
     id: item.id ?? index + 1,
     name: item.name ?? 'استراحة',
     afterPeriod: item.afterPeriod ?? item.after_period ?? index + 2,
-    duration: item.duration ?? 15,
+    // null means "inherit the school's base break duration"; unlike undefined,
+    // it is an intentional persisted value and must survive hydration.
+    duration: item.duration === undefined ? null : item.duration,
     type: item.type ?? 'break',
     customType: item.customType ?? item.custom_type ?? '',
     day: item.day ?? 'all',
@@ -69,6 +78,17 @@ export function useSchoolSettings() {
   const location = useLocation();
   const { api, user } = useAuth();
   const { nassaqWarning, nassaqConfirm, nassaqError } = useNassaqAlert();
+  const t = useCallback((key, params = {}) => {
+    const language = typeof window !== 'undefined' && localStorage.getItem('nassaq_language') === 'en'
+      ? 'en'
+      : 'ar';
+    let text = (language === 'en' ? en : ar)[key] || ar[key] || key;
+    Object.entries(params).forEach(([name, value]) => {
+      text = text.replace(new RegExp(`\\{\\{${name}\\}\\}`, 'g'), value);
+      text = text.replace(new RegExp(`\\{${name}\\}`, 'g'), value);
+    });
+    return text;
+  }, []);
 
   const searchParams = new URLSearchParams(location.search);
   const validSections = ['dynamic', 'academic', 'static'];
@@ -370,6 +390,26 @@ export function useSchoolSettings() {
   const saveAllSettings = async () => {
     const draftRevisionAtSave = settingsDraftRevisionRef.current;
     setTimingSaveError(null);
+    const localValidation = validateTimingDraft({
+      ...timingSettings,
+      workDays,
+      breaks: breakTimes,
+    });
+    if (localValidation) {
+      const detail = {
+        code: 'TIMING_VALIDATION_ERROR',
+        ...localValidation,
+        available_minutes: localValidation.availableMinutes,
+        lesson_minutes: localValidation.lessonMinutes,
+        break_minutes: localValidation.breakMinutes,
+        required_minutes: localValidation.requiredMinutes,
+        shortage_minutes: localValidation.shortageMinutes,
+      };
+      const message = localizeTimingValidationError(detail, t);
+      setTimingSaveError({ message, isConflict: false });
+      nassaqError(message);
+      return false;
+    }
     setSaving(true);
     try {
       const dayNames = { sunday: 'الأحد', monday: 'الإثنين', tuesday: 'الثلاثاء', wednesday: 'الأربعاء', thursday: 'الخميس', friday: 'الجمعة', saturday: 'السبت' };
@@ -449,8 +489,26 @@ export function useSchoolSettings() {
       fetchTimeSlotsCount();
     } catch (error) {
       console.error('Save error:', error);
-      const message = getApiErrorMessage(error) || 'حدث خطأ في حفظ الإعدادات';
+      const errorBody = error?.response?.data;
+      const detail = errorBody?.error?.detail || errorBody?.detail || errorBody?.error;
       const code = getApiErrorCode(error);
+      const knownGuardMessages = {
+        settings_version_conflict: t('timingSettingsVersionConflict'),
+        SETTINGS_VERSION_CONFLICT: t('timingSettingsVersionConflict'),
+        published_timetable_exists: t('timingPublishedGuard'),
+        PUBLISHED_TIMETABLE_EXISTS: t('timingPublishedGuard'),
+        published_schedule_exists: t('timingPublishedGuard'),
+        PUBLISHED_SCHEDULE_EXISTS: t('timingPublishedGuard'),
+        occupied_draft_periods: t('timingValidationOccupiedPeriods'),
+        OCCUPIED_DRAFT_PERIODS: t('timingValidationOccupiedPeriods'),
+        removed_periods_occupied: t('timingValidationOccupiedPeriods'),
+        REMOVED_PERIODS_OCCUPIED: t('timingValidationOccupiedPeriods'),
+      };
+      const message = localizeTimingValidationError(detail, t)
+        || knownGuardMessages[code]
+        || knownGuardMessages[detail?.reason]
+        || getApiErrorMessage(error)
+        || t('timingSaveFailed');
       setTimingSaveError({
         message,
         isConflict: error?.response?.status === 409 && code === 'settings_version_conflict',

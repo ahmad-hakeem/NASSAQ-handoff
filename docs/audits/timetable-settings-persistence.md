@@ -23,7 +23,10 @@ Tests compare the submitted value, response, database column, subsequent GET,
 and generated break duration. Sequential 20 → 25 → 30 saves retain inheritance.
 
 Validation covers integer/range constraints, ordered HH:MM times, weekdays,
-break placement, total day duration and passing time. Invalid writes and slot
+break placement and total day duration. Required minutes are exactly lesson
+minutes plus configured break minutes, with no implicit passing-time gaps.
+The UI exposes the day end and a live Arabic/English time budget.
+Invalid writes and slot
 regeneration failures roll back. Successful writes commit before success.
 
 ## Published and draft policy
@@ -59,9 +62,14 @@ Lifecycle tests cover explicit unpublish with draft preservation and locking.
 Frontend tests cover reload, failures, conflict handling and stale responses;
 the production frontend build succeeds.
 
-A nearby static test still references the retired path
-`frontend/src/pages/SchedulePageNew.jsx` and fails before assertions. It is not
-evidence of a runtime settings failure.
+The nearby static test's retired frontend path has been corrected. Boundary,
+structured validation and master-grid fallback tests cover the removal of hidden
+passing time as well as zero-duration and explicitly absent breaks.
+
+Shared time slots are not weekday-aware. A selected weekday on a break was
+previously ignored; such inputs now receive a clear validation error instead of
+silently applying the break to every day. True weekday-specific timing is not
+implemented by this correction.
 
 Production logs establish endpoint traffic but do not capture the screenshot's
 request body. No production settings were changed during verification. Publication

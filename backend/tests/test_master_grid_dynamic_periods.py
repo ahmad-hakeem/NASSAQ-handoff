@@ -30,7 +30,10 @@ from pathlib import Path
 from dependencies import db
 from engines.smart_scheduling_engine import SmartSchedulingEngine
 from engines.sql_utils import gd_find, gd_insert
-from src.modules.scheduling.controllers.schedule_master_grid_routes import _resolve_periods_for_school
+from src.modules.scheduling.controllers.schedule_master_grid_routes import (
+    _resolve_period_times,
+    _resolve_periods_for_school,
+)
 
 
 async def _mk_settings(school_id: str, periods_per_day: int) -> None:
@@ -95,6 +98,32 @@ async def test_resolve_periods_uses_time_slots_and_skips_breaks(tenant_a):
     assert 99 not in periods and 100 not in periods, (
         "Break slots must not appear in the period list"
     )
+
+
+async def test_period_time_fallback_preserves_explicit_zero_break_without_hidden_gaps(
+    tenant_a,
+):
+    await gd_insert(db.session, "school_settings", {
+        "id": str(uuid.uuid4()),
+        "school_id": tenant_a,
+        "periods_per_day": 4,
+        "period_duration": 25,
+        "break_duration": 20,
+        "start_time": "08:00",
+        "custom_settings": {
+            "breaks": [{"afterPeriod": 2, "duration": 0, "type": "break"}],
+        },
+    })
+
+    times = await _resolve_period_times(tenant_a, [1, 2, 3, 4])
+
+    assert [(times[str(period)]["start"], times[str(period)]["end"])
+            for period in range(1, 5)] == [
+        ("08:00", "08:25"),
+        ("08:25", "08:50"),
+        ("08:50", "09:15"),
+        ("09:15", "09:40"),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +348,9 @@ async def test_generate_timetable_uses_all_ten_periods(tenant_a):
 
 def test_schedule_page_new_renders_dynamic_period_columns():
     repo_root = Path(__file__).resolve().parents[2]
-    src = (repo_root / "frontend/src/pages/SchedulePageNew.jsx").read_text(encoding="utf-8")
+    src = (
+        repo_root / "frontend/src/features/schedule/pages/SchedulePageNew.jsx"
+    ).read_text(encoding="utf-8")
 
     # Periods are read from the master-grid payload; tolerant of formatting
     # changes (e.g. `grid?.periods ?? FALLBACK_PERIODS`, line breaks, etc.).
