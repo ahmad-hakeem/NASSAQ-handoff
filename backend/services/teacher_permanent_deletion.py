@@ -155,6 +155,15 @@ def review(reason="unclassified_guard", *, table="unknown", count=1):
     raise DeletionBlocked(reason, table=table, count=count)
 
 
+def has_additional_linked_roles(linked_roles):
+    """Only the legacy scalar mirror of the primary teacher role is redundant.
+
+    Dict-shaped roles carry tenant/scope metadata and therefore remain ownership
+    evidence even when their role value is ``teacher``.
+    """
+    return linked_roles not in (None, [], ["teacher"])
+
+
 def contains(value, needles):
     if isinstance(value, dict):
         return any(k in needles or contains(v, needles) for k, v in value.items())
@@ -424,13 +433,28 @@ async def permanently_delete_teacher(
                 review("requested_user_mismatch", table="users")
             teacher_claim = teacher.user_id == user.id
             user_claim = user.teacher_id == teacher_id
-            if ((teacher.user_id is not None and not teacher_claim)
-                    or (user.teacher_id is not None and not user_claim)
-                    or not (teacher_claim or user_claim)
-                    or user.tenant_id != teacher.school_id or user.role != "teacher"
-                    or user.linked_roles or user.parent_id or user.student_id
-                    or user.primary_tenant_id not in (None, teacher.school_id)):
-                review("account_ownership_mismatch", table="users", count=1)
+            if (
+                (teacher.user_id is not None and not teacher_claim)
+                or (user.teacher_id is not None and not user_claim)
+                or not (teacher_claim or user_claim)
+            ):
+                review("profile_account_link_mismatch", table="users", count=1)
+            if user.tenant_id != teacher.school_id:
+                review("account_tenant_mismatch", table="users", count=1)
+            if user.role != "teacher":
+                review("account_role_mismatch", table="users", count=1)
+            if has_additional_linked_roles(user.linked_roles):
+                review(
+                    "additional_linked_roles",
+                    table="users",
+                    count=len(user.linked_roles) if isinstance(user.linked_roles, list) else 1,
+                )
+            if user.parent_id:
+                review("parent_profile_claim", table="users", count=1)
+            if user.student_id:
+                review("student_profile_claim", table="users", count=1)
+            if user.primary_tenant_id not in (None, teacher.school_id):
+                review("primary_tenant_mismatch", table="users", count=1)
             default_permissions = set(ROLE_PERMISSIONS["teacher"])
             permissions = user.permissions or []
             if (

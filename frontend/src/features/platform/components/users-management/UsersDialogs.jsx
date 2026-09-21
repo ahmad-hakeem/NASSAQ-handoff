@@ -220,7 +220,17 @@ export function DeleteDialog({
                     >
                       <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
                         {dependency.reason ? (
-                          <><dt className="font-medium">السبب:</dt><dd dir="auto">{dependency.reason}</dd></>
+                          <>
+                            <dt className="font-medium">السبب:</dt>
+                            <dd dir="auto">
+                              <span>{dependency.reasonLabel || dependency.reason}</span>
+                              {dependency.reasonLabel && dependency.reasonLabel !== dependency.reason ? (
+                                <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground" dir="ltr">
+                                  {dependency.reason}
+                                </span>
+                              ) : null}
+                            </dd>
+                          </>
                         ) : null}
                         {dependency.category ? (
                           <><dt className="font-medium">الفئة:</dt><dd dir="auto">{dependency.category}</dd></>
@@ -232,7 +242,9 @@ export function DeleteDialog({
                           <><dt className="font-medium">العدد:</dt><dd>{dependency.count}</dd></>
                         ) : null}
                         {dependency.resolution ? (
-                          <><dt className="font-medium">الإجراء المطلوب:</dt><dd dir="auto">{dependency.resolution}</dd></>
+                          <><dt className="font-medium">الإجراء المطلوب:</dt><dd dir="auto">{dependency.resolutionLabel || dependency.resolution}</dd></>
+                        ) : dependency.resolutionLabel ? (
+                          <><dt className="font-medium">الإجراء المطلوب:</dt><dd dir="auto">{dependency.resolutionLabel}</dd></>
                         ) : null}
                       </dl>
                     </li>

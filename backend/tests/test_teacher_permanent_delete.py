@@ -68,6 +68,75 @@ async def test_school_delete_resolves_unique_legacy_one_sided_link(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("endpoint", ["school", "platform"])
+async def test_exact_redundant_string_teacher_role_does_not_block_delete(
+    client, tenant_a, endpoint,
+):
+    """Exercise public create, real scalar role shape, dependencies, and re-add."""
+    actor = await _principal(tenant_a)
+    unique = uuid.uuid4().hex
+    create_payload = {
+        "full_name": "Teacher scalar-role lifecycle",
+        "email": f"scalar-role-{unique}@example.com",
+        "phone": f"05{str(uuid.uuid4().int)[:8]}",
+        "school_id": tenant_a,
+    }
+    created = await client.post(
+        "/teachers", headers=_headers(actor["id"], tenant_a), json=create_payload,
+    )
+    assert created.status_code == 200, created.text
+    teacher = created.json()
+    user = await gd_find_one(db.session, "users", {"teacher_id": teacher["id"]})
+    assert user["role"] == "teacher"
+    await gd_update_one(db.session, "users", {"id": user["id"]}, {
+        "linked_roles": ["teacher"],
+        "primary_tenant_id": tenant_a,
+        "permissions": [],
+    })
+    subject_id, assignment_id, history_id = (str(uuid.uuid4()) for _ in range(3))
+    await gd_insert(db.session, "subjects", {
+        "id": subject_id, "school_id": tenant_a, "name": "Lifecycle subject",
+    })
+    await gd_insert(db.session, "teacher_assignments", {
+        "id": assignment_id, "school_id": tenant_a,
+        "teacher_id": teacher["id"], "subject_id": subject_id,
+    })
+    await gd_insert(db.session, "teacher_sessions", {
+        "id": history_id, "school_id": tenant_a, "teacher_id": teacher["id"],
+        "date": "2025-01-01T00:00:00+00:00", "status": "completed",
+    })
+    if endpoint == "platform":
+        await gd_update_one(db.session, "users", {"id": actor["id"]}, {
+            "role": "platform_admin",
+            "permissions": [],
+        })
+        url = f"/users/{user['id']}"
+    else:
+        url = f"/teachers/{teacher['id']}"
+
+    result = await client.delete(url, headers=_headers(actor["id"], tenant_a))
+
+    assert result.status_code == 200, result.text
+    assert result.json()["permanent"] is True
+    assert await gd_find_one(db.session, "users", {"id": user["id"]}) is None
+    assert await gd_find_one(db.session, "teachers", {"id": teacher["id"]}) is None
+    assert await gd_find_one(db.session, "teacher_assignments", {"id": assignment_id}) is None
+    history = await gd_find_one(db.session, "teacher_sessions", {"id": history_id})
+    assert history["status"] == "completed"
+    assert history["teacher_id"] == f"deleted-teacher:{tenant_a}"
+
+    if endpoint == "platform":
+        await gd_update_one(db.session, "users", {"id": actor["id"]}, {
+            "role": "school_principal",
+        })
+    recreated = await client.post(
+        "/teachers", headers=_headers(actor["id"], tenant_a), json=create_payload,
+    )
+    assert recreated.status_code == 200, recreated.text
+    assert recreated.json()["id"] != teacher["id"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("create_path", ["/teachers/create", "/teachers"])
 async def test_permanent_delete_readd_duplicate_and_token(client, tenant_a, create_path):
     actor, teacher, user = await setup(tenant_a)
@@ -117,13 +186,30 @@ async def test_permanent_delete_readd_duplicate_and_token(client, tenant_a, crea
 @pytest.mark.asyncio
 @pytest.mark.parametrize("ambiguity", [
     "linked_roles", "other_profile", "absent_links", "generic_role",
-    "unknown_document", "other_identity", "nested_claim",
+    "unknown_document", "other_identity", "nested_claim", "different_string_role",
+    "nested_teacher_role", "multiple_string_roles", "unknown_linked_roles",
+    "cross_school_primary_tenant",
 ])
 async def test_shared_accounts_fail_closed(client, tenant_a, tenant_b, ambiguity):
     actor, teacher, user = await setup(tenant_a)
     if ambiguity == "linked_roles":
         await gd_update_one(db.session, "users", {"id": user["id"]},
                             {"linked_roles": [{"role": "parent", "tenant_id": tenant_a}]})
+    elif ambiguity == "different_string_role":
+        await gd_update_one(db.session, "users", {"id": user["id"]},
+                            {"linked_roles": ["parent"]})
+    elif ambiguity == "nested_teacher_role":
+        await gd_update_one(db.session, "users", {"id": user["id"]},
+                            {"linked_roles": [{"role": "teacher", "tenant_id": tenant_a}]})
+    elif ambiguity == "multiple_string_roles":
+        await gd_update_one(db.session, "users", {"id": user["id"]},
+                            {"linked_roles": ["teacher", "parent"]})
+    elif ambiguity == "unknown_linked_roles":
+        await gd_update_one(db.session, "users", {"id": user["id"]},
+                            {"linked_roles": {"teacher": True}})
+    elif ambiguity == "cross_school_primary_tenant":
+        await gd_update_one(db.session, "users", {"id": user["id"]},
+                            {"primary_tenant_id": tenant_b})
     elif ambiguity == "other_profile":
         await gd_insert(db.session, "teachers", {"id": str(uuid.uuid4()), "user_id": user["id"],
                         "school_id": tenant_b, "full_name": "Other school"})
@@ -153,7 +239,12 @@ async def test_shared_accounts_fail_closed(client, tenant_a, tenant_b, ambiguity
     assert detail["message"]
     assert detail["dependencies"] == [{
         "reason": {
-            "linked_roles": "account_ownership_mismatch",
+            "linked_roles": "additional_linked_roles",
+            "different_string_role": "additional_linked_roles",
+            "nested_teacher_role": "additional_linked_roles",
+            "multiple_string_roles": "additional_linked_roles",
+            "unknown_linked_roles": "additional_linked_roles",
+            "cross_school_primary_tenant": "primary_tenant_mismatch",
             "other_profile": "additional_profile_claims",
             "absent_links": "ambiguous_user_accounts",
             "generic_role": "invalid_membership_document",
@@ -172,6 +263,7 @@ async def test_shared_accounts_fail_closed(client, tenant_a, tenant_b, ambiguity
         }.get(ambiguity, "users"),
         "count": (
             2 if ambiguity == "other_profile"
+                else 2 if ambiguity == "multiple_string_roles"
             else 0 if ambiguity == "absent_links"
             else 1
         ),

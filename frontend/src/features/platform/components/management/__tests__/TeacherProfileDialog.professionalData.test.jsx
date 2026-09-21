@@ -604,6 +604,7 @@ describe('TeacherProfileDialog — permanent deletion', () => {
       fireEvent.click(confirm);
     });
     expect(mockApi.delete).toHaveBeenCalledTimes(1);
+    expect(mockApi.delete).toHaveBeenCalledWith('/teachers/delete-teacher-1');
     expect(onRefresh).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
 
@@ -644,7 +645,7 @@ describe('TeacherProfileDialog — permanent deletion', () => {
     fireEvent.click(await openDeleteConfirmation());
 
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('يجب إزالة التكليف النشط أولاً.');
+    expect(alert).toHaveTextContent('تعذر حذف حساب المعلم لوجود ارتباطات مانعة');
     expect(alert).toHaveTextContent('DELETE_DEPENDENCY_BLOCKED');
     expect(alert).toHaveTextContent('active_assignment');
     expect(alert).toHaveTextContent('أزل التكليف النشط ثم أعد المحاولة.');
@@ -654,8 +655,8 @@ describe('TeacherProfileDialog — permanent deletion', () => {
   });
 
   test.each([
-    [403, 'لا تملك صلاحية حذف هذا الحساب.'],
-    [500, 'تعذر إكمال حذف الحساب. لم يُحذف أي شيء؛ حاول مرة أخرى.'],
+    [403, 'لا تملك صلاحية حذف حساب هذا المعلم.'],
+    [500, 'تعذر حذف حساب المعلم. لم يُحذف أي شيء؛ حاول مرة أخرى.'],
   ])('persists the safe fallback for an unstructured HTTP %s response', async (status, message) => {
     mockApi.delete.mockRejectedValue({ response: { status, data: {} } });
     renderDeletionDialog();

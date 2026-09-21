@@ -204,7 +204,7 @@ export default function TeacherProfileDialog({ open, onClose, teacher, onRefresh
       setShowDeleteDialog(false);
       onClose?.();
     } catch (e) {
-      setDeletionError(getUserDeletionError(e, 'teacher'));
+      setDeletionError(getUserDeletionError(e, 'teacher', t));
     } finally {
       deleteRequestRef.current = false;
       setActionLoading('');

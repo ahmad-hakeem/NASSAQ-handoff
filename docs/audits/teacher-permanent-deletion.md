@@ -44,14 +44,49 @@ one 404, not an integrity-error 500.
 
 ## Ownership proof
 
-The teacher must have exactly one mutually linked `users` record with primary
-role `teacher`, matching school, no linked roles, no parent/student profile,
+The teacher must have exactly one uniquely linked `users` record with primary
+role `teacher`, matching school, no additional linked roles, no parent/student profile,
 no foreign primary tenant, and no custom permissions requiring review.
 Every other teacher profile, including inactive profiles, is checked for claims
 on the account. Other users' scalar teacher links and nested linked-role claims
 are checked. Conflicting or duplicate normalized email/mobile/national identity
 on other accounts/profiles blocks deletion. Missing duplicate contact fields
 are not contradictory evidence; populated mismatches are.
+
+A unique one-sided scalar profile/account link can prove ownership when the
+opposite link is absent, but conflicting links cannot. Only the exact scalar
+`linked_roles: ["teacher"]` is treated as a redundant primary-role mirror.
+Nested teacher-role objects may carry different tenant scope and remain blocked.
+Ownership failures now distinguish profile/account links, tenant, primary role,
+additional roles, parent/student claims and primary tenant using non-PII reasons.
+
+## Redundant-role regression evidence
+
+The pictured failure was a domain ownership guard, before FK cleanup—not a
+database integrity exception. Read-only development inspection found reciprocal
+links, matching school/primary tenant, teacher role, no parent/student profile,
+empty custom permissions, and the redundant scalar teacher-role list.
+The target was not deleted or modified during diagnosis. The matching named
+profile was not found in the production lookup, so no production incident
+reproduction or successful production deletion is claimed.
+
+A bounded read-only dependency inventory in the development database found
+19 teacher assignments, 20 teacher-class assignments, 351 timetable-session
+documents, 5 teacher-attendance documents, 55 notification-log documents and
+147 timetable-run-log documents. These are known cleanup/history categories;
+none had an explicit foreign top-level school reference. This inventory does
+not replace the deletion service's locked nested ownership and FK checks.
+
+Both principal UI entry points send authenticated `DELETE /teachers/{id}` with
+no body. Both guard in-flight duplicate submissions. Failed deletion retains
+the record; success refreshes the directory and closes the profile where open.
+A completed deletion retried later returns 404, not a misleading dependency 409;
+this is state-idempotent, not a cached replay of the original success response.
+
+Regression tests exercise school and platform deletion aliases, real public
+creation, ordinary assignments, retained history, re-adding released identities,
+shared-role rejection, authorization and rollback. The changes do not authorize
+automatic repair or deletion of ambiguous real accounts.
 
 School principal/creator links, owned independent workspaces, collaborator
 claims, independent lesson plans, student/parent ownership and unknown JSON

@@ -34,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CANONICAL_GRADES } from '@/shared/models/utils/stageGrade';
 import StudentClassGrid from '@/features/platform/components/management/StudentClassGrid';
 import { getApiErrorMessage, getLocalizedApiError } from '@/shared/models/utils/apiError';
+import { formatUserDeletionError, getUserDeletionError } from '@/shared/models/utils/userDeletionError';
 import { executeStudentTransfer } from '@/shared/models/utils/studentTransfer';
 import { useCanViewInternalIds } from '@/shared/hooks/useCanViewInternalIds';
 import { fetchStudentRoster } from '@/shared/utils/fetchStudentRoster';
@@ -1400,6 +1401,7 @@ export default function UsersClassesManagement() {
         const res = await api.delete(ep);
         const successMsg = getDeleteSuccessMessage(type, isRTL, t, res.data?.cleanup);
         if (type === 'teacher') {
+          setTeachers(prev => prev.filter(teacher => teacher.id !== item.id));
           await fetchAllData();
           toast.success(successMsg);
         } else {
@@ -1407,10 +1409,9 @@ export default function UsersClassesManagement() {
           fetchAllData();
         }
       } catch (error) {
-        let errMsg = t('deleteFailed');
-        if (getApiErrorMessage(error)) {
-          errMsg = typeof getApiErrorMessage(error) === 'string' ? getApiErrorMessage(error) : errMsg;
-        }
+        const errMsg = type === 'teacher'
+          ? formatUserDeletionError(getUserDeletionError(error, 'teacher', t))
+          : getApiErrorMessage(error, t('deleteFailed'));
         nassaqError(errMsg);
       } finally {
         if (type === 'teacher') {

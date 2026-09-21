@@ -41,7 +41,12 @@ jest.mock('@/shared/contexts/AuthContext', () => ({
   useAuth: () => mockAuthValue,
 }));
 
-const stableT = (k) => k;
+const TRANSLATIONS = {
+  teacherDeleteConflict: 'This teacher cannot be deleted while blocking links remain.',
+  teacherDeleteReasonAdditionalLinkedRoles: 'The account has additional active roles.',
+  teacherDeleteResolutionAdditionalLinkedRoles: 'Remove or move the additional roles, then try again.',
+};
+const stableT = (k) => TRANSLATIONS[k] || k;
 jest.mock('@/shared/contexts/ThemeContext', () => ({
   useTheme: () => ({ isRTL: true, toggleTheme: jest.fn(), toggleLanguage: jest.fn(), isDark: false }),
   useTranslation: () => ({ t: stableT }),
@@ -317,11 +322,16 @@ describe('UsersClassesManagement — permanent teacher deletion', () => {
 
   test('warns about permanence and retention, calls DELETE once, and does not remove before success', async () => {
     let resolveDelete;
-    mockApiGet.mockImplementation((url) => (
-      url === '/teachers'
-        ? Promise.resolve({ data: [{ id: 'teacher-1', full_name: 'Teacher Kept Until Success' }] })
-        : Promise.resolve({ data: [] })
-    ));
+    let teacherReads = 0;
+    mockApiGet.mockImplementation((url) => {
+      if (url !== '/teachers') return Promise.resolve({ data: [] });
+      teacherReads += 1;
+      return Promise.resolve({
+        data: teacherReads === 1
+          ? [{ id: 'teacher-1', full_name: 'Teacher Kept Until Success' }]
+          : [],
+      });
+    });
     mockApi.delete.mockReturnValue(new Promise(resolve => { resolveDelete = resolve; }));
 
     render(<UsersClassesManagement />);
@@ -345,15 +355,20 @@ describe('UsersClassesManagement — permanent teacher deletion', () => {
       await confirmDelete();
     });
     expect(mockApi.delete).toHaveBeenCalledTimes(1);
+    expect(mockApi.delete).toHaveBeenCalledWith('/teachers/teacher-1');
     expect(screen.getByText('Teacher Kept Until Success')).toBeInTheDocument();
 
     await act(async () => {
       resolveDelete({ data: { success: true } });
       await firstSubmission;
     });
+    await waitFor(() => {
+      expect(screen.queryByText('Teacher Kept Until Success')).not.toBeInTheDocument();
+    });
+    expect(mockApiGet.mock.calls.filter(([url]) => url === '/teachers')).toHaveLength(2);
   });
 
-  test('surfaces a 409 conflict message and leaves the teacher visible', async () => {
+  test('surfaces a localized 409 blocker and leaves the teacher visible', async () => {
     mockApiGet.mockImplementation((url) => (
       url === '/teachers'
         ? Promise.resolve({ data: [{ id: 'shared-teacher', full_name: 'Shared Teacher' }] })
@@ -364,7 +379,17 @@ describe('UsersClassesManagement — permanent teacher deletion', () => {
         status: 409,
         data: {
           success: false,
-          error: { code: 'TEACHER_DELETE_REVIEW_REQUIRED', message: 'يتطلب هذا الحساب مراجعة مسؤول المنصة' },
+          error: {
+            code: 'DELETE_DEPENDENCY_BLOCKED',
+            message: 'Backend-only blocker copy',
+            detail: {
+              dependencies: [{
+                reason: 'additional_linked_roles',
+                table: 'users',
+                count: 1,
+              }],
+            },
+          },
         },
       },
     });
@@ -377,7 +402,12 @@ describe('UsersClassesManagement — permanent teacher deletion', () => {
       await mockNassaqConfirm.mock.calls[0][1]();
     });
 
-    expect(mockNassaqError).toHaveBeenCalledWith('يتطلب هذا الحساب مراجعة مسؤول المنصة');
+    expect(mockNassaqError).toHaveBeenCalledWith(expect.stringContaining(
+      'The account has additional active roles.'
+    ));
+    expect(mockNassaqError).toHaveBeenCalledWith(expect.stringContaining(
+      'Remove or move the additional roles, then try again.'
+    ));
     expect(screen.getByText('Shared Teacher')).toBeInTheDocument();
   });
 });

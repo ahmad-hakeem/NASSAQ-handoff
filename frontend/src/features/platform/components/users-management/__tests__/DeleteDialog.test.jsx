@@ -77,10 +77,12 @@ describe('DeleteDialog', () => {
           message: 'تعذر حذف الحساب لوجود ارتباطات تحتاج إلى مراجعة.',
           dependencies: [{
             reason: 'account_ownership_mismatch',
+            reasonLabel: 'بيانات ملكية ملف المعلم والحساب غير متطابقة.',
             category: 'dependency',
             table: 'users',
             count: 2,
             resolution: 'راجع ملكية الحساب ثم أعد المحاولة.',
+            resolutionLabel: 'اطلب من مسؤول المنصة مراجعة روابط ملكية الحساب وإصلاحها، ثم أعد المحاولة.',
             email: 'must-not-render@example.com',
           }],
         }}
@@ -89,12 +91,34 @@ describe('DeleteDialog', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('تعذر حذف الحساب');
     expect(screen.getByRole('alert')).toHaveTextContent('DELETE_DEPENDENCY_BLOCKED');
+    expect(screen.getByText(/بيانات ملكية ملف المعلم والحساب غير متطابقة/)).toBeInTheDocument();
     expect(screen.getByText(/account_ownership_mismatch/)).toBeInTheDocument();
     expect(screen.getByText(/dependency/)).toBeInTheDocument();
     expect(screen.getByText(/users/)).toBeInTheDocument();
     expect(screen.getByText(/2/)).toBeInTheDocument();
-    expect(screen.getByText(/راجع ملكية الحساب/)).toBeInTheDocument();
+    expect(screen.getByText(/مراجعة روابط ملكية الحساب وإصلاحها/)).toBeInTheDocument();
     expect(screen.queryByText(/must-not-render@example.com/)).not.toBeInTheDocument();
+  });
+
+  it('falls back to the raw reason and resolution for an unknown blocker', () => {
+    render(
+      <DeleteDialog
+        user={{ id: 'teacher-1', role: 'teacher', full_name: 'Teacher One' }}
+        onClose={jest.fn()}
+        onConfirm={jest.fn()}
+        deletionError={{
+          status: 409,
+          message: 'Blocked',
+          dependencies: [{
+            reason: 'future_unknown_guard',
+            resolution: 'Follow the backend guidance.',
+          }],
+        }}
+      />
+    );
+
+    expect(screen.getByText('future_unknown_guard')).toBeInTheDocument();
+    expect(screen.getByText('Follow the backend guidance.')).toBeInTheDocument();
   });
 
   it.each([
