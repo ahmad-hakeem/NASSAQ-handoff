@@ -47,6 +47,7 @@ import {
 
 import { useTranslation } from '@/shared/contexts/ThemeContext';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+import { getUserDeletionError } from '@/shared/models/utils/userDeletionError';
 // Operational toggles — schools self-register today, so the school-request
 // vetting tab stays hidden. SCHOOL-TEACHER signups queue as pending requests
 // (no account is created until an admin approves and picks the school), so
@@ -117,6 +118,7 @@ export default function UsersManagement() {
   const [showSuspendConfirm, setShowSuspendConfirm] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
+  const [deletionError, setDeletionError] = useState(null);
   const [showEditUser, setShowEditUser] = useState(null);
   const [showSendNotification, setShowSendNotification] = useState(null);
   const [approvalConfirm, setApprovalConfirm] = useState(null);
@@ -130,6 +132,10 @@ export default function UsersManagement() {
   const [moreInfoMessage, setMoreInfoMessage] = useState('');
 
   const { api } = useAuth();
+
+  useEffect(() => {
+    setDeletionError(null);
+  }, [showDeleteConfirm?.id]);
 
   const fetchUsersInFlightRef = useRef(null);
   const lastUsersFetchKeyRef = useRef('');
@@ -362,6 +368,7 @@ export default function UsersManagement() {
 
   const handleDeleteUser = async (user) => {
     if (isDeletingUser) return;
+    setDeletionError(null);
     setIsDeletingUser(true);
     try {
       await api.delete(`/users/${user.id}`);
@@ -370,15 +377,12 @@ export default function UsersManagement() {
           ? 'تم حذف حساب المعلم نهائياً وتحرير بيانات الهوية'
           : 'تم أرشفة الحساب بنجاح'
       );
-      fetchUsers();
+      fetchUsers(true);
       fetchManagementStats();
       setShowDeleteConfirm(null);
     } catch (error) {
       console.error('Error deleting user:', error);
-      toast.error(
-        getApiErrorMessage(error)
-          || (user.role === 'teacher' ? 'فشل في حذف حساب المعلم' : 'فشل في أرشفة الحساب')
-      );
+      setDeletionError(getUserDeletionError(error, user.role));
     } finally {
       setIsDeletingUser(false);
     }
@@ -883,10 +887,14 @@ export default function UsersManagement() {
         <DeleteDialog
           user={showDeleteConfirm}
           onClose={() => {
-            if (!isDeletingUser) setShowDeleteConfirm(null);
+            if (!isDeletingUser) {
+              setDeletionError(null);
+              setShowDeleteConfirm(null);
+            }
           }}
           onConfirm={handleDeleteUser}
           isDeleting={isDeletingUser}
+          deletionError={deletionError}
         />
 
         <NotificationDialog

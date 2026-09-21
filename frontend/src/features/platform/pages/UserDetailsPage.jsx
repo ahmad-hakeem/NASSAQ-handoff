@@ -47,6 +47,7 @@ import {
 
 import { useTranslation } from '@/shared/contexts/ThemeContext';
 import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+import { getUserDeletionError } from '@/shared/models/utils/userDeletionError';
 import { PageHeader } from '@/shared/components/layout/PageHeader';
 import { LoadingState } from '@/shared/components/ui/LoadingState';
 import { ImageCropModal } from '@/shared/components/ui/ImageCropModal';
@@ -204,6 +205,7 @@ export default function UserDetailsPage() {
   const [showSuspendDialog, setShowSuspendDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deletionError, setDeletionError] = useState(null);
   const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false);
   const [showPasswordResultDialog, setShowPasswordResultDialog] = useState(false);
   const [showNotificationDialog, setShowNotificationDialog] = useState(false);
@@ -258,6 +260,8 @@ export default function UserDetailsPage() {
 
   useEffect(() => {
     setActivities([]);
+    setDeletionError(null);
+    setShowDeleteDialog(false);
   }, [userId]);
 
   useEffect(() => {
@@ -334,6 +338,7 @@ export default function UserDetailsPage() {
   // Handle delete
   const handleDelete = async () => {
     if (isDeleting) return;
+    setDeletionError(null);
     setIsDeleting(true);
     try {
       await api.delete(`/users/${userId}`);
@@ -345,12 +350,7 @@ export default function UserDetailsPage() {
       navigate('/admin/users');
     } catch (error) {
       console.error('Error deleting user:', error);
-      toast.error(
-        getApiErrorMessage(error)
-          || (user?.role === 'teacher'
-            ? 'فشل في حذف حساب المعلم. الرجاء المحاولة مرة أخرى.'
-            : 'فشل في أرشفة الحساب. الرجاء المحاولة مرة أخرى.')
-      );
+      setDeletionError(getUserDeletionError(error, user?.role));
     } finally {
       setIsDeleting(false);
     }
@@ -694,7 +694,10 @@ ${API_URL}/login
                   <Button 
                     variant="outline"
                     className="w-full text-red-600 hover:bg-red-50 hover:text-red-600 focus-visible:text-red-600 border-red-200 rounded-xl h-12 text-base"
-                    onClick={() => setShowDeleteDialog(true)}
+                    onClick={() => {
+                      setDeletionError(null);
+                      setShowDeleteDialog(true);
+                    }}
                     data-testid="delete-user-btn"
                   >
                     <Trash2 className="h-5 w-5 ms-2" />
@@ -1268,10 +1271,14 @@ ${API_URL}/login
         <UserDeleteDialog
           user={showDeleteDialog ? user : null}
           onClose={() => {
-            if (!isDeleting) setShowDeleteDialog(false);
+            if (!isDeleting) {
+              setDeletionError(null);
+              setShowDeleteDialog(false);
+            }
           }}
           onConfirm={handleDelete}
           isDeleting={isDeleting}
+          deletionError={deletionError}
         />
         
         {/* Reset Password Confirm Dialog */}

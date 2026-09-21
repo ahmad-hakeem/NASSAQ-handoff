@@ -73,8 +73,12 @@ async def test_permanent_delete_readd_duplicate_and_token(client, tenant_a, crea
     assert (await gd_find_one(db.session, "schools", {"id": tenant_a}))["current_teachers"] == 0
     assert (await client.get("/teachers?include_deleted=true",
                             headers=_headers(actor["id"], tenant_a))).json() == []
-    assert (await client.delete(f"/teachers/{teacher['id']}",
-                               headers=_headers(actor["id"], tenant_a))).status_code == 404
+    missing = await client.delete(
+        f"/teachers/{teacher['id']}", headers=_headers(actor["id"], tenant_a),
+    )
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "HTTP_404"
+    assert missing.json()["error"]["message"] == "المعلم غير موجود"
     assert (await client.get("/auth/me", headers=old_headers)).status_code in (401, 403)
     assert (await client.post("/auth/refresh", json={"refresh_token": refresh_token})).status_code == 401
     response = await client.post(create_path, headers=_headers(actor["id"], tenant_a),
@@ -113,8 +117,185 @@ async def test_shared_accounts_fail_closed(client, tenant_a, tenant_b, ambiguity
         ))
     result = await client.delete(f"/teachers/{teacher['id']}", headers=_headers(actor["id"], tenant_a))
     assert result.status_code == 409, result.text
+    detail = result.json()["error"]["detail"]
+    assert detail["code"] == (
+        "DELETE_CONFIGURATION_ERROR"
+        if ambiguity == "unknown_document"
+        else "DELETE_DEPENDENCY_BLOCKED"
+    )
+    assert detail["message"]
+    assert detail["dependencies"] == [{
+        "reason": {
+            "linked_roles": "account_ownership_mismatch",
+            "other_profile": "additional_profile_claims",
+            "missing_link": "account_ownership_mismatch",
+            "generic_role": "invalid_membership_document",
+            "unknown_document": "unknown_linked_document_collection",
+            "other_identity": "duplicate_identity_owner",
+            "nested_claim": "linked_role_profile_claim",
+        }[ambiguity],
+        "category": "configuration" if ambiguity == "unknown_document" else "dependency",
+        "table": {
+            "other_profile": "teachers",
+            "missing_link": "users",
+            "generic_role": "user_roles",
+            "unknown_document": "unreviewed_identity_extension",
+            "other_identity": "users",
+            "nested_claim": "users",
+        }.get(ambiguity, "users"),
+        "count": 1 if ambiguity != "other_profile" else 2,
+        "resolution": detail["dependencies"][0]["resolution"],
+    }]
     assert (await gd_find_one(db.session, "teachers", {"id": teacher["id"]}))["is_active"]
     assert await gd_find_one(db.session, "users", {"id": user["id"]})
+
+
+@pytest.mark.asyncio
+async def test_platform_delete_uses_current_db_role_and_accepts_legacy_defaults(
+    client, tenant_a,
+):
+    actor, teacher, user = await setup(tenant_a)
+    standard_six = [
+        "view_students",
+        "manage_attendance",
+        "manage_grades",
+        "view_schedule",
+        "manage_behavior",
+        "view_reports",
+    ]
+    await gd_update_one(db.session, "users", {"id": user["id"]}, {
+        "permissions": standard_six,
+    })
+    # The JWT deliberately contains the actor's old school role. Authentication
+    # must authorize from the freshly loaded users row, not this stale claim.
+    await gd_update_one(db.session, "users", {"id": actor["id"]}, {
+        "role": "platform_admin", "permissions": [],
+    })
+    stale_headers = _headers(actor["id"], tenant_a)
+    result = await client.delete(
+        f"/users/{user['id']}",
+        headers=stale_headers,
+    )
+
+    assert result.status_code == 200, result.text
+    assert result.json()["permanent"] is True
+    assert await gd_find_one(db.session, "teachers", {"id": teacher["id"]}) is None
+    assert await gd_find_one(db.session, "users", {"id": user["id"]}) is None
+
+
+@pytest.mark.asyncio
+async def test_legacy_teacher_defaults_delete_but_extra_grant_blocks(
+    client, tenant_a,
+):
+    actor, teacher, user = await setup(tenant_a)
+    legacy_defaults = [
+        "view_students", "manage_attendance", "manage_grades",
+        "view_schedule", "manage_behavior", "view_reports",
+    ]
+    await gd_update_one(db.session, "users", {"id": user["id"]}, {
+        "permissions": legacy_defaults + ["users.delete"],
+    })
+    blocked = await client.delete(
+        f"/teachers/{teacher['id']}", headers=_headers(actor["id"], tenant_a),
+    )
+    assert blocked.status_code == 409
+    dependency = blocked.json()["error"]["detail"]["dependencies"][0]
+    assert dependency["reason"] == "custom_teacher_permissions"
+    assert await gd_find_one(db.session, "users", {"id": user["id"]})
+
+    await gd_update_one(db.session, "users", {"id": user["id"]}, {
+        "permissions": legacy_defaults,
+    })
+    deleted = await client.delete(
+        f"/teachers/{teacher['id']}", headers=_headers(actor["id"], tenant_a),
+    )
+    assert deleted.status_code == 200, deleted.text
+    assert await gd_find_one(db.session, "users", {"id": user["id"]}) is None
+
+
+@pytest.mark.asyncio
+async def test_platform_delete_self_and_platform_admin_have_specific_protection_errors(
+    client, tenant_a,
+):
+    actor = await _principal(tenant_a)
+    await gd_update_one(db.session, "users", {"id": actor["id"]}, {
+        "role": "platform_admin", "permissions": [],
+    })
+    headers = _headers(actor["id"], tenant_a)
+    self_result = await client.delete(f"/users/{actor['id']}", headers=headers)
+    assert self_result.status_code == 409
+    assert self_result.json()["error"]["detail"]["code"] == "SELF_DELETE_PROTECTED"
+
+    other = await _principal(tenant_a)
+    await gd_update_one(db.session, "users", {"id": other["id"]}, {
+        "role": "platform_admin", "permissions": [],
+    })
+    protected_result = await client.delete(f"/users/{other['id']}", headers=headers)
+    assert protected_result.status_code == 409
+    assert protected_result.json()["error"]["detail"]["code"] == "PLATFORM_ADMIN_PROTECTED"
+
+
+@pytest.mark.asyncio
+async def test_dependency_failure_is_audited_after_cleanup_rollback(
+    client, tenant_a,
+):
+    actor, teacher, user = await setup(tenant_a)
+    await gd_update_one(db.session, "users", {"id": user["id"]}, {
+        "linked_roles": [{"role": "parent", "tenant_id": tenant_a}],
+    })
+
+    result = await client.delete(
+        f"/teachers/{teacher['id']}", headers=_headers(actor["id"], tenant_a),
+    )
+
+    assert result.status_code == 409
+    assert await gd_find_one(db.session, "users", {"id": user["id"]})
+    audit = await gd_find_one(db.session, "audit_logs", {
+        "entity_id": teacher["id"], "action": "permanent_delete_failed",
+    })
+    assert audit["new_state"] == {
+        "outcome": "blocked",
+        "code": "DELETE_DEPENDENCY_BLOCKED",
+        "category": "dependency",
+        "table": "users",
+        "count": 1,
+    }
+    assert not any(value in str(audit) for value in (
+        teacher["email"], teacher["phone"], teacher["national_id"], teacher["full_name"],
+    ))
+
+
+@pytest.mark.asyncio
+async def test_failed_delete_does_not_commit_unrelated_pending_work(
+    tenant_a, monkeypatch,
+):
+    from services import teacher_permanent_deletion as service
+
+    actor, teacher, user = await setup(tenant_a)
+    await gd_update_one(db.session, "users", {"id": user["id"]}, {
+        "linked_roles": [{"role": "parent", "tenant_id": tenant_a}],
+    })
+    # Establish the test baseline, then add unrelated request work which must
+    # remain pending when the deletion guard fails.
+    await db.session.commit()
+    unrelated_id = str(uuid.uuid4())
+    await gd_insert(db.session, "subjects", {
+        "id": unrelated_id, "school_id": tenant_a, "name": "Pending unrelated work",
+    })
+
+    async def forbidden_commit():
+        raise AssertionError("failure path must not explicitly commit")
+
+    monkeypatch.setattr(db.session, "commit", forbidden_commit)
+    with pytest.raises(HTTPException) as blocked:
+        await service.permanently_delete_teacher(
+            db.session, teacher["id"], actor,
+        )
+    assert blocked.value.status_code == 409
+    assert await gd_find_one(db.session, "subjects", {"id": unrelated_id})
+
+    await db.session.rollback()
+    assert await gd_find_one(db.session, "subjects", {"id": unrelated_id}) is None
 
 
 @pytest.mark.asyncio

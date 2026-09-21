@@ -484,10 +484,24 @@ async def delete_platform_user(
     user = await gd_find_one(db.session, "users", {"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود")
-    
-    # Cannot delete platform_admin
+
+    if user_id == current_user.get("id"):
+        raise HTTPException(status_code=409, detail={
+            "code": "SELF_DELETE_PROTECTED",
+            "message": "لا يمكن حذف حساب مدير المنصة المستخدم حالياً.",
+            "context": "platform",
+            "dependencies": [],
+        })
+
+    # Platform administrators are protected accounts. Their lifecycle remains
+    # separate from school-teacher permanent deletion.
     if user.get("role") == "platform_admin":
-        raise HTTPException(status_code=400, detail="لا يمكن حذف مدير المنصة")
+        raise HTTPException(status_code=409, detail={
+            "code": "PLATFORM_ADMIN_PROTECTED",
+            "message": "لا يمكن حذف حساب مدير منصة محمي عبر هذا المسار.",
+            "context": "platform",
+            "dependencies": [],
+        })
 
     if user.get("role") == UserRole.TEACHER.value:
         from services.teacher_permanent_deletion import permanently_delete_teacher
@@ -516,8 +530,6 @@ async def delete_platform_user(
     await gd_insert(db.session, "audit_logs", audit_log)
     
     return {"message": "تم حذف المستخدم بنجاح"}
-
-
 
 
 # ============== USERS MANAGEMENT ROUTES ==============

@@ -64,4 +64,52 @@ describe('DeleteDialog', () => {
     fireEvent.click(confirm);
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it('renders structured dependency blockers without rendering unknown fields', () => {
+    render(
+      <DeleteDialog
+        user={{ id: 'teacher-1', role: 'teacher', full_name: 'Teacher One' }}
+        onClose={jest.fn()}
+        onConfirm={jest.fn()}
+        deletionError={{
+          status: 409,
+          code: 'DELETE_DEPENDENCY_BLOCKED',
+          message: 'تعذر حذف الحساب لوجود ارتباطات تحتاج إلى مراجعة.',
+          dependencies: [{
+            reason: 'account_ownership_mismatch',
+            category: 'dependency',
+            table: 'users',
+            count: 2,
+            resolution: 'راجع ملكية الحساب ثم أعد المحاولة.',
+            email: 'must-not-render@example.com',
+          }],
+        }}
+      />
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('تعذر حذف الحساب');
+    expect(screen.getByRole('alert')).toHaveTextContent('DELETE_DEPENDENCY_BLOCKED');
+    expect(screen.getByText(/account_ownership_mismatch/)).toBeInTheDocument();
+    expect(screen.getByText(/dependency/)).toBeInTheDocument();
+    expect(screen.getByText(/users/)).toBeInTheDocument();
+    expect(screen.getByText(/2/)).toBeInTheDocument();
+    expect(screen.getByText(/راجع ملكية الحساب/)).toBeInTheDocument();
+    expect(screen.queryByText(/must-not-render@example.com/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [403, 'لا تملك صلاحية حذف هذا الحساب'],
+    [500, 'تعذر إكمال حذف الحساب'],
+  ])('renders a persistent status-specific error for HTTP %s', (status, message) => {
+    render(
+      <DeleteDialog
+        user={{ id: 'teacher-1', role: 'teacher', full_name: 'Teacher One' }}
+        onClose={jest.fn()}
+        onConfirm={jest.fn()}
+        deletionError={{ status, message, dependencies: [] }}
+      />
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent(message);
+  });
 });

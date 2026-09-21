@@ -144,7 +144,13 @@ export function SuspendDialog({ user, onClose, onConfirm }) {
   );
 }
 
-export function DeleteDialog({ user, onClose, onConfirm, isDeleting = false }) {
+export function DeleteDialog({
+  user,
+  onClose,
+  onConfirm,
+  isDeleting = false,
+  deletionError = null,
+}) {
   const isTeacher = user?.role === 'teacher';
 
   return (
@@ -177,6 +183,60 @@ export function DeleteDialog({ user, onClose, onConfirm, isDeleting = false }) {
             )}
           </DialogDescription>
         </DialogHeader>
+        {deletionError ? (
+          <div
+            role="alert"
+            aria-live="polite"
+            className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4 text-right text-sm text-red-950 dark:border-red-900 dark:bg-red-950/30 dark:text-red-100"
+          >
+            <div className="flex items-start justify-end gap-2 font-medium">
+              <span>{deletionError.message}</span>
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            </div>
+            {deletionError.code ? (
+              <p className="text-xs">
+                رمز الخطأ: <span className="font-mono" dir="ltr">{deletionError.code}</span>
+              </p>
+            ) : null}
+            {deletionError.status === 403 ? (
+              <p>راجع صلاحيات حسابك مع مدير منصة آخر قبل إعادة المحاولة.</p>
+            ) : null}
+            {deletionError.status >= 500 ? (
+              <p>يمكنك إعادة المحاولة. إذا استمرت المشكلة فتواصل مع الدعم واذكر رمز الخطأ فقط.</p>
+            ) : null}
+            {deletionError.dependencies?.length > 0 ? (
+              <div className="space-y-2">
+                <p className="font-semibold">الارتباطات التي تمنع الحذف:</p>
+                <ul className="space-y-2">
+                  {deletionError.dependencies.map((dependency, index) => (
+                    <li
+                      key={`${dependency.table || 'dependency'}-${dependency.reason || index}-${index}`}
+                      className="rounded-md border border-red-200/80 bg-white/60 p-3 dark:border-red-900 dark:bg-black/10"
+                    >
+                      <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+                        {dependency.reason ? (
+                          <><dt className="font-medium">السبب:</dt><dd dir="auto">{dependency.reason}</dd></>
+                        ) : null}
+                        {dependency.category ? (
+                          <><dt className="font-medium">الفئة:</dt><dd dir="auto">{dependency.category}</dd></>
+                        ) : null}
+                        {dependency.table ? (
+                          <><dt className="font-medium">السجل:</dt><dd dir="auto">{dependency.table}</dd></>
+                        ) : null}
+                        {dependency.count !== undefined ? (
+                          <><dt className="font-medium">العدد:</dt><dd>{dependency.count}</dd></>
+                        ) : null}
+                        {dependency.resolution ? (
+                          <><dt className="font-medium">الإجراء المطلوب:</dt><dd dir="auto">{dependency.resolution}</dd></>
+                        ) : null}
+                      </dl>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <DialogFooter className="flex-row-reverse gap-2">
           <Button variant="outline" onClick={onClose} disabled={isDeleting}>إلغاء</Button>
           <Button variant="destructive" onClick={() => onConfirm(user)} disabled={isDeleting}>

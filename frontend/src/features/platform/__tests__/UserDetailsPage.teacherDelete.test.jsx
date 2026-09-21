@@ -81,7 +81,7 @@ describe('UserDetailsPage teacher deletion', () => {
     expect(screen.getByText(/ارتباطات مشتركة أو غير مؤكدة/)).toBeInTheDocument();
   });
 
-  it('surfaces a structured 409 review message and keeps the dialog open', async () => {
+  it('surfaces structured 409 blockers in the dialog and keeps it open', async () => {
     mockApi.delete.mockRejectedValue({
       response: {
         status: 409,
@@ -92,6 +92,13 @@ describe('UserDetailsPage teacher deletion', () => {
             message: '',
             detail: {
               message: 'يلزم مراجعة مسؤول المنصة بسبب هوية مشتركة',
+               dependencies: [{
+                 reason: 'account_ownership_mismatch',
+                 category: 'dependency',
+                 table: 'users',
+                 count: 1,
+                 resolution: 'راجع ملكية الحساب ثم أعد المحاولة.',
+               }],
             },
           },
         },
@@ -102,11 +109,36 @@ describe('UserDetailsPage teacher deletion', () => {
     fireEvent.click(await screen.findByTestId('delete-user-btn'));
     fireEvent.click(await screen.findByRole('button', { name: /حذف المعلم نهائياً/ }));
 
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('يلزم مراجعة مسؤول المنصة بسبب هوية مشتركة');
-    });
+    expect(await screen.findByRole('alert')).toHaveTextContent('يلزم مراجعة مسؤول المنصة');
+    expect(screen.getByRole('alert')).toHaveTextContent('راجع ملكية الحساب');
+    expect(toast.error).not.toHaveBeenCalled();
     expect(screen.getByText('حذف حساب المعلم نهائياً')).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalledWith('/admin/users');
+  });
+
+  it.each([
+    [403, 'لا تملك صلاحية حذف هذا الحساب'],
+    [500, 'تعذر إكمال حذف الحساب'],
+  ])('keeps an actionable HTTP %s error inside the dialog', async (status, message) => {
+    mockApi.delete.mockRejectedValue({ response: { status, data: {} } });
+    render(<UserDetailsPage />);
+
+    fireEvent.click(await screen.findByTestId('delete-user-btn'));
+    fireEvent.click(await screen.findByRole('button', { name: /حذف المعلم نهائياً/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(mockNavigate).not.toHaveBeenCalledWith('/admin/users');
+  });
+
+  it('navigates after successful permanent deletion', async () => {
+    mockApi.delete.mockResolvedValue({ data: { success: true } });
+    render(<UserDetailsPage />);
+
+    fireEvent.click(await screen.findByTestId('delete-user-btn'));
+    fireEvent.click(await screen.findByRole('button', { name: /حذف المعلم نهائياً/ }));
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/admin/users'));
+    expect(toast.success).toHaveBeenCalledWith('تم حذف حساب المعلم نهائياً وتحرير بيانات الهوية');
   });
 
   it('prevents a second delete request while the first is pending', async () => {

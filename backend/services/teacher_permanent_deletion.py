@@ -57,6 +57,67 @@ HISTORY_DOCUMENTS = {
 }
 MEMBERSHIP_DOCUMENTS = {"user_roles", "school_memberships", "role_assignments"}
 
+CONFIGURATION_REASONS = {
+    "live_fk_schema_drift",
+    "unknown_unmapped_reference",
+    "unknown_linked_document_collection",
+    "unknown_relationship_fields",
+    "invalid_deleted_teacher_marker",
+}
+# Accounts created by the legacy school-teacher provisioning UI stored this
+# exact six-item capability vocabulary. It was the complete default set in that
+# path, not evidence of a custom/multi-role grant. Do not widen this to subsets
+# or supersets: unknown additions still require review.
+LEGACY_STANDARD_TEACHER_PERMISSIONS = {
+    "view_students",
+    "manage_attendance",
+    "manage_grades",
+    "view_schedule",
+    "manage_behavior",
+    "view_reports",
+}
+
+
+def deletion_detail(code, message, *, reason, category, table, count, resolution):
+    return {
+        "code": code,
+        "message": message,
+        "dependencies": [{
+            "reason": reason,
+            "category": category,
+            "table": table,
+            "count": count,
+            "resolution": resolution,
+        }],
+    }
+
+
+class DeletionBlocked(HTTPException):
+    """Structured fail-closed result retained for audit after savepoint rollback."""
+
+    def __init__(self, reason, *, table, count):
+        category = "configuration" if reason in CONFIGURATION_REASONS else "dependency"
+        code = (
+            "DELETE_CONFIGURATION_ERROR"
+            if category == "configuration"
+            else "DELETE_DEPENDENCY_BLOCKED"
+        )
+        resolution = (
+            f"راجع تصنيف أو مخطط جدول {table} ثم أعد فحص الحذف."
+            if category == "configuration"
+            else f"راجع ارتباطات {table} وحدد الملكية أو أزل الارتباط النشط بأمان ثم أعد المحاولة."
+        )
+        self.report = deletion_detail(
+            code,
+            REVIEW,
+            reason=reason,
+            category=category,
+            table=table,
+            count=count,
+            resolution=resolution,
+        )
+        super().__init__(status_code=409, detail=self.report)
+
 
 def canonical(value, field):
     if not value:
@@ -91,7 +152,7 @@ def review(reason="unclassified_guard", *, table="unknown", count=1):
         "teacher_permanent_delete_blocked reason=%s table=%s count=%d",
         reason, table, count,
     )
-    raise HTTPException(status_code=409, detail=REVIEW)
+    raise DeletionBlocked(reason, table=table, count=count)
 
 
 def contains(value, needles):
@@ -243,6 +304,27 @@ async def write_deletion_audit(session, teacher_id, school_id, actor, cleanup):
     })
 
 
+async def write_failed_deletion_audit(session, teacher_id, school_id, actor, report):
+    """Persist only identifiers and machine diagnostics after operation rollback."""
+    dependency = (report.get("dependencies") or [{}])[0]
+    await gd_insert(session, "audit_logs", {
+        "id": str(uuid.uuid4()),
+        "school_id": school_id,
+        "action": "permanent_delete_failed",
+        "entity_type": "teacher",
+        "entity_id": teacher_id,
+        "performed_by": actor.get("id"),
+        "new_state": {
+            "outcome": "blocked" if report.get("code") != "DELETE_INTERNAL_ERROR" else "failed",
+            "code": report.get("code"),
+            "category": dependency.get("category"),
+            "table": dependency.get("table"),
+            "count": dependency.get("count", 0),
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+
 async def _verify_live_fks(session):
     """Reject schema drift rather than silently allowing an unknown DB CASCADE."""
     rows = (await session.execute(text("""
@@ -265,12 +347,20 @@ async def _verify_live_fks(session):
             review("live_fk_schema_drift", table=source)
 
 
-async def permanently_delete_teacher(session, teacher_id, actor, *, expected_user_id=None):
+async def permanently_delete_teacher(
+    session, teacher_id, actor, *, expected_user_id=None,
+):
     if actor.get("role") not in {"platform_admin", "school_principal", "school_admin"}:
-        raise HTTPException(403, "غير مصرح")
+        raise HTTPException(403, detail={
+            "code": "DELETE_AUTHORIZATION_DENIED",
+            "message": "غير مصرح بالحذف النهائي",
+            "dependencies": [],
+        })
     # School/user/profile links include legacy FK-less fields. Serialize writes to
     # these tables as well as taking row locks; row locks alone cannot stop a new
     # Teacher.user_id or GenericDocument membership from being inserted.
+    audited_teacher_id = teacher_id
+    audited_school_id = None
     try:
         async with session.begin_nested():
             await session.execute(text(
@@ -308,6 +398,8 @@ async def permanently_delete_teacher(session, teacher_id, actor, *, expected_use
                 review("ambiguous_teacher_profiles", table="teachers", count=len(teachers))
             teacher = teachers[0]
             teacher_id = teacher.id
+            audited_teacher_id = teacher_id
+            audited_school_id = teacher.school_id
             assert_school_access(actor, teacher.school_id)
             if not teacher.school_id or is_independent_workspace_id(teacher.school_id):
                 review("non_school_teacher_profile", table="teachers")
@@ -344,7 +436,11 @@ async def permanently_delete_teacher(session, teacher_id, actor, *, expected_use
             permissions = user.permissions or []
             if (
                 not isinstance(permissions, list)
-                or (permissions and set(permissions) != default_permissions)
+                or (
+                    permissions
+                    and set(permissions) != default_permissions
+                    and set(permissions) != LEGACY_STANDARD_TEACHER_PERMISSIONS
+                )
             ):
                 review("custom_teacher_permissions", table="users", count=len(permissions) if isinstance(permissions, list) else 1)
             other_profile_claims = [Teacher.user_id == user.id]
@@ -536,10 +632,59 @@ async def permanently_delete_teacher(session, teacher_id, actor, *, expected_use
             await session.flush()
         # Middleware commits 4xx too: nested rollback protects *every* failure;
         # this commit ensures success cannot precede a durability failure.
-    except Exception:
-        # begin_nested already restored the pre-operation state. Do not roll
-        # back the caller's unrelated work on a guard failure.
-        raise
+    except Exception as exc:
+        # begin_nested has restored every operation write. For an actual delete
+        # attempt, record the failed outcome afterwards so that audit evidence
+        # survives that rollback.
+        if isinstance(exc, DeletionBlocked):
+            report = exc.report
+            raised = exc
+        elif isinstance(exc, HTTPException) and exc.status_code == 404:
+            # Missing/already-deleted targets remain an honest not-found result,
+            # never a misleading internal deletion failure.
+            raise
+        elif isinstance(exc, HTTPException):
+            category = "authorization" if exc.status_code in (401, 403) else "internal"
+            code = "DELETE_AUTHORIZATION_DENIED" if category == "authorization" else "DELETE_INTERNAL_ERROR"
+            report = deletion_detail(
+                code,
+                "غير مصرح بالحذف النهائي" if category == "authorization" else "تعذر إكمال الحذف النهائي.",
+                reason="tenant_scope_denied" if category == "authorization" else "operation_failed",
+                category=category,
+                table="authorization" if category == "authorization" else "internal",
+                count=1,
+                resolution="تحقق من سياق المنصة أو المدرسة وصلاحية الحساب."
+                if category == "authorization" else "راجع سجل الخادم ثم أعد المحاولة دون تغيير البيانات.",
+            )
+            raised = HTTPException(status_code=exc.status_code, detail=report)
+        else:
+            report = deletion_detail(
+                "DELETE_INTERNAL_ERROR",
+                "تعذر إكمال الحذف النهائي. لم يتم تغيير البيانات.",
+                reason="operation_failed",
+                category="internal",
+                table="internal",
+                count=1,
+                resolution="راجع سجل الخادم ثم أعد المحاولة دون تغيير البيانات.",
+            )
+            raised = HTTPException(status_code=500, detail=report)
+        report["context"] = (
+            "platform" if actor.get("role") == "platform_admin" else "school"
+        )
+        if audited_school_id:
+            try:
+                # Isolate audit-storage failure too; never roll back caller setup
+                # or unrelated request work merely because audit storage is down.
+                async with session.begin_nested():
+                    await write_failed_deletion_audit(
+                        session, audited_teacher_id, audited_school_id, actor, report,
+                    )
+            except Exception:
+                logger.exception(
+                    "teacher_permanent_delete_failed_audit_unavailable code=%s",
+                    report.get("code"),
+                )
+        raise raised from exc
     try:
         await session.commit()
     except Exception:

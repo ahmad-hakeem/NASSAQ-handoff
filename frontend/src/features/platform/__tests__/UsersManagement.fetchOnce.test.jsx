@@ -15,7 +15,8 @@
  * Guardrail: one mount = exactly ONE GET to /users/platform-users.
  */
 import React from 'react';
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
 
 const mockSetSearchParams = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -74,7 +75,19 @@ jest.mock('@/features/platform/components/users-management', () => ({
   ApprovalRequestsTab: () => <div />,
   UserDetailsDialog: () => <div />,
   SuspendDialog: () => <div />,
-  DeleteDialog: () => <div />,
+  DeleteDialog: ({ onConfirm, deletionError }) => (
+    <div>
+      <button onClick={() => onConfirm({
+        id: 'teacher-delete-1',
+        role: 'teacher',
+        full_name: 'Teacher',
+      })}
+      >
+        test delete teacher
+      </button>
+      {deletionError ? <div role="alert">{JSON.stringify(deletionError)}</div> : null}
+    </div>
+  ),
   NotificationDialog: () => <div />,
   ApprovalConfirmDialog: () => <div />,
   ApprovalSuccessDialog: () => <div />,
@@ -127,6 +140,7 @@ const PLATFORM_USERS_URL = '/users/platform-users';
 
 describe('UsersManagement — single fetch of /users/platform-users on mount', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     mockApiGet.mockImplementation((url) => {
       if (url === PLATFORM_USERS_URL) return Promise.resolve({ data: { users: [], total: 0 } });
       if (url === '/registration-requests') return Promise.resolve({ data: { requests: [] } });
@@ -154,5 +168,76 @@ describe('UsersManagement — single fetch of /users/platform-users on mount', (
       ([url]) => url === PLATFORM_USERS_URL,
     );
     expect(platformUsersCalls).toHaveLength(1);
+  });
+});
+
+describe('UsersManagement deletion results', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockApiGet.mockImplementation((url) => {
+      if (url === PLATFORM_USERS_URL) return Promise.resolve({ data: { users: [], total: 0 } });
+      if (url === '/registration-requests') return Promise.resolve({ data: { requests: [] } });
+      if (url === '/users/teacher-school-mismatches') {
+        return Promise.resolve({ data: { mismatches: [], total: 0 } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+  });
+
+  test('passes structured 409 dependency details to the persistent dialog error', async () => {
+    mockApi.delete.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: {
+          error: {
+            code: 'DELETE_DEPENDENCY_BLOCKED',
+            message: 'تعذر الحذف',
+            detail: {
+              dependencies: [{
+                reason: 'account_ownership_mismatch',
+                category: 'dependency',
+                table: 'users',
+                count: 1,
+                resolution: 'راجع ملكية الحساب.',
+              }],
+            },
+          },
+        },
+      },
+    });
+    render(<UsersManagement />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'test delete teacher' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('account_ownership_mismatch');
+    expect(alert).toHaveTextContent('راجع ملكية الحساب');
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [403, 'لا تملك صلاحية حذف هذا الحساب'],
+    [500, 'تعذر إكمال حذف الحساب'],
+  ])('passes an actionable HTTP %s error to the dialog', async (status, message) => {
+    mockApi.delete.mockRejectedValueOnce({ response: { status, data: {} } });
+    render(<UsersManagement />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'test delete teacher' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+  });
+
+  test('refreshes users and management stats after successful deletion', async () => {
+    mockApi.delete.mockResolvedValueOnce({ data: { success: true } });
+    render(<UsersManagement />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'test delete teacher' }));
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('تم حذف حساب المعلم نهائياً وتحرير بيانات الهوية');
+    });
+    expect(mockApi.delete).toHaveBeenCalledWith('/users/teacher-delete-1');
+    expect(mockApiGet.mock.calls.filter(([url]) => url === PLATFORM_USERS_URL).length).toBeGreaterThan(1);
+    expect(mockApiGet.mock.calls.filter(([url]) => url === '/users/management-stats').length).toBeGreaterThan(1);
   });
 });
