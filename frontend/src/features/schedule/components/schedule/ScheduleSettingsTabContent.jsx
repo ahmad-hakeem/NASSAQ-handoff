@@ -39,7 +39,7 @@ import { useTranslation, useTheme } from '@/shared/contexts/ThemeContext';
 const SCHEDULE_TAB_IDS = ['timings', 'classes', 'subjects', 'teacher-assignments', 'unavailability', 'constraints'];
 const DEFAULT_SUB_TAB = 'timings';
 
-export default function ScheduleSettingsTabContent() {
+export default function ScheduleSettingsTabContent({ onUnpublishPublished, unpublishingPublished = false }) {
   const { t } = useTranslation();
   const { direction } = useTheme();
   const scheduleSubTabs = useMemo(() => ([
@@ -50,8 +50,13 @@ export default function ScheduleSettingsTabContent() {
     { id: 'unavailability', label: t('settingsTabUnavailability'), icon: UserX },
     { id: 'constraints', label: t('settingsTabConstraints'), icon: Shield },
   ]), [t]);
-  const hook = useSchoolSettings();
-  const { loading, activeTab, setActiveTab } = hook;
+  const settingsHook = useSchoolSettings();
+  const hook = {
+    ...settingsHook,
+    onUnpublishPublished,
+    unpublishingPublished,
+  };
+  const { loading, activeTab, setActiveTab, settingsLoadError, fetchData } = hook;
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -112,6 +117,33 @@ export default function ScheduleSettingsTabContent() {
       >
         <Loader2 className="h-6 w-6 animate-spin me-2" />
         {t('loadingScheduleSettings')}
+      </div>
+    );
+  }
+
+  if (activeTab === 'timings' && settingsLoadError) {
+    return (
+      <div
+        role="alert"
+        className="rounded-xl border border-red-300 bg-red-50 p-5 text-red-900"
+        data-testid="schedule-settings-load-error"
+      >
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+          <div className="flex-1">
+            <p className="font-bold">تعذّر تحميل إعدادات التوقيت</p>
+            <p className="mt-1 text-sm leading-6">{settingsLoadError}</p>
+            <p className="mt-1 text-sm">لم نعرض قيماً افتراضية بديلة حتى لا تُحفظ فوق إعدادات المدرسة الحالية.</p>
+            <button
+              type="button"
+              onClick={fetchData}
+              className="mt-4 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800"
+              data-testid="retry-schedule-settings"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

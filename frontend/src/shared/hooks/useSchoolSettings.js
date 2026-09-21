@@ -4,7 +4,65 @@ import { useAuth } from '@/shared/contexts/AuthContext';
 import { useNassaqAlert } from '@/shared/components/ui/NassaqAlertDialog';
 import { toast } from 'sonner';
 import { useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
-import { getApiErrorMessage } from '@/shared/models/utils/apiError';
+import { getApiErrorCode, getApiErrorMessage } from '@/shared/models/utils/apiError';
+
+const DEFAULT_TIMING_SETTINGS = {
+  academicYear: '1446',
+  currentSemester: '1',
+  dayStart: '07:00',
+  dayEnd: '13:15',
+  periodsPerDay: 7,
+  periodDuration: 45,
+  breakDuration: 20,
+  breakAfterPeriod: 3,
+  attendancePattern: 'winter',
+  maxStandbyPerWeek: 5,
+};
+
+const settingValue = (source, camelKey, snakeKey, fallback) => (
+  source?.[camelKey] ?? source?.[snakeKey] ?? fallback
+);
+
+const unwrapCanonicalSettings = (payload) => payload?.settings ?? payload ?? {};
+
+const normalizeTimingSettings = (payload) => {
+  const source = unwrapCanonicalSettings(payload);
+  const rawStandby = settingValue(
+    source,
+    'maxStandbyPerWeek',
+    'max_standby_per_week',
+    DEFAULT_TIMING_SETTINGS.maxStandbyPerWeek,
+  );
+  const parsedStandby = Number.parseInt(rawStandby, 10);
+  return {
+    academicYear: settingValue(source, 'academicYear', 'academic_year', DEFAULT_TIMING_SETTINGS.academicYear),
+    currentSemester: settingValue(source, 'currentSemester', 'current_semester', DEFAULT_TIMING_SETTINGS.currentSemester),
+    dayStart: settingValue(source, 'dayStart', 'day_start', DEFAULT_TIMING_SETTINGS.dayStart),
+    dayEnd: settingValue(source, 'dayEnd', 'day_end', DEFAULT_TIMING_SETTINGS.dayEnd),
+    periodsPerDay: settingValue(source, 'periodsPerDay', 'periods_per_day', DEFAULT_TIMING_SETTINGS.periodsPerDay),
+    periodDuration: settingValue(source, 'periodDuration', 'period_duration', DEFAULT_TIMING_SETTINGS.periodDuration),
+    breakDuration: settingValue(source, 'breakDuration', 'break_duration', DEFAULT_TIMING_SETTINGS.breakDuration),
+    breakAfterPeriod: settingValue(source, 'breakAfterPeriod', 'break_after_period', DEFAULT_TIMING_SETTINGS.breakAfterPeriod),
+    attendancePattern: settingValue(source, 'attendancePattern', 'attendance_pattern', DEFAULT_TIMING_SETTINGS.attendancePattern),
+    maxStandbyPerWeek: Number.isFinite(parsedStandby)
+      ? Math.max(1, Math.min(20, parsedStandby))
+      : DEFAULT_TIMING_SETTINGS.maxStandbyPerWeek,
+  };
+};
+
+const normalizeBreaks = (payload) => {
+  const source = unwrapCanonicalSettings(payload);
+  if (!Array.isArray(source.breaks)) return null;
+  return source.breaks.map((item, index) => ({
+    id: item.id ?? index + 1,
+    name: item.name ?? 'استراحة',
+    afterPeriod: item.afterPeriod ?? item.after_period ?? index + 2,
+    duration: item.duration ?? 15,
+    type: item.type ?? 'break',
+    customType: item.customType ?? item.custom_type ?? '',
+    day: item.day ?? 'all',
+  }));
+};
 
 export function useSchoolSettings() {
   const navigate = useNavigate();
@@ -61,6 +119,10 @@ export function useSchoolSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [settingsLoadError, setSettingsLoadError] = useState('');
+  const [timingSaveError, setTimingSaveError] = useState(null);
+  const [settingsVersion, setSettingsVersion] = useState(null);
+  const settingsDraftRevisionRef = useRef(0);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -118,18 +180,7 @@ export function useSchoolSettings() {
     friday: false, saturday: false
   });
 
-  const [timingSettings, setTimingSettings] = useState({
-    academicYear: '1446',
-    currentSemester: '1',
-    dayStart: '07:00',
-    dayEnd: '13:15',
-    periodsPerDay: 7,
-    periodDuration: 45,
-    breakDuration: 20,
-    breakAfterPeriod: 3,
-    attendancePattern: 'winter',
-    maxStandbyPerWeek: 5,
-  });
+  const [timingSettings, setTimingSettings] = useState(DEFAULT_TIMING_SETTINGS);
   const [timeSlotsCount, setTimeSlotsCount] = useState(null);
   const [generatingSlots, setGeneratingSlots] = useState(false);
 
@@ -155,8 +206,9 @@ export function useSchoolSettings() {
   const [showAddConstraintModal, setShowAddConstraintModal] = useState(false);
   const [showAddDutyModal, setShowAddDutyModal] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async ({ discardTimingDraft = false } = {}) => {
     if (!api) return;
+    const draftRevisionAtRequest = settingsDraftRevisionRef.current;
     setLoading(true);
 
     try {
@@ -174,7 +226,7 @@ export function useSchoolSettings() {
         constraintsRes, schoolRes,
         subjectsRes, hardConstraintsRes, softConstraintsRes
       ] = await Promise.all([
-        api.get('/school/settings').catch(() => ({ data: {} })),
+        api.get('/school/settings').catch((error) => ({ settingsRequestError: error })),
         api.get('/teachers').catch(() => ({ data: [] })),
         api.get('/classes').catch(() => ({ data: [] })),
         api.get('/teacher-assignments').catch(() => ({ data: [] })),
@@ -185,7 +237,40 @@ export function useSchoolSettings() {
         api.get('/school/settings/soft-constraints').catch(() => ({ data: { soft_constraints: [] } }))
       ]);
 
-      setSettings(settingsRes.data || {});
+      if (settingsRes.settingsRequestError) {
+        const message = getApiErrorMessage(
+          settingsRes.settingsRequestError,
+          'تعذّر تحميل إعدادات التوقيت من الخادم. لم تُستبدل بياناتك بالقيم الافتراضية.',
+        );
+        setSettingsLoadError(message);
+        nassaqError(message);
+      } else if (discardTimingDraft || draftRevisionAtRequest === settingsDraftRevisionRef.current) {
+        const canonicalSettings = unwrapCanonicalSettings(settingsRes.data);
+        setSettings(canonicalSettings);
+        setSettingsLoadError('');
+        setSettingsVersion(settingValue(canonicalSettings, 'settingsVersion', 'settings_version', null));
+        setTimingSettings(normalizeTimingSettings(canonicalSettings));
+
+        const workingDays = settingValue(canonicalSettings, 'workingDays', 'working_days', null);
+        if (Array.isArray(workingDays)) {
+          setWorkDays({
+            sunday: workingDays.includes('الأحد'),
+            monday: workingDays.includes('الإثنين'),
+            tuesday: workingDays.includes('الثلاثاء'),
+            wednesday: workingDays.includes('الأربعاء'),
+            thursday: workingDays.includes('الخميس'),
+            friday: workingDays.includes('الجمعة'),
+            saturday: workingDays.includes('السبت'),
+          });
+        }
+
+        const normalizedBreaks = normalizeBreaks(canonicalSettings);
+        if (normalizedBreaks) setBreakTimes(normalizedBreaks);
+        if (discardTimingDraft) {
+          setHasChanges(false);
+          setTimingSaveError(null);
+        }
+      }
       setTeachers(Array.isArray(teachersRes.data) ? teachersRes.data : []);
       setClasses(Array.isArray(classesRes.data) ? classesRes.data : []);
       setAssignments(Array.isArray(assignmentsRes.data) ? assignmentsRes.data : []);
@@ -199,48 +284,6 @@ export function useSchoolSettings() {
       const scData = softConstraintsRes.data?.soft_constraints || [];
       if (Array.isArray(scData) && scData.length > 0) {
         setSoftConstraints(scData);
-      }
-
-      const s = settingsRes.data || {};
-      if (s.workingDays) {
-        setWorkDays({
-          sunday: s.workingDays.includes('الأحد'),
-          monday: s.workingDays.includes('الإثنين'),
-          tuesday: s.workingDays.includes('الثلاثاء'),
-          wednesday: s.workingDays.includes('الأربعاء'),
-          thursday: s.workingDays.includes('الخميس'),
-          friday: s.workingDays.includes('الجمعة'),
-          saturday: s.workingDays.includes('السبت')
-        });
-      }
-
-      setTimingSettings({
-        academicYear: s.academicYear || '1446',
-        currentSemester: s.currentSemester || '1',
-        dayStart: s.dayStart || '07:00',
-        dayEnd: s.dayEnd || '13:15',
-        periodsPerDay: s.periodsPerDay || 7,
-        periodDuration: s.periodDuration || 45,
-        breakDuration: s.breakDuration || 20,
-        breakAfterPeriod: s.breakAfterPeriod || 3,
-        attendancePattern: s.attendancePattern || s.attendance_pattern || 'winter',
-        maxStandbyPerWeek: (() => {
-          const n = parseInt(s.maxStandbyPerWeek, 10);
-          if (!Number.isFinite(n)) return 5;
-          return Math.max(1, Math.min(20, n));
-        })(),
-      });
-
-      if (Array.isArray(s.breaks) && s.breaks.length > 0) {
-        setBreakTimes(s.breaks.map((b, idx) => ({
-          id: b.id || idx + 1,
-          name: b.name || 'استراحة',
-          afterPeriod: b.afterPeriod || b.after_period || idx + 2,
-          duration: b.duration || 15,
-          type: b.type || 'break',
-          customType: b.customType || b.custom_type || '',
-          day: b.day || 'all',
-        })));
       }
 
     } catch (error) {
@@ -285,6 +328,14 @@ export function useSchoolSettings() {
     fetchData();
   }, [fetchData]);
 
+  const reloadTimingSettings = useCallback(async () => {
+    // This is deliberately the only refresh path that discards a timing draft.
+    // Advancing the revision also prevents any older in-flight save from
+    // applying its canonical response after the administrator confirms reload.
+    settingsDraftRevisionRef.current += 1;
+    await fetchData({ discardTimingDraft: true });
+  }, [fetchData]);
+
   useEffect(() => {
     if (schoolInfo && Object.keys(schoolInfo).length > 0) {
       setEditedSchoolInfo({
@@ -317,6 +368,8 @@ export function useSchoolSettings() {
   };
 
   const saveAllSettings = async () => {
+    const draftRevisionAtSave = settingsDraftRevisionRef.current;
+    setTimingSaveError(null);
     setSaving(true);
     try {
       const dayNames = { sunday: 'الأحد', monday: 'الإثنين', tuesday: 'الثلاثاء', wednesday: 'الأربعاء', thursday: 'الخميس', friday: 'الجمعة', saturday: 'السبت' };
@@ -336,6 +389,7 @@ export function useSchoolSettings() {
         weekendDays,
         attendancePattern: timingSettings.attendancePattern,
         maxStandbyPerWeek: timingSettings.maxStandbyPerWeek,
+        expected_version: settingsVersion,
         breaks: breakTimes.map(b => ({
           id: b.id,
           name: b.name,
@@ -348,6 +402,42 @@ export function useSchoolSettings() {
       };
 
       const res = await api.put('/school/settings', dataToSave);
+      if (res.data?.success !== true || !res.data?.settings) {
+        const invalidResponseError = new Error('Invalid settings save response');
+        invalidResponseError.response = {
+          data: res.data || {
+            success: false,
+            error: { message: 'لم يؤكد الخادم حفظ إعدادات التوقيت.' },
+          },
+        };
+        throw invalidResponseError;
+      }
+      const canonicalSettings = unwrapCanonicalSettings(res.data);
+      const savedVersion = settingValue(canonicalSettings, 'settingsVersion', 'settings_version', null);
+      if (savedVersion !== null) setSettingsVersion(savedVersion);
+      setTimingSaveError(null);
+
+      if (draftRevisionAtSave === settingsDraftRevisionRef.current) {
+        setSettings(canonicalSettings);
+        setTimingSettings(normalizeTimingSettings(canonicalSettings));
+        const normalizedBreaks = normalizeBreaks(canonicalSettings);
+        if (normalizedBreaks) setBreakTimes(normalizedBreaks);
+        const canonicalWorkingDays = settingValue(canonicalSettings, 'workingDays', 'working_days', null);
+        if (Array.isArray(canonicalWorkingDays)) {
+          const active = new Set(canonicalWorkingDays);
+          setWorkDays({
+            sunday: active.has('الأحد'),
+            monday: active.has('الإثنين'),
+            tuesday: active.has('الثلاثاء'),
+            wednesday: active.has('الأربعاء'),
+            thursday: active.has('الخميس'),
+            friday: active.has('الجمعة'),
+            saturday: active.has('السبت'),
+          });
+        }
+        setHasChanges(false);
+      }
+
       const regen = res.data?.time_slots_regenerated;
       if (regen?.regenerated) {
         toast.success(`تم حفظ الإعدادات وإعادة توليد ${regen.count} فترة زمنية`);
@@ -355,11 +445,17 @@ export function useSchoolSettings() {
       } else {
         toast.success('تم حفظ جميع الإعدادات بنجاح');
       }
-      setHasChanges(false);
       api.get('/timetable-readiness/check').then(r => setReadinessData(r.data)).catch(err => { if (process.env.NODE_ENV === 'development') console.warn('Timetable readiness check failed:', err.message); });
+      fetchTimeSlotsCount();
     } catch (error) {
       console.error('Save error:', error);
-      nassaqError('حدث خطأ في حفظ الإعدادات');
+      const message = getApiErrorMessage(error) || 'حدث خطأ في حفظ الإعدادات';
+      const code = getApiErrorCode(error);
+      setTimingSaveError({
+        message,
+        isConflict: error?.response?.status === 409 && code === 'settings_version_conflict',
+      });
+      nassaqError(message);
     } finally {
       setSaving(false);
     }
@@ -524,11 +620,13 @@ export function useSchoolSettings() {
   };
 
   const handleSettingChange = (key, value) => {
+    settingsDraftRevisionRef.current += 1;
     setTimingSettings(prev => ({ ...prev, [key]: value }));
     setHasChanges(true);
   };
 
   const handleWorkDayChange = (day) => {
+    settingsDraftRevisionRef.current += 1;
     setWorkDays(prev => ({ ...prev, [day]: !prev[day] }));
     setHasChanges(true);
   };
@@ -634,6 +732,7 @@ export function useSchoolSettings() {
 
   const handleDeleteBreak = (breakId) => {
     nassaqConfirm('هل أنت متأكد من حذف هذه الفترة؟', () => {
+      settingsDraftRevisionRef.current += 1;
       setBreakTimes(prev => prev.filter(b => b.id !== breakId));
       setHasChanges(true);
       toast.success('تم حذف الفترة بنجاح');
@@ -641,6 +740,7 @@ export function useSchoolSettings() {
   };
 
   const handleSaveBreak = (breakData) => {
+    settingsDraftRevisionRef.current += 1;
     if (editingBreak) {
       setBreakTimes(prev => prev.map(b => b.id === editingBreak.id ? { ...b, ...breakData } : b));
     } else {
@@ -1145,7 +1245,8 @@ export function useSchoolSettings() {
     activeSection, setActiveSection, activeTab, setActiveTab,
     inlineAlert, setInlineAlert, dismissInlineAlert,
     successModal, setSuccessModal, dismissSuccessModal,
-    loading, saving, hasChanges, setHasChanges, sensors,
+    loading, saving, hasChanges, setHasChanges, settingsLoadError, timingSaveError,
+    settingsVersion, reloadTimingSettings, sensors,
     schoolInfo, settings, teachers, classes, assignments, constraints,
     readinessData,
     stageCurriculums, loadingCurriculum, expandedStages, expandedTracks, expandedGrades,

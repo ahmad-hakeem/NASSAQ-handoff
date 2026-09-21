@@ -1165,6 +1165,14 @@ async def smart_get_run_logs(
     }
 
 
+async def _acquire_draft_lifecycle_lock(school_id: str) -> None:
+    """Serialize draft creation and publish-state transitions per school."""
+    await db.session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
+        {"k": f"sched_draft_ensure:{school_id}"},
+    )
+
+
 # --- Publish Timetable API ---
 @router.post("/smart-scheduling/timetable/{timetable_id}/publish")
 async def smart_publish_timetable(
@@ -1178,10 +1186,15 @@ async def smart_publish_timetable(
     timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
     if not timetable:
         raise HTTPException(status_code=404, detail="الجدول غير موجود")
-    assert_school_access(current_user, str(timetable.get("school_id")))
+    school_id = str(timetable.get("school_id"))
+    assert_school_access(current_user, school_id)
+    await _acquire_draft_lifecycle_lock(school_id)
+    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+    if not timetable or str(timetable.get("school_id")) != school_id:
+        raise HTTPException(status_code=404, detail="الجدول غير موجود")
     await assert_publishable(
         smart_scheduling_engine,
-        school_id=str(timetable.get("school_id")),
+        school_id=school_id,
         timetable_id=timetable_id,
     )
     success = await smart_scheduling_engine.publish_timetable(
@@ -1246,6 +1259,7 @@ async def publish_schedule(
 ):
     school_id = payload.school_id.strip()
     assert_school_access(current_user, school_id)
+    await _acquire_draft_lifecycle_lock(school_id)
 
     timetable_id = (payload.timetable_id or "").strip() or None
     if not timetable_id:
@@ -1424,13 +1438,9 @@ async def ensure_editable_draft_route(
         raise HTTPException(status_code=400, detail="معرف المدرسة مطلوب")
     assert_school_access(current_user, school_id)
 
-    # قفل استشاري لكل مدرسة ضمن المعاملة الحالية كي لا ينشئ طلبان متزامنان
-    # مسودتين. يُحرَّر القفل تلقائياً عند إنهاء المعاملة (الوسيط يُنفِّذ commit
-    # لطلبات غير-GET).
-    await db.session.execute(
-        text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
-        {"k": f"sched_draft_ensure:{school_id}"},
-    )
+    # The same transaction lock also guards both publish paths and unpublish,
+    # so a draft cannot be cloned from state that is changing concurrently.
+    await _acquire_draft_lifecycle_lock(school_id)
 
     timetable_id = await smart_scheduling_engine.ensure_editable_draft(
         school_id=school_id,
@@ -1444,9 +1454,14 @@ async def ensure_editable_draft_route(
 
 
 # --- Unpublish Timetable API ---
+class UnpublishTimetableRequest(BaseModel):
+    keep_existing_draft: bool = False
+
+
 @router.post("/smart-scheduling/timetable/{timetable_id}/unpublish")
 async def unpublish_timetable(
     timetable_id: str,
+    payload: Optional[UnpublishTimetableRequest] = None,
     current_user: dict = Depends(require_roles([UserRole.PLATFORM_ADMIN, UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN])),
 ):
     """
@@ -1459,6 +1474,13 @@ async def unpublish_timetable(
 
     school_id = str(timetable.get("school_id", ""))
     assert_school_access(current_user, school_id)
+    await _acquire_draft_lifecycle_lock(school_id)
+
+    # The first read establishes tenant access only. Re-read after waiting for
+    # the school lock so every lifecycle decision below uses current state.
+    timetable = await gd_find_one(db.session, "timetables", {"id": timetable_id})
+    if not timetable or str(timetable.get("school_id", "")) != school_id:
+        raise HTTPException(status_code=404, detail="الجدول غير موجود")
 
     if timetable.get("status") != TimetableStatus.PUBLISHED.value:
         raise HTTPException(
@@ -1478,7 +1500,8 @@ async def unpublish_timetable(
         {"school_id": school_id, "status": TimetableStatus.DRAFT.value},
         limit=1,
     )
-    if existing_drafts:
+    keep_existing_draft = bool(payload and payload.keep_existing_draft)
+    if existing_drafts and not keep_existing_draft:
         raise HTTPException(
             status_code=409,
             detail={
@@ -1490,20 +1513,39 @@ async def unpublish_timetable(
 
     now = datetime.now(timezone.utc).isoformat()
     user_id = current_user.get("id", "system")
-    await gd_update_one(db.session, "timetables", {"id": timetable_id}, {
-        "status": TimetableStatus.DRAFT.value,
+    retained_draft_id = existing_drafts[0].get("id") if existing_drafts else None
+    next_status = (
+        TimetableStatus.ARCHIVED.value
+        if retained_draft_id
+        else TimetableStatus.DRAFT.value
+    )
+    lifecycle_updates = {
+        "status": next_status,
         "is_published": False,
         "updated_by": user_id,
         "updated_at": now,
-    })
+    }
+    await gd_update_one(
+        db.session, "timetables", {"id": timetable_id}, lifecycle_updates
+    )
 
     updated = await gd_find_one(db.session, "timetables", {"id": timetable_id})
     return {
         "ok": True,
         "timetable_id": timetable_id,
-        "status": (updated or {}).get("status", TimetableStatus.DRAFT.value),
-        "message_ar": "تم إلغاء نشر الجدول وعاد إلى المسودة.",
-        "message_en": "Timetable unpublished and returned to draft.",
+        "status": (updated or {}).get("status", next_status),
+        "editable_draft_id": retained_draft_id or timetable_id,
+        "kept_existing_draft": bool(retained_draft_id),
+        "message_ar": (
+            "تم إلغاء نشر الجدول مع الاحتفاظ بالمسودة الحالية."
+            if retained_draft_id
+            else "تم إلغاء نشر الجدول وعاد إلى المسودة."
+        ),
+        "message_en": (
+            "Timetable unpublished; the existing editable draft was kept."
+            if retained_draft_id
+            else "Timetable unpublished and returned to draft."
+        ),
     }
 
 

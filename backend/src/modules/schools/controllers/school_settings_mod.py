@@ -146,10 +146,16 @@ async def update_school_info(
 @router.put("/school/settings/work-days")
 async def update_work_days(
     config: WorkDaysConfig,
+    expected_version: Optional[int] = Query(default=None, ge=0),
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
     x_school_context: str = Header(default=None, alias="X-School-Context")
 ):
-    return await SchoolSettingsService.update_work_days(db.session, config, current_user, x_school_context)
+    payload = {"working_days": config.dict()}
+    if expected_version is not None:
+        payload["expected_version"] = expected_version
+    return await SchoolSettingsService.update_school_settings_full(
+        db.session, payload, current_user, x_school_context
+    )
 
 
 @router.post("/school/settings/holidays")
@@ -209,28 +215,46 @@ async def delete_activity_day(
 @router.put("/school/settings/periods-per-day")
 async def update_periods_per_day(
     req: UpdatePeriodsRequest,
+    expected_version: Optional[int] = Query(default=None, ge=0),
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
     x_school_context: str = Header(default=None, alias="X-School-Context")
 ):
-    return await SchoolSettingsService.update_periods_per_day(db.session, req, current_user, x_school_context)
+    payload = {"periods_per_day": req.periods_per_day}
+    if expected_version is not None:
+        payload["expected_version"] = expected_version
+    return await SchoolSettingsService.update_school_settings_full(
+        db.session, payload, current_user, x_school_context
+    )
 
 
 @router.put("/school/settings/timing")
 async def update_school_timing(
     timing: SchoolTiming,
+    expected_version: Optional[int] = Query(default=None, ge=0),
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
     x_school_context: str = Header(default=None, alias="X-School-Context")
 ):
-    return await SchoolSettingsService.update_school_timing(db.session, timing, current_user, x_school_context)
+    payload = {"start_time": timing.start, "end_time": timing.end}
+    if expected_version is not None:
+        payload["expected_version"] = expected_version
+    return await SchoolSettingsService.update_school_settings_full(
+        db.session, payload, current_user, x_school_context
+    )
 
 
 @router.put("/school/settings/breaks")
 async def update_breaks(
     breaks: List[BreakPeriod],
+    expected_version: Optional[int] = Query(default=None, ge=0),
     current_user: dict = Depends(require_roles([UserRole.SCHOOL_PRINCIPAL, UserRole.SCHOOL_ADMIN, UserRole.PLATFORM_ADMIN])),
     x_school_context: str = Header(default=None, alias="X-School-Context")
 ):
-    return await SchoolSettingsService.update_breaks(db.session, breaks, current_user, x_school_context)
+    payload = {"breaks": [break_period.dict() for break_period in breaks]}
+    if expected_version is not None:
+        payload["expected_version"] = expected_version
+    return await SchoolSettingsService.update_school_settings_full(
+        db.session, payload, current_user, x_school_context
+    )
 
 
 @router.put("/school/settings")

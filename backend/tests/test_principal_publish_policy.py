@@ -18,6 +18,7 @@ is rolled back by ``backend/tests/conftest.py``.
 """
 from __future__ import annotations
 
+import inspect
 import uuid
 from datetime import datetime, timezone
 
@@ -548,6 +549,94 @@ async def test_conflicting_publish_returns_409_and_keeps_current_published_timet
     assert [row["schedule_session_id"] for row in teacher_response.json()] == [
         old_session["id"]
     ]
+
+
+@pytest.mark.asyncio
+async def test_unpublish_can_keep_existing_editable_draft_without_discarding_data(
+    client,
+    tenant_a,
+):
+    """Explicit keep mode archives the live version and preserves the draft."""
+    principal = await _mk_user(tenant_a, UserRole.SCHOOL_PRINCIPAL)
+    teacher_user, teacher = await _mk_teacher(tenant_a)
+    classroom = await _mk_class(tenant_a)
+    subject = await _mk_subject(tenant_a)
+    published = await _mk_timetable(tenant_a, status="published", name="Live")
+    draft = await _mk_timetable(tenant_a, status="draft", name="My edits")
+    live_session = await _mk_session(
+        tenant_a,
+        published["id"],
+        teacher_id=teacher["id"],
+        class_id=classroom["id"],
+        subject_id=subject["id"],
+        day="sunday",
+        period=1,
+    )
+    draft_session = await _mk_session(
+        tenant_a,
+        draft["id"],
+        teacher_id=teacher["id"],
+        class_id=classroom["id"],
+        subject_id=subject["id"],
+        day="monday",
+        period=2,
+    )
+
+    blocked = await client.post(
+        f"/smart-scheduling/timetable/{published['id']}/unpublish",
+        headers=_headers(principal),
+        json={},
+    )
+    assert blocked.status_code == 409, blocked.text
+    assert "DRAFT_ALREADY_EXISTS" in blocked.text
+
+    response = await client.post(
+        f"/smart-scheduling/timetable/{published['id']}/unpublish",
+        headers=_headers(principal),
+        json={"keep_existing_draft": True},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "archived"
+    assert response.json()["editable_draft_id"] == draft["id"]
+    archived = await gd_find_one(
+        db.session, "timetables", {"id": published["id"]}
+    )
+    retained_draft = await gd_find_one(
+        db.session, "timetables", {"id": draft["id"]}
+    )
+    assert archived["status"] == "archived"
+    assert archived["is_published"] is False
+    assert retained_draft["status"] == "draft"
+    assert retained_draft["name"] == "My edits"
+    assert await gd_find_one(
+        db.session, "timetable_sessions", {"id": live_session["id"]}
+    )
+    assert await gd_find_one(
+        db.session, "timetable_sessions", {"id": draft_session["id"]}
+    )
+
+
+def test_all_draft_lifecycle_routes_take_the_shared_school_lock():
+    """Publish, unpublish and ensure-draft must use one serialization lock."""
+    from src.modules.scheduling.controllers import scheduling_smart_engine_routes
+
+    expected_call = "await _acquire_draft_lifecycle_lock(school_id)"
+    route_functions = (
+        scheduling_smart_engine_routes.smart_publish_timetable,
+        scheduling_smart_engine_routes.publish_schedule,
+        scheduling_smart_engine_routes.ensure_editable_draft_route,
+        scheduling_smart_engine_routes.unpublish_timetable,
+    )
+    for route_function in route_functions:
+        source = inspect.getsource(route_function)
+        assert expected_call in source, route_function.__name__
+
+    helper_source = inspect.getsource(
+        scheduling_smart_engine_routes._acquire_draft_lifecycle_lock
+    )
+    assert "pg_advisory_xact_lock(hashtext(:k))" in helper_source
+    assert "sched_draft_ensure:{school_id}" in helper_source
 
 
 @pytest.mark.asyncio

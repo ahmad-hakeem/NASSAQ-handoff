@@ -1452,18 +1452,24 @@ export default function SchedulePageNew() {
     }
   }, [api, schoolId, t]);
 
-  const handleUnpublish = useCallback((timetableId) => {
+  const handleUnpublish = useCallback((timetableId, { keepExistingDraft = false } = {}) => {
     nassaqConfirm(
-      t('timetableUnpublishConfirmMessage'),
+      keepExistingDraft
+        ? 'سيتم إلغاء نشر الجدول مع الإبقاء على المسودة الحالية لتعديلها أو إعادة توليدها. لن يتغير الجدول المنشور بصمت؛ ستحتاج إلى مراجعة المسودة ونشرها من جديد. هل تريد المتابعة؟'
+        : t('timetableUnpublishConfirmMessage'),
       async () => {
         setUnpublishing(true);
         try {
           await api.post(
             `/smart-scheduling/timetable/${timetableId}/unpublish`,
-            {},
+            keepExistingDraft ? { keep_existing_draft: true } : {},
             { headers: { 'X-School-Context': schoolId } },
           );
-          toast.success(t('timetableUnpublishSuccess'));
+          toast.success(
+            keepExistingDraft
+              ? 'تم إلغاء النشر والإبقاء على المسودة الحالية. احفظ التوقيت ثم راجع المسودة وانشرها من جديد.'
+              : t('timetableUnpublishSuccess'),
+          );
           setScheduleView('draft');
           setVersionsOpen(false);
           setRefreshing(true);
@@ -1480,6 +1486,30 @@ export default function SchedulePageNew() {
       { title: t('timetableUnpublishConfirmTitle'), confirmText: t('timetableUnpublish') },
     );
   }, [api, schoolId, loadGrid, setScheduleView, nassaqError, nassaqConfirm, t]);
+
+  const handleUnpublishForTimingSettings = useCallback(async () => {
+    try {
+      const resp = await api.get('/smart-scheduling/timetable/versions', {
+        headers: { 'X-School-Context': schoolId },
+      });
+      const versions = Array.isArray(resp?.data?.versions) ? resp.data.versions : [];
+      const published = versions.find(version => (
+        version.status === 'published' || version.is_published === true
+      ));
+      if (!published) {
+        nassaqWarning('لا يوجد جدول منشور حالياً. يمكنك حفظ إعدادات التوقيت مباشرة.');
+        return;
+      }
+      handleUnpublish(published.id, { keepExistingDraft: true });
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      const message = (typeof detail === 'string' && detail)
+        || detail?.message_ar
+        || error?.response?.data?.error?.message
+        || 'تعذّر التحقق من الجدول المنشور. حاول مرة أخرى.';
+      nassaqError(message);
+    }
+  }, [api, schoolId, handleUnpublish, nassaqError, nassaqWarning]);
 
   // Task #141 — Publish flow. Confirms via NassaqAlertDialog (per
   // replit.md: never use native confirm/toast.error for important
@@ -1775,7 +1805,10 @@ export default function SchedulePageNew() {
                 </div>
               </div>
 
-              <ScheduleSettingsTabContent />
+              <ScheduleSettingsTabContent
+                onUnpublishPublished={handleUnpublishForTimingSettings}
+                unpublishingPublished={unpublishing}
+              />
             </div>
           </div>
         </div>

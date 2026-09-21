@@ -8,6 +8,9 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 import uuid
 import logging
+import re
+
+from sqlalchemy import text
 
 from dependencies import (
     audit_engine, AuditAction, SchoolStatus,
@@ -24,16 +27,45 @@ from src.modules.schools.dto.settings_dto import (
 logger = logging.getLogger("nassaq")
 
 
+# The database columns below are the only source of truth for timetable
+# settings.  The camelCase names are wire aliases used by the principal UI;
+# they must never become a second, competing copy in custom_settings.
+_CANONICAL_ALIASES = {
+    "start_time": ("start_time", "school_day_start", "dayStart", "schoolDayStart"),
+    "end_time": ("end_time", "school_day_end", "dayEnd", "schoolDayEnd"),
+    "periods_per_day": ("periods_per_day", "periodsPerDay", "numberOfPeriods"),
+    "period_duration": (
+        "period_duration", "period_duration_minutes", "periodDuration",
+        "lessonDuration", "lesson_duration_minutes",
+    ),
+    "break_duration": (
+        "break_duration", "break_duration_minutes", "breakDuration",
+        "baseBreakDuration",
+    ),
+    "working_days": ("working_days", "workingDays", "activeWeekdays"),
+}
+_ALL_CANONICAL_INPUT_KEYS = {
+    alias for aliases in _CANONICAL_ALIASES.values() for alias in aliases
+}
+_DAY_MAP = {
+    "sunday": "الأحد", "monday": "الإثنين", "tuesday": "الثلاثاء",
+    "wednesday": "الأربعاء", "thursday": "الخميس", "friday": "الجمعة",
+    "saturday": "السبت",
+}
+_AR_TO_DAY = {value: key for key, value in _DAY_MAP.items()}
+
+
 def normalize_school_settings_doc(raw: dict) -> dict:
     """Translate a settings dict to match SchoolSettings ORM columns."""
     out = {}
     cs = dict(raw.get("custom_settings") or {})
+    for key in _ALL_CANONICAL_INPUT_KEYS:
+        cs.pop(key, None)
 
-    orm_map = {
-        "school_day_start": "start_time",
-        "school_day_end": "end_time",
-        "period_duration_minutes": "period_duration",
-        "break_duration_minutes": "break_duration",
+    alias_to_canonical = {
+        alias: canonical
+        for canonical, aliases in _CANONICAL_ALIASES.items()
+        for alias in aliases
     }
     passthrough_orm = {"id", "school_id", "working_days", "periods_per_day",
                        "start_time", "end_time", "period_duration", "break_duration",
@@ -48,9 +80,8 @@ def normalize_school_settings_doc(raw: dict) -> dict:
     for k, v in raw.items():
         if k == "custom_settings":
             continue
-        if k in orm_map:
-            out[orm_map[k]] = v
-            cs[k] = v
+        if k in alias_to_canonical:
+            out[alias_to_canonical[k]] = v
         elif k in passthrough_orm:
             out[k] = v
         elif k in extras_to_cs:
@@ -60,6 +91,94 @@ def normalize_school_settings_doc(raw: dict) -> dict:
 
     out["custom_settings"] = cs
     return out
+
+
+def _first_present(payload: dict, aliases: tuple):
+    for key in aliases:
+        if key in payload:
+            return payload[key]
+    return None
+
+
+def _resolve_canonical_value(
+    settings: Optional[dict], canonical: str, default: Any = None
+) -> Any:
+    """Read one canonical setting with the same precedence everywhere.
+
+    Real ORM columns are authoritative when populated.  The remaining
+    locations are read-only compatibility fallbacks for legacy rows.
+    """
+    settings = settings or {}
+    nested = settings.get("settings") or {}
+    custom = settings.get("custom_settings") or {}
+    aliases = _CANONICAL_ALIASES[canonical]
+    candidates = [settings.get(canonical)]
+    candidates.extend(settings.get(alias) for alias in aliases if alias != canonical)
+    candidates.extend(nested.get(alias) for alias in aliases)
+    candidates.extend(custom.get(alias) for alias in aliases)
+    for value in candidates:
+        if value is not None:
+            return value
+    return default
+
+
+def _resolve_breaks(settings: Optional[dict]) -> list:
+    settings = settings or {}
+    nested = settings.get("settings") or {}
+    custom = settings.get("custom_settings") or {}
+    for source in (settings, nested, custom):
+        value = source.get("breaks")
+        if value is not None:
+            return value
+    return []
+
+
+def _parse_int(value: Any, field: str, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool):
+        raise HTTPException(status_code=422, detail=f"{field} must be an integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail=f"{field} must be an integer")
+    if isinstance(value, float) and not value.is_integer():
+        raise HTTPException(status_code=422, detail=f"{field} must be an integer")
+    if isinstance(value, str) and not re.fullmatch(r"[+-]?\d+", value.strip()):
+        raise HTTPException(status_code=422, detail=f"{field} must be an integer")
+    if not minimum <= parsed <= maximum:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field} must be between {minimum} and {maximum}",
+        )
+    return parsed
+
+
+def _parse_time(value: Any, field: str) -> tuple[str, int]:
+    if not isinstance(value, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
+        raise HTTPException(status_code=422, detail=f"{field} must use HH:MM")
+    hours, minutes = (int(part) for part in value.split(":"))
+    return value, hours * 60 + minutes
+
+
+def _normalize_working_days(value: Any) -> dict:
+    if isinstance(value, dict):
+        if set(value) - set(_DAY_MAP) or any(type(active) is not bool for active in value.values()):
+            raise HTTPException(status_code=422, detail="working_days contains invalid weekdays")
+        result = {day: value.get(day, False) for day in _DAY_MAP}
+    elif isinstance(value, list):
+        if not value:
+            raise HTTPException(status_code=422, detail="At least one working day is required")
+        resolved = []
+        for day in value:
+            key = day if day in _DAY_MAP else _AR_TO_DAY.get(day)
+            if not key:
+                raise HTTPException(status_code=422, detail=f"Invalid working day: {day}")
+            resolved.append(key)
+        result = {day: day in resolved for day in _DAY_MAP}
+    else:
+        raise HTTPException(status_code=422, detail="working_days must be an object or list")
+    if not any(result.values()):
+        raise HTTPException(status_code=422, detail="At least one working day is required")
+    return result
 
 
 def dict_to_active_ar(wd: dict) -> list:
@@ -243,26 +362,20 @@ class SchoolSettingsService:
                     return val
             return default
 
-        start_t = _pick(
-            cs.get("school_day_start"),
-            settings.get("school_day_start"),
-            nested_settings.get("school_day_start"),
-            settings.get("start_time"),
-            nested_settings.get("start_time"),
+        # Use the same resolver as partial-update validation, so a legacy-only
+        # row cannot display one value and validate/regenerate with another.
+        start_t = _resolve_canonical_value(
+            settings, "start_time",
             (default_settings or {}).get("school_day_start"),
-            (default_settings or {}).get("start_time"),
-            default="07:00"
         )
-        end_t = _pick(
-            cs.get("school_day_end"),
-            settings.get("school_day_end"),
-            nested_settings.get("school_day_end"),
-            settings.get("end_time"),
-            nested_settings.get("end_time"),
+        if start_t is None:
+            start_t = (default_settings or {}).get("start_time") or "07:00"
+        end_t = _resolve_canonical_value(
+            settings, "end_time",
             (default_settings or {}).get("school_day_end"),
-            (default_settings or {}).get("end_time"),
-            default="14:00"
         )
+        if end_t is None:
+            end_t = (default_settings or {}).get("end_time") or "14:00"
 
         timing = settings.get("timing") or nested_settings.get("timing") or {}
         if not timing:
@@ -273,39 +386,30 @@ class SchoolSettingsService:
             if "end" not in timing:
                 timing["end"] = end_t
 
-        breaks = _pick(
-            cs.get("breaks"),
-            settings.get("breaks"),
-            nested_settings.get("breaks"),
-            (default_settings or {}).get("breaks"),
-            default=[]
-        )
+        breaks = _resolve_breaks(settings)
+        if not breaks:
+            breaks = (default_settings or {}).get("breaks") or []
 
-        periods_pd = _pick(
-            cs.get("periods_per_day"),
-            settings.get("periods_per_day"),
-            nested_settings.get("periods_per_day"),
+        periods_pd = _resolve_canonical_value(
+            settings, "periods_per_day",
             (default_settings or {}).get("periods_per_day"),
-            default=7
         )
+        if periods_pd is None:
+            periods_pd = 7
 
-        period_dur = _pick(
-            cs.get("period_duration_minutes"),
-            settings.get("period_duration_minutes"),
-            nested_settings.get("period_duration_minutes"),
-            settings.get("period_duration"),
+        period_dur = _resolve_canonical_value(
+            settings, "period_duration",
             (default_settings or {}).get("period_duration_minutes"),
-            default=45
         )
+        if period_dur is None:
+            period_dur = 45
 
-        break_dur = _pick(
-            cs.get("break_duration_minutes"),
-            settings.get("break_duration_minutes"),
-            nested_settings.get("break_duration_minutes"),
-            settings.get("break_duration"),
+        break_dur = _resolve_canonical_value(
+            settings, "break_duration",
             (default_settings or {}).get("break_duration_minutes"),
-            default=15
         )
+        if break_dur is None:
+            break_dur = 15
 
         prayer_dur = _pick(
             cs.get("prayer_duration_minutes"),
@@ -314,6 +418,19 @@ class SchoolSettingsService:
             (default_settings or {}).get("prayer_duration_minutes"),
             default=20
         )
+
+        working_days = _resolve_canonical_value(settings, "working_days")
+        if not isinstance(working_days, dict):
+            try:
+                working_days = _normalize_working_days(working_days)
+            except HTTPException:
+                working_days = {day: day not in {"friday", "saturday"} for day in _DAY_MAP}
+        working_days_ar = [
+            arabic for day, arabic in _DAY_MAP.items() if working_days.get(day)
+        ]
+        settings_version = cs.get("settings_version", 0)
+        if not isinstance(settings_version, int) or isinstance(settings_version, bool):
+            settings_version = 0
 
         clean_settings = {
             **settings,
@@ -325,8 +442,25 @@ class SchoolSettingsService:
             "break_duration_minutes": break_dur,
             "prayer_duration_minutes": prayer_dur,
             "breaks": breaks,
-            "working_days_ar": resolve_working_days_ar(nested_settings, settings),
-            "weekend_days_ar": resolve_weekend_days_ar(nested_settings, settings),
+            "working_days": working_days,
+            "working_days_ar": working_days_ar,
+            "weekend_days_ar": [
+                arabic for day, arabic in _DAY_MAP.items() if not working_days.get(day)
+            ],
+            "settings_version": settings_version,
+            # Current principal UI aliases.  They are projections of the
+            # canonical values above, not separately persisted values.
+            "dayStart": start_t,
+            "dayEnd": end_t,
+            "periodsPerDay": periods_pd,
+            "periodDuration": period_dur,
+            "breakDuration": break_dur,
+            "workingDays": working_days_ar,
+            "academicYear": cs.get("academicYear", cs.get("academic_year", "1446")),
+            "currentSemester": cs.get("currentSemester", cs.get("current_semester", "1")),
+            "breakAfterPeriod": cs.get("breakAfterPeriod", cs.get("break_after_period", 3)),
+            "attendancePattern": cs.get("attendancePattern", cs.get("attendance_pattern", "winter")),
+            "maxStandbyPerWeek": cs.get("maxStandbyPerWeek", cs.get("max_standby_per_week", 5)),
             "custom_settings": cs,
         }
         return clean_settings
@@ -390,35 +524,9 @@ class SchoolSettingsService:
 
     @staticmethod
     async def update_work_days(session, config: WorkDaysConfig, current_user: dict, x_school_context: str = None) -> dict:
-        school_id = await resolve_school_context(current_user, x_school_context)
-        if not school_id:
-            raise HTTPException(status_code=400, detail="Missing school context")
-
-        day_map = {
-            "sunday": "الأحد",
-            "monday": "الإثنين",
-            "tuesday": "الثلاثاء",
-            "wednesday": "الأربعاء",
-            "thursday": "الخميس",
-            "friday": "الجمعة",
-            "saturday": "السبت"
-        }
-        working_days_ar = [name for key, name in day_map.items() if getattr(config, key)]
-        weekend_days_ar = [name for key, name in day_map.items() if not getattr(config, key)]
-        working_days_en = [key for key in day_map.keys() if getattr(config, key)]
-        weekend_days_en = [key for key in day_map.keys() if not getattr(config, key)]
-
-        now = datetime.now(timezone.utc).isoformat()
-        normalized = normalize_school_settings_doc({
-            "working_days": config.dict(),
-            "working_days_ar": working_days_ar,
-            "working_days_en": working_days_en,
-            "weekend_days_ar": weekend_days_ar,
-            "weekend_days_en": weekend_days_en,
-            "updated_at": now
-        })
-        await gd_update_one(session, "school_settings", {"school_id": school_id}, normalized)
-        return {"success": True, "message": "تم تحديث أيام العمل بنجاح"}
+        return await SchoolSettingsService.update_school_settings_full(
+            session, {"working_days": config.dict()}, current_user, x_school_context
+        )
 
     @staticmethod
     async def add_official_holiday(session, holiday: OfficialHoliday, current_user: dict, x_school_context: str = None) -> dict:
@@ -545,95 +653,268 @@ class SchoolSettingsService:
 
     @staticmethod
     async def update_periods_per_day(session, req: UpdatePeriodsRequest, current_user: dict, x_school_context: str = None) -> dict:
-        school_id = await resolve_school_context(current_user, x_school_context)
-        if not school_id:
-            raise HTTPException(status_code=400, detail="Missing school context")
-
-        now = datetime.now(timezone.utc).isoformat()
-        normalized = normalize_school_settings_doc({
-            "periods_per_day": req.periods_per_day,
-            "updated_at": now
-        })
-        await gd_update_one(session, "school_settings", {"school_id": school_id}, normalized)
-        from src.modules.schools.services.time_slots_service import TimeSlotsService
-        await TimeSlotsService.regenerate_time_slots(session, school_id)
-        return {"success": True, "periods_per_day": req.periods_per_day, "message": "تم تحديث عدد الحصص وإعادة توليد الفترات بنجاح"}
+        return await SchoolSettingsService.update_school_settings_full(
+            session, {"periods_per_day": req.periods_per_day}, current_user, x_school_context
+        )
 
     @staticmethod
     async def update_school_timing(session, timing: SchoolTiming, current_user: dict, x_school_context: str = None) -> dict:
-        school_id = await resolve_school_context(current_user, x_school_context)
-        if not school_id:
-            raise HTTPException(status_code=400, detail="Missing school context")
-
-        now = datetime.now(timezone.utc).isoformat()
-        normalized = normalize_school_settings_doc({
-            "school_day_start": timing.start,
-            "school_day_end": timing.end,
-            "timing": timing.dict(),
-            "updated_at": now
-        })
-        await gd_update_one(session, "school_settings", {"school_id": school_id}, normalized)
-        from src.modules.schools.services.time_slots_service import TimeSlotsService
-        await TimeSlotsService.regenerate_time_slots(session, school_id)
-        return {"success": True, "timing": timing.dict(), "message": "تم تحديث التوقيت وإعادة توليد الفترات بنجاح"}
+        return await SchoolSettingsService.update_school_settings_full(
+            session,
+            {"start_time": timing.start, "end_time": timing.end},
+            current_user,
+            x_school_context,
+        )
 
     @staticmethod
     async def update_breaks(session, breaks: List[BreakPeriod], current_user: dict, x_school_context: str = None) -> dict:
-        school_id = await resolve_school_context(current_user, x_school_context)
-        if not school_id:
-            raise HTTPException(status_code=400, detail="Missing school context")
-
-        now = datetime.now(timezone.utc).isoformat()
-        breaks_list = [b.dict() for b in breaks]
-        normalized = normalize_school_settings_doc({
-            "breaks": breaks_list,
-            "updated_at": now
-        })
-        await gd_update_one(session, "school_settings", {"school_id": school_id}, normalized)
-        from src.modules.schools.services.time_slots_service import TimeSlotsService
-        await TimeSlotsService.regenerate_time_slots(session, school_id)
-        return {"success": True, "breaks": breaks_list, "message": "تم تحديث الاستراحات وإعادة توليد الفترات بنجاح"}
+        return await SchoolSettingsService.update_school_settings_full(
+            session,
+            {"breaks": [b.dict() for b in breaks]},
+            current_user,
+            x_school_context,
+        )
 
     @staticmethod
     async def update_school_settings_full(session, new_settings: dict, current_user: dict, x_school_context: str = None) -> dict:
         school_id = await resolve_school_context(current_user, x_school_context)
         if not school_id:
             raise HTTPException(status_code=400, detail="Missing school context")
+        if not isinstance(new_settings, dict):
+            raise HTTPException(status_code=422, detail="Settings payload must be an object")
 
-        now = datetime.now(timezone.utc).isoformat()
-        existing = await gd_find_one(session, "school_settings", {"school_id": school_id})
-        cs = dict(existing.get("custom_settings") or {}) if existing else {}
+        payload = dict(new_settings)
+        expected_version = payload.pop("expected_version", payload.pop("expectedVersion", None))
+        payload.pop("settings_version", None)
 
-        if "working_days" in new_settings and isinstance(new_settings["working_days"], dict):
-            day_map = {"sunday": "الأحد", "monday": "الإثنين", "tuesday": "الثلاثاء", "wednesday": "الأربعاء", "thursday": "الخميس", "friday": "الجمعة", "saturday": "السبت"}
-            wd = new_settings["working_days"]
-            new_settings["working_days_ar"] = [name for key, name in day_map.items() if wd.get(key)]
-            new_settings["weekend_days_ar"] = [name for key, name in day_map.items() if not wd.get(key)]
-
-        normalized = normalize_school_settings_doc({
-            **cs,
-            **new_settings,
-            "school_id": school_id,
-            "updated_at": now
-        })
-
-        if existing:
-            await gd_update_one(session, "school_settings", {"school_id": school_id}, normalized)
-        else:
-            normalized["id"] = f"settings-{school_id}"
-            normalized["created_at"] = now
-            await gd_insert(session, "school_settings", normalized)
-
-        from src.modules.schools.services.time_slots_service import TimeSlotsService
-        await TimeSlotsService.regenerate_time_slots(session, school_id)
-
-        await audit_engine.log_data_change(
-            action=AuditAction.TENANT_UPDATED.value,
-            performed_by=current_user.get("id", current_user.get("user_id")),
-            entity_type="school_settings",
-            entity_id=school_id,
-            tenant_id=school_id,
-            new_values={"action": "UPDATE_SETTINGS"}
+        # This is the same transaction lock used by draft ensure/publish/
+        # unpublish, so a settings edit cannot race a lifecycle transition.
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": f"sched_draft_ensure:{school_id}"},
         )
 
-        return {"success": True, "message": "تم تحديث إعدادات المدرسة بالكامل بنجاح"}
+        existing = await gd_find_one(session, "school_settings", {"school_id": school_id})
+        cs = dict(existing.get("custom_settings") or {}) if existing else {}
+        current_version = cs.get("settings_version", 0)
+        if not isinstance(current_version, int) or isinstance(current_version, bool):
+            current_version = 0
+        if expected_version is not None:
+            expected_version = _parse_int(expected_version, "expected_version", 0, 2_147_483_647)
+            if expected_version != current_version:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "settings_version_conflict",
+                        "message": "Settings changed in another session; reload and try again.",
+                        "settings_version": current_version,
+                    },
+                )
+        # Omission remains supported only for legacy API clients.  The current
+        # settings UI always echoes GET.settings_version as expected_version;
+        # all writes, including legacy ones, still serialize on the school
+        # advisory lock and advance the version.
+
+        canonical_updates = {}
+        for canonical, aliases in _CANONICAL_ALIASES.items():
+            if any(alias in payload for alias in aliases):
+                canonical_updates[canonical] = _first_present(payload, aliases)
+            elif existing and existing.get(canonical) is None:
+                # A partial edit of a legacy-only row must not erase the old
+                # camel/nested value when duplicate aliases are cleaned from
+                # custom_settings.  Promote it into its canonical column in
+                # the same transaction.
+                legacy_value = _resolve_canonical_value(existing, canonical)
+                if legacy_value is not None:
+                    canonical_updates[canonical] = legacy_value
+
+        if "periods_per_day" in canonical_updates:
+            canonical_updates["periods_per_day"] = _parse_int(
+                canonical_updates["periods_per_day"], "periods_per_day", 1, 12
+            )
+        if "period_duration" in canonical_updates:
+            canonical_updates["period_duration"] = _parse_int(
+                canonical_updates["period_duration"], "period_duration", 20, 90
+            )
+        if "break_duration" in canonical_updates:
+            canonical_updates["break_duration"] = _parse_int(
+                canonical_updates["break_duration"], "break_duration", 0, 60
+            )
+        if "working_days" in canonical_updates:
+            canonical_updates["working_days"] = _normalize_working_days(
+                canonical_updates["working_days"]
+            )
+        for field in ("start_time", "end_time"):
+            if field in canonical_updates:
+                canonical_updates[field] = _parse_time(
+                    canonical_updates[field], field
+                )[0]
+
+        periods = canonical_updates.get(
+            "periods_per_day",
+            _resolve_canonical_value(existing, "periods_per_day", 7),
+        )
+        period_duration = canonical_updates.get(
+            "period_duration",
+            _resolve_canonical_value(existing, "period_duration", 45),
+        )
+        break_duration = canonical_updates.get(
+            "break_duration",
+            _resolve_canonical_value(existing, "break_duration", 15),
+        )
+        start_time = canonical_updates.get(
+            "start_time", _resolve_canonical_value(existing, "start_time", "07:00")
+        )
+        end_time = canonical_updates.get(
+            "end_time", _resolve_canonical_value(existing, "end_time", "14:00")
+        )
+        _, start_minutes = _parse_time(start_time, "start_time")
+        _, end_minutes = _parse_time(end_time, "end_time")
+        if end_minutes <= start_minutes:
+            raise HTTPException(status_code=422, detail="end_time must be after start_time")
+
+        breaks = payload.get("breaks", _resolve_breaks(existing))
+        if breaks is None:
+            breaks = []
+        if not isinstance(breaks, list):
+            raise HTTPException(status_code=422, detail="breaks must be a list")
+        normalized_breaks = []
+        break_minutes = 0
+        seen_after = set()
+        for index, item in enumerate(breaks):
+            if not isinstance(item, dict):
+                raise HTTPException(status_code=422, detail=f"breaks[{index}] must be an object")
+            item = dict(item)
+            raw_after = item.get("afterPeriod", item.get("after_period"))
+            if raw_after is None:
+                raise HTTPException(status_code=422, detail=f"breaks[{index}].afterPeriod is required")
+            after = _parse_int(raw_after, f"breaks[{index}].afterPeriod", 1, periods)
+            if after in seen_after:
+                raise HTTPException(status_code=422, detail="Only one break is allowed after each period")
+            seen_after.add(after)
+            raw_duration = item.get("duration")
+            # A null duration means BASE break duration.  Use ``is None``
+            # rather than truthiness so a deliberate zero-minute break works.
+            duration = break_duration if raw_duration is None else _parse_int(
+                raw_duration, f"breaks[{index}].duration", 0, 180
+            )
+            item["afterPeriod"] = after
+            # Preserve null as "inherit BASE break duration".  Persisting the
+            # currently resolved number would freeze the break at that value,
+            # so a later BASE 25 -> 30 edit would incorrectly keep 25.
+            item["duration"] = None if raw_duration is None else duration
+            normalized_breaks.append(item)
+            break_minutes += duration
+
+        if "breaks" in payload:
+            payload["breaks"] = normalized_breaks
+
+        # The current slot generator adds five passing minutes after every
+        # period that is not immediately followed by a configured break
+        # (including its final period).  Feasibility must model that exact
+        # schedule rather than accepting a day the generator cannot fit.
+        passing_minutes = 5 * (periods - len(seen_after))
+        required_minutes = periods * period_duration + break_minutes + passing_minutes
+        if required_minutes > end_minutes - start_minutes:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "School day is too short for the configured periods and breaks "
+                    f"({required_minutes} minutes required)."
+                ),
+            )
+
+        timing_fields = {
+            "start_time", "end_time", "periods_per_day",
+            "period_duration", "break_duration", "working_days",
+        }
+        timing_changed = any(
+            _resolve_canonical_value(existing, field) != value
+            for field, value in canonical_updates.items()
+            if field in timing_fields
+        ) or ("breaks" in payload and normalized_breaks != _resolve_breaks(existing))
+
+        if timing_changed:
+            published = (
+                await gd_find_one(session, "timetables", {
+                    "school_id": school_id, "status": "published",
+                })
+                or await gd_find_one(session, "timetables", {
+                    "school_id": school_id, "is_published": True,
+                })
+            )
+            if published:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "published_timetable_requires_unpublish",
+                        "message": (
+                            "Unpublish the current timetable before changing timing settings. "
+                            "The published timetable was not modified."
+                        ),
+                    },
+                )
+
+        now = datetime.now(timezone.utc).isoformat()
+        extras = {
+            key: value for key, value in payload.items()
+            if key not in _ALL_CANONICAL_INPUT_KEYS
+        }
+        if "breaks" in payload:
+            extras["breaks"] = normalized_breaks
+        clean_cs = {
+            key: value for key, value in cs.items()
+            if key not in _ALL_CANONICAL_INPUT_KEYS
+        }
+        clean_cs.update(extras)
+        clean_cs["settings_version"] = current_version + 1
+        normalized = normalize_school_settings_doc({
+            **canonical_updates,
+            "custom_settings": clean_cs,
+            "school_id": school_id,
+            "updated_at": now,
+        })
+
+        try:
+            async with session.begin_nested():
+                if existing:
+                    await gd_update_one(
+                        session, "school_settings", {"school_id": school_id}, normalized
+                    )
+                else:
+                    normalized["id"] = f"settings-{school_id}"
+                    normalized["created_at"] = now
+                    await gd_insert(session, "school_settings", normalized)
+
+                regeneration = {"regenerated": False, "reason": "timing_unchanged"}
+                if timing_changed:
+                    from src.modules.schools.services.time_slots_service import TimeSlotsService
+                    regeneration = await TimeSlotsService.regenerate_time_slots(session, school_id)
+
+                await audit_engine.log_data_change(
+                    action=AuditAction.TENANT_UPDATED.value,
+                    performed_by=current_user.get("id", current_user.get("user_id")),
+                    entity_type="school_settings",
+                    entity_id=school_id,
+                    tenant_id=school_id,
+                    new_values={
+                        "action": "UPDATE_SETTINGS",
+                        "settings_version": current_version + 1,
+                    },
+                )
+                saved = await SchoolSettingsService.get_school_settings(
+                    session, current_user, x_school_context
+                )
+            await session.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Failed to persist settings for school %s", school_id)
+            raise HTTPException(status_code=500, detail="Settings were not saved")
+
+        return {
+            "success": True,
+            "message": "تم تحديث إعدادات المدرسة بالكامل بنجاح",
+            "settings": saved,
+            "time_slots_regenerated": regeneration,
+        }

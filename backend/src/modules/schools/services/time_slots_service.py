@@ -37,37 +37,88 @@ class TimeSlotsService:
         timing = settings.get("timing", {})
         cs = settings.get("custom_settings") or {}
         nested = settings.get("settings", {}) or {}
-        day_start = (cs.get("school_day_start")
-                     or settings.get("school_day_start")
-                     or nested.get("school_day_start")
-                     or settings.get("start_time")
-                     or timing.get("start")
-                     or "07:00")
+
+        def _first(*values, default=None):
+            for value in values:
+                if value is not None and value != "":
+                    return value
+            return default
+
+        def _bounded_int(value, default, minimum, maximum):
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                parsed = default
+            return min(max(parsed, minimum), maximum)
+
+        # Dedicated ORM columns are the canonical saved settings.  The nested
+        # values below are migration aliases only and must not override them.
+        day_start = _first(
+            settings.get("start_time"),
+            settings.get("school_day_start"),
+            cs.get("school_day_start"),
+            nested.get("school_day_start"),
+            timing.get("start"),
+            default="07:00",
+        )
         try:
-            parts = day_start.split(":")
+            parts = str(day_start).split(":")
             if len(parts) != 2 or not (0 <= int(parts[0]) <= 23 and 0 <= int(parts[1]) <= 59):
                 day_start = "07:00"
+            else:
+                day_start = str(day_start)
         except (ValueError, AttributeError):
             day_start = "07:00"
 
-        periods = min(max(int(cs.get("periods_per_day") or settings.get("periods_per_day") or nested.get("periods_per_day") or 7), 1), 12)
-        period_dur = min(max(int(cs.get("period_duration_minutes") or settings.get("period_duration_minutes") or nested.get("period_duration_minutes") or settings.get("period_duration") or 45), 20), 90)
-        break_dur = min(max(int(cs.get("break_duration_minutes") or settings.get("break_duration_minutes") or nested.get("break_duration_minutes") or settings.get("break_duration") or 15), 5), 60)
-        prayer_dur = min(max(int(cs.get("prayer_duration_minutes") or settings.get("prayer_duration_minutes") or nested.get("prayer_duration_minutes") or 20), 5), 60)
+        periods = _bounded_int(_first(
+            settings.get("periods_per_day"),
+            cs.get("periods_per_day"),
+            nested.get("periods_per_day"),
+            default=7,
+        ), 7, 1, 12)
+        period_dur = _bounded_int(_first(
+            settings.get("period_duration"),
+            settings.get("period_duration_minutes"),
+            cs.get("period_duration_minutes"),
+            nested.get("period_duration_minutes"),
+            default=45,
+        ), 45, 20, 90)
+        break_dur = _bounded_int(_first(
+            settings.get("break_duration"),
+            settings.get("break_duration_minutes"),
+            cs.get("break_duration_minutes"),
+            nested.get("break_duration_minutes"),
+            default=15,
+        ), 15, 0, 60)
+        prayer_dur = _bounded_int(_first(
+            settings.get("prayer_duration_minutes"),
+            cs.get("prayer_duration_minutes"),
+            nested.get("prayer_duration_minutes"),
+            default=20,
+        ), 20, 0, 60)
 
-        saved_breaks = settings.get("breaks") or []
+        # Presence is meaningful: an explicitly saved [] means no breaks.
+        # Only installations with no breaks key at all retain legacy defaults.
+        breaks_are_explicit = "breaks" in cs or "breaks" in settings
+        saved_breaks = cs.get("breaks") if "breaks" in cs else settings.get("breaks")
+        if not isinstance(saved_breaks, list):
+            saved_breaks = []
         break_after_map = {}
         for b in saved_breaks:
+            if not isinstance(b, dict):
+                continue
             after = b.get("afterPeriod") or b.get("after_period")
             if after:
+                raw_duration = b.get("duration")
                 break_after_map[int(after)] = {
                     "name": b.get("name", "استراحة"),
                     "name_en": b.get("name_en", "Break"),
-                    "duration": int(b.get("duration", break_dur)),
+                    # null inherits BASE; zero is a deliberate duration.
+                    "duration": break_dur if raw_duration is None else int(raw_duration),
                     "is_prayer": b.get("type") == "prayer" or "صلا" in (b.get("name") or ""),
                 }
 
-        if not break_after_map:
+        if not breaks_are_explicit and not break_after_map:
             if periods >= 3:
                 break_after_map[3] = {"name": "الاستراحة", "name_en": "Break", "duration": break_dur, "is_prayer": False}
             if periods >= 6:
@@ -132,9 +183,97 @@ class TimeSlotsService:
             else:
                 current_minutes += passing_time
 
+        # Preserve the logical teaching period before replacing slot ids.  A
+        # manual placement may store the old raw slot_number (which contains
+        # gaps for breaks), so use the old slot id/raw-number maps as well as
+        # period_number.
+        old_slots = await gd_find(
+            session, "time_slots", {"school_id": school_id},
+            order_by="slot_number", desc_order=False, limit=200,
+        )
+        old_teaching = [slot for slot in old_slots if not slot.get("is_break")]
+        old_id_to_period = {
+            slot.get("id"): index
+            for index, slot in enumerate(old_teaching, start=1)
+            if slot.get("id")
+        }
+        old_raw_to_period = {
+            int(slot["slot_number"]): index
+            for index, slot in enumerate(old_teaching, start=1)
+            if slot.get("slot_number") is not None
+        }
+
+        new_teaching = [slot for slot in slots if not slot.get("is_break")]
+        new_by_period = {
+            index: slot for index, slot in enumerate(new_teaching, start=1)
+        }
+        draft_sessions = []
+        drafts = await gd_find(
+            session, "timetables",
+            {"school_id": school_id, "status": {"$in": ["draft", "DRAFT"]}},
+            limit=100,
+        )
+        for draft in drafts:
+            timetable_id = draft.get("id")
+            if not timetable_id:
+                continue
+            rows = await gd_find(
+                session, "timetable_sessions",
+                {"timetable_id": timetable_id}, limit=50000,
+            )
+            for row in rows:
+                if row.get("is_active") is False or row.get("status") == "cancelled":
+                    continue
+                logical_period = old_id_to_period.get(row.get("time_slot_id"))
+                if logical_period is None:
+                    for key in ("period_number", "period"):
+                        try:
+                            candidate = int(row.get(key))
+                        except (TypeError, ValueError):
+                            continue
+                        if candidate > 0:
+                            logical_period = candidate
+                            break
+                if logical_period is None:
+                    try:
+                        raw_slot = int(row.get("slot_number"))
+                    except (TypeError, ValueError):
+                        raw_slot = None
+                    if raw_slot is not None:
+                        logical_period = old_raw_to_period.get(raw_slot, raw_slot)
+
+                if logical_period is not None and logical_period > periods:
+                    raise HTTPException(
+                        status_code=422,
+                        detail={
+                            "code": "draft_sessions_use_removed_periods",
+                            "message": (
+                                "Cannot reduce periods_per_day while draft timetable "
+                                "sessions are assigned to a removed period."
+                            ),
+                            "timetable_id": timetable_id,
+                            "session_id": row.get("id"),
+                            "period_number": logical_period,
+                        },
+                    )
+                if logical_period in new_by_period:
+                    draft_sessions.append((row, logical_period))
+
         await gd_delete_many(session, "time_slots", {"school_id": school_id})
         if slots:
             await gd_insert_many(session, "time_slots", slots)
+
+        # Only draft children are retargeted. Published and archived timetable
+        # rows remain immutable history with their original denormalized times.
+        for row, logical_period in draft_sessions:
+            replacement = new_by_period[logical_period]
+            await gd_update_one(
+                session, "timetable_sessions", {"id": row.get("id")}, {
+                    "time_slot_id": replacement["id"],
+                    "start_time": replacement["start_time"],
+                    "end_time": replacement["end_time"],
+                },
+            )
 
         final_h, final_m = divmod(current_minutes, 60)
         day_end = f"{final_h:02d}:{final_m:02d}"

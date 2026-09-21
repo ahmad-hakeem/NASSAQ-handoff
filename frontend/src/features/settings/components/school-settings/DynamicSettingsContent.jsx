@@ -90,6 +90,8 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
     unassignAllClassesForTeacher, unassignAllClassAssignments,
     subjectPickerRequest, subjectPickerSaving, cancelSubjectPicker, confirmSubjectPicker,
     nassaqWarning, nassaqError, user, api, setAssignments, handleOpenNoorImport,
+    onUnpublishPublished, unpublishingPublished,
+    timingSaveError, reloadTimingSettings,
   } = hook;
 
   const confirmBulkUnassignment = async () => {
@@ -271,6 +273,57 @@ export function DynamicSettingsContent({ hook, dynamicTabs }) {
         </TabsContent>
 
         <TabsContent value="timings" className="space-y-6">
+          {timingSaveError?.isConflict && (
+            <div
+              role="alert"
+              className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-950"
+              data-testid="timing-settings-conflict"
+            >
+              <p className="font-bold">تغيّرت الإعدادات في جلسة أخرى</p>
+              <p className="mt-1 text-sm leading-6">{timingSaveError.message}</p>
+              <p className="mt-1 text-sm leading-6">
+                احتفظنا بتعديلاتك الحالية. راجعها قبل اختيار التحميل؛ تحميل نسخة الخادم سيستبدل هذه المسودة صراحةً.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3 border-red-400 bg-white text-red-900 hover:bg-red-100"
+                onClick={reloadTimingSettings}
+                data-testid="reload-conflicted-timing-settings"
+              >
+                تحميل أحدث إعدادات الخادم واستبدال المسودة
+              </Button>
+            </div>
+          )}
+
+          <div
+            className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"
+            role="note"
+            data-testid="published-timing-policy"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-bold">حماية الجدول المنشور</p>
+                <p className="mt-1 text-sm leading-6">
+                  لن تُطبّق تغييرات التوقيت بصمت على جدول منشور. إذا كان للمدرسة جدول منشور،
+                  ألغِ نشره أولاً، ثم احفظ الإعدادات وعدّل أو أعد توليد المسودة، وراجعها قبل نشرها من جديد.
+                </p>
+              </div>
+              {onUnpublishPublished && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0 border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
+                  onClick={onUnpublishPublished}
+                  disabled={unpublishingPublished}
+                  data-testid="unpublish-before-timing-save"
+                >
+                  {unpublishingPublished ? 'جاري إلغاء النشر...' : 'إلغاء نشر الجدول بأمان'}
+                </Button>
+              )}
+            </div>
+          </div>
+
           <Card className="bg-white shadow-sm">
             <CardHeader>
               <CardTitle className="text-xl flex items-center gap-2"><Clock className="h-5 w-5 text-[#1C3D74]" />إعدادات التوقيت والحصص</CardTitle>
